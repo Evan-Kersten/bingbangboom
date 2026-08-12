@@ -1,0 +1,187 @@
+#!/usr/bin/env python3
+"""Verify the built store.
+
+Asserts referential integrity, join coverage, and that the guardrail flags fire
+on the entities they are supposed to fire on. Exits non-zero on any failure so
+this can gate a build.
+
+    python3 etl/verify.py [--db build/pf.sqlite]
+"""
+
+import argparse
+import os
+import sqlite3
+import sys
+
+failures = []
+checks = 0
+
+
+def check(label, condition, detail=""):
+    global checks
+    checks += 1
+    if condition:
+        print(f"  pass  {label}")
+    else:
+        print(f"  FAIL  {label}  {detail}")
+        failures.append(label)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--db", default=os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "build", "pf.sqlite"))
+    args = parser.parse_args()
+
+    conn = sqlite3.connect(args.db)
+    one = lambda sql, *a: conn.execute(sql, a).fetchone()[0]
+
+    print("\nreferential integrity")
+    child_tables = [
+        "fiscal_stability", "operating_vs_capital", "revenue_volatility",
+        "revenue_volatility_yoy", "spending_by_service_area", "workforce_profile",
+        "workforce_by_service_area", "workforce_top_functions", "financial_functions",
+        "financial_trends", "revenue_sources", "entity_flags", "data_availability",
+        "geo_entity",
+    ]
+    for table in child_tables:
+        orphans = one(
+            f"SELECT COUNT(*) FROM {table} t LEFT JOIN entities e ON e.pid6=t.pid6 "
+            "WHERE e.pid6 IS NULL")
+        check(f"{table} has no orphan pid6", orphans == 0, f"{orphans} orphans")
+
+    check("entity count is 1529", one("SELECT COUNT(*) FROM entities") == 1529)
+    check("every entity has a flag row",
+          one("SELECT COUNT(*) FROM entities") == one("SELECT COUNT(*) FROM entity_flags"))
+    check("every entity has an availability row",
+          one("SELECT COUNT(*) FROM entities") == one("SELECT COUNT(*) FROM data_availability"))
+    check("pid6 is unique", one("SELECT COUNT(*) FROM (SELECT pid6 FROM entities GROUP BY pid6 HAVING COUNT(*)>1)") == 0)
+
+    print("\nguardrail flags fire on the right entities")
+
+    # §8: Sumpter scores 60 because debt-to-revenue is 99.43 and scores zero,
+    # not because it is operationally weak. Structural balance is at the top of
+    # its range. This is the case the prompt describes, so it is pinned.
+    sumpter = conn.execute(
+        "SELECT f.score, f.structural_balance_score, f.debt_to_revenue, g.debt_capped "
+        "FROM fiscal_stability f JOIN entity_flags g ON g.pid6=f.pid6 "
+        "JOIN entities e ON e.pid6=f.pid6 WHERE e.legal_name='CITY OF SUMPTER'").fetchone()
+    check("Sumpter is flagged debt_capped", sumpter and sumpter[3] == 1)
+    check("Sumpter scores 60 with structural balance at 100",
+          sumpter and abs(sumpter[0] - 60) < 0.01 and abs(sumpter[1] - 100) < 0.01,
+          f"got {sumpter}")
+
+    # The priorYearScore artifact: Baker County has no prior year, so both the
+    # prior score and the year-over-year change must be NULL, not 0 and 97.
+    baker = conn.execute(
+        "SELECT f.prior_year_score, f.yoy_change, g.prior_year_missing "
+        "FROM fiscal_stability f JOIN entity_flags g ON g.pid6=f.pid6 "
+        "JOIN entities e ON e.pid6=f.pid6 WHERE e.legal_name='COUNTY OF BAKER'").fetchone()
+    check("Baker County prior year is NULL, not 0", baker and baker[0] is None)
+    check("Baker County yoy_change is NULL, not 97", baker and baker[1] is None)
+    check("Baker County flagged prior_year_missing", baker and baker[2] == 1)
+
+    leaked = one("SELECT COUNT(*) FROM fiscal_stability WHERE prior_year_score=0 AND score>0")
+    check("no entity still reports a 0 prior year against a positive score", leaked == 0,
+          f"{leaked} rows")
+
+    # §8: the special district capital-share median is 2.72, which is not a
+    # midpoint. Every entity in that pool must carry the degenerate flag.
+    degenerate = one(
+        "SELECT COUNT(*) FROM operating_vs_capital o JOIN entities e ON e.pid6=o.pid6 "
+        "WHERE e.gov_type_name='Special District' AND o.peer_median_degenerate=0")
+    check("every special district carries the degenerate-median flag", degenerate == 0,
+          f"{degenerate} missing")
+
+    # The State of Oregon is benchmarked against school districts.
+    mismatch = conn.execute(
+        "SELECT e.legal_name, o.peer_group, o.peer_count_stated FROM operating_vs_capital o "
+        "JOIN entity_flags g ON g.pid6=o.pid6 JOIN entities e ON e.pid6=o.pid6 "
+        "WHERE g.peer_group_mismatch=1").fetchall()
+    check("the state record is flagged peer_group_mismatch",
+          any(r[0] == "STATE OF OREGON" for r in mismatch), f"{mismatch}")
+
+    print("\nnull is distinguished from zero")
+    # An entity whose spending block is absent has no rows and is marked absent,
+    # rather than looking identical to an entity that reported zeros.
+    inconsistent = one("""
+        SELECT COUNT(*) FROM data_availability a
+        WHERE a.has_spending_breakdown = 1
+          AND NOT EXISTS (SELECT 1 FROM spending_by_service_area s WHERE s.pid6=a.pid6)""")
+    check("has_spending_breakdown implies rows exist", inconsistent == 0, f"{inconsistent}")
+
+    reverse = one("""
+        SELECT COUNT(*) FROM (SELECT DISTINCT pid6 FROM spending_by_service_area) s
+        JOIN data_availability a ON a.pid6=s.pid6 WHERE a.has_spending_breakdown = 0""")
+    check("rows existing implies has_spending_breakdown", reverse == 0, f"{reverse}")
+
+    zero_reported = one("SELECT COUNT(*) FROM operating_vs_capital WHERE total_expenditure=0")
+    check("real reported zeros are preserved, not nulled", zero_reported > 0,
+          f"{zero_reported} entities report zero total expenditure")
+
+    print("\nper-capita is refused where there is no denominator")
+    bad_denominator = one("""
+        SELECT COUNT(*) FROM workforce_profile w JOIN entity_flags g ON g.pid6=w.pid6
+        WHERE g.no_population_denominator=1 AND w.population > 0""")
+    check("no_population_denominator never set where population exists", bad_denominator == 0,
+          f"{bad_denominator}")
+
+    print("\noffice crosswalk")
+    total = one("SELECT COUNT(*) FROM office_entity_match WHERE match_method != 'not_a_government'")
+    resolved = one("SELECT COUNT(*) FROM office_entity_match WHERE pid6 IS NOT NULL")
+    check("at least 90% of government divisions resolve", resolved / total >= 0.90,
+          f"{resolved}/{total} = {resolved / total:.1%}")
+    check("every resolved match carries a confidence",
+          one("SELECT COUNT(*) FROM office_entity_match WHERE pid6 IS NOT NULL "
+              "AND confidence NOT IN ('high','medium','low')") == 0)
+    check("no unmatched row claims a confidence",
+          one("SELECT COUNT(*) FROM office_entity_match WHERE pid6 IS NULL "
+              "AND confidence != 'none'") == 0)
+    check("legislative and judicial districts are not treated as governments",
+          one("SELECT COUNT(*) FROM office_entity_match WHERE match_method='not_a_government'") > 0)
+    check("offices carry no holder names",
+          "holder" not in " ".join(r[1] for r in conn.execute("PRAGMA table_info(offices)")).lower())
+
+    print("\ngeometry coverage")
+    check("all 36 counties are mappable",
+          one("SELECT COUNT(*) FROM geo_entity WHERE layer='county'") == 36)
+    check("all 240 places are mappable",
+          one("SELECT COUNT(*) FROM geo_entity WHERE layer='place'") == 240)
+    check("no special district claims geometry",
+          one("SELECT COUNT(*) FROM geo_entity g JOIN entities e ON e.pid6=g.pid6 "
+              "WHERE e.gov_type_name='Special District'") == 0)
+    school = one("SELECT COUNT(*) FROM geo_entity WHERE layer='school_district'")
+    check("school district geometry is partial and marked below high confidence",
+          0 < school < 223 and one("SELECT COUNT(*) FROM geo_entity WHERE "
+                                   "layer='school_district' AND confidence='high'") == 0,
+          f"{school}/223 matched")
+
+    print("\nDP03")
+    check("three vintages loaded",
+          one("SELECT COUNT(DISTINCT vintage) FROM dp03") == 3)
+    check("county DP03 joins to county entities",
+          one("SELECT COUNT(DISTINCT d.geo_id) FROM dp03 d JOIN entities e ON e.geoid=d.geo_id "
+              "WHERE e.gov_type_name='County'") == 36)
+    check("estimates and margins are separate columns",
+          one("SELECT COUNT(*) FROM dp03 WHERE moe IS NOT NULL") > 0)
+
+    print("\nnot computable by construction")
+    # §8: prior-year figures exist only at entity total level, so there must be
+    # no per-service-area time series anywhere in the store to query by mistake.
+    for table in ("spending_by_service_area", "workforce_by_service_area", "financial_functions"):
+        years = one(f"SELECT COUNT(*) FROM (SELECT pid6 FROM {table} "
+                    "GROUP BY pid6 HAVING COUNT(DISTINCT year) > 1)")
+        check(f"{table} holds a single year per entity, so no YoY can be computed",
+              years == 0, f"{years} entities have multiple years")
+
+    print(f"\n{checks - len(failures)}/{checks} checks passed")
+    if failures:
+        print(f"\nFAILED: {len(failures)}")
+        for label in failures:
+            print(f"  - {label}")
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
