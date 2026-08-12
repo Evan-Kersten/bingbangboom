@@ -227,11 +227,21 @@ def main():
     check("calls are logged as missing-tool candidates", len(store.sql_log) >= 1)
 
     print("\nenvelope shape")
+    # Every tool returns the same envelope, whatever its arguments. The ones
+    # that do not take a bare pid6 are called with their own minimum here rather
+    # than skipped, so no tool escapes the shape check.
+    extra_args = {
+        "find_entity": {"name": "Baker"},
+        "list_ecosystem": {"county_name": "Baker"},
+        "map_topic_to_categories": {"topic": "housing"},
+        "compare_entities": {"pid6_list": [baker_county]},
+        "run_sql": {"sql": "SELECT 1 AS n"},
+        "render_chart": {"pid6": baker_county, "form": "spending_composition"},
+        "render_map": {"layer": "county"},
+    }
     for name, tool in T.TOOLS.items():
-        if name in ("find_entity", "list_ecosystem", "map_topic_to_categories",
-                    "compare_entities", "run_sql"):
-            continue
-        result = tool(store, baker_county)
+        args = extra_args.get(name, {"pid6": baker_county})
+        result = tool(store, **args)
         ok = all(k in result for k in
                  ("tool", "entity", "data", "caveats", "not_computable", "vintage"))
         check(f"{name} returns the full envelope", ok)

@@ -700,3 +700,255 @@ TOOLS = {
     "map_topic_to_categories": map_topic_to_categories,
     "run_sql": run_sql,
 }
+
+
+# ------------------------------------------------------------- rendering
+
+import format as fmt  # noqa: E402
+import maps           # noqa: E402
+import viz            # noqa: E402
+
+# The model chooses a form and an entity. It supplies no title, no axis label,
+# no colour and no number, so a caption cannot assert a relationship the data
+# does not contain and a chart cannot disagree with the prose beside it.
+CHART_FORMS = (
+    "spending_composition", "stability_components", "peer_position",
+    "finances_over_time", "workforce_composition",
+)
+
+
+def _named(entity):
+    return entity["common_name"] or entity["legal_name"]
+
+
+def render_chart(store, pid6, form):
+    """Draw one chart for one entity, carrying the same refusals as the tools."""
+    if form not in CHART_FORMS:
+        return envelope("render_chart", caveats=[{
+            "code": "unknown_form", "rule": "§4",
+            "guidance": f"No chart form '{form}'. Available: {', '.join(CHART_FORMS)}."}])
+
+    entity = _entity(store, pid6)
+    if not entity:
+        return envelope("render_chart", caveats=[{
+            "code": "entity_not_found", "rule": "§14",
+            "guidance": "This pid6 is not in the data."}])
+
+    name = _named(entity)
+    flags = _flags(store, pid6)
+    svg = table = None
+    caveats, blocked = [], []
+
+    if form == "spending_composition":
+        source = get_spending_breakdown(store, pid6)
+        caveats, blocked = source["caveats"], source["not_computable"]
+        areas = source["data"].get("service_areas") or []
+        if not areas:
+            svg = viz.refusal(f"{name}: spending by service area",
+                              "This entity has no spending breakdown in the data. That is an "
+                              "absence of data, not a report of zero spending.")
+        else:
+            note = None
+            if flags.get("other_share_high"):
+                note = ("Other exceeds 20% of spending. Other is a Census classification "
+                        "artifact, so this breakdown is partial.")
+            svg = viz.horizontal_bars(
+                f"{name}: spending by service area",
+                f"Census functional categories, {areas[0]['year']}",
+                [{"label": a["service_area"], "value": a["total"]} for a in areas],
+                note=note)
+            table = [{"service area": a["service_area"], "amount": fmt.money(a["total"]),
+                      "share": fmt.percent(a["percentage"])} for a in areas]
+
+    elif form == "stability_components":
+        source = get_financial_position(store, pid6)
+        caveats, blocked = source["caveats"], source["not_computable"]
+        data = source["data"]
+        components = data.get("components") or {}
+        if not components:
+            svg = viz.refusal(f"{name}: fiscal stability components",
+                              "This entity has no fiscal stability record.")
+        else:
+            structural = components["structural_balance"]
+            debt = components["debt_to_revenue"]
+            rows = [
+                {"label": "Structural balance", "value": structural["score"],
+                 "detail": f"{fmt.percent(structural['value'])} of recurring revenue, "
+                           f"weighted 60%"},
+                {"label": "Debt to revenue", "value": debt["score"],
+                 "detail": f"{fmt.percent(debt['value'])} of revenue, weighted 40%"},
+            ]
+            subtitle = f"Composite {data['score']:.0f} of 100, {data['year'] if 'year' in data else ''}".strip(", ")
+            if flags.get("debt_capped"):
+                subtitle = ("Composite capped near 60: debt to revenue scores zero "
+                            "regardless of operational health")
+            svg = viz.meters(f"{name}: what drives the stability score", subtitle, rows)
+            table = [{"component": r["label"], "score": f"{r['value']:.0f}",
+                      "detail": r["detail"]} for r in rows]
+
+    elif form == "peer_position":
+        source = compare_to_peers(store, pid6, "capital_share")
+        caveats, blocked = source["caveats"], source["not_computable"]
+        data = source["data"]
+        record = store.row("SELECT * FROM operating_vs_capital WHERE pid6=?", pid6)
+        if data.get("ratio_refused") or not record or record["peer_median"] is None:
+            # The refusal is the whole point. A dot placed against a median that
+            # most of the pool does not sit near reads as measurement.
+            svg = viz.refusal(
+                f"{name}: capital share against peers",
+                f"Not drawn. The peer median for {data.get('peer_group') or 'this pool'} is "
+                f"{data.get('peer_median')}, at or near zero, which means most of the pool "
+                f"reports no capital activity. It is not a midpoint, so a position against "
+                f"it would misstate where this entity sits.")
+        else:
+            svg = viz.peer_position(
+                f"{name}: capital share against peers",
+                f"{data['peer_group']}, {data['peer_count']} entities, {record['year']}",
+                record["capital_pct"], record["peer_low"], record["peer_median"],
+                record["peer_high"], "lowest", "highest")
+            table = [{"measure": "this entity", "value": fmt.percent(record["capital_pct"])},
+                     {"measure": "peer median", "value": fmt.percent(record["peer_median"])},
+                     {"measure": "peer low", "value": fmt.percent(record["peer_low"])},
+                     {"measure": "peer high", "value": fmt.percent(record["peer_high"])}]
+
+    elif form == "finances_over_time":
+        rows = store.rows(
+            "SELECT year, revenue, expenditure FROM financial_trends WHERE pid6=? "
+            "ORDER BY year", pid6)
+        blocked = [not_computable("service_area_yoy")]
+        caveats = [caveat("inputs_not_outcomes")]
+        if len(rows) < 2:
+            svg = viz.refusal(f"{name}: revenue and spending over time",
+                              "Fewer than two years are available, so there is no series to "
+                              "draw. One year is a point, not a trend.")
+        else:
+            svg = viz.time_series(
+                f"{name}: revenue and spending over time",
+                f"{rows[0]['year']} to {rows[-1]['year']}, entity totals",
+                [{"label": "Revenue", "points": [(r["year"], r["revenue"]) for r in rows]},
+                 {"label": "Spending", "points": [(r["year"], r["expenditure"]) for r in rows]}])
+            table = [{"year": r["year"], "revenue": fmt.money(r["revenue"]),
+                      "spending": fmt.money(r["expenditure"])} for r in rows]
+
+    elif form == "workforce_composition":
+        source = get_workforce(store, pid6)
+        caveats, blocked = source["caveats"], source["not_computable"]
+        areas = source["data"].get("by_service_area") or []
+        if not areas:
+            svg = viz.refusal(f"{name}: workforce by service area",
+                              "This entity has no workforce breakdown in the data.")
+        else:
+            svg = viz.horizontal_bars(
+                f"{name}: workforce by service area",
+                f"Headcount, {source['vintage'].get('workforce')}",
+                [{"label": a["service_area"], "value": a["headcount"]} for a in areas],
+                formatter=fmt.count,
+                note="Listed functions only. Shares are of listed functions, not of all staff.")
+            table = [{"service area": a["service_area"], "headcount": a["headcount"],
+                      "share of listed": fmt.percent(a["percentage"])} for a in areas]
+
+    return envelope("render_chart", entity=entity,
+                    data={"form": form, "svg": svg, "table": table,
+                          "refused": table is None},
+                    caveats=caveats, blocked=blocked)
+
+
+MAP_METRICS = {
+    "fiscal_stability": ("fiscal_stability", "score", fmt.percent,
+                         "Fiscal stability score"),
+    "capital_share": ("operating_vs_capital", "capital_pct", fmt.percent,
+                      "Capital share of spending"),
+    "total_spending": ("operating_vs_capital", "total_expenditure", fmt.money,
+                       "Total expenditure"),
+}
+
+
+def render_map(store, layer="county", metric="fiscal_stability", county=None):
+    """Choropleth over a boundary layer.
+
+    Only counties and places join to geometry exactly. School districts join by
+    name and cover 156 of 223. Special districts have no boundaries at all, so
+    they are not offerable as a layer: two thirds of Oregon's governments cannot
+    be drawn, and the honest form for them is a list.
+    """
+    if layer not in maps.LAYERS:
+        return envelope("render_map", caveats=[{
+            "code": "unknown_layer", "rule": "§9",
+            "guidance": f"No layer '{layer}'. Available: {', '.join(maps.LAYERS)}. "
+                        "Special districts have no boundaries in this data and cannot "
+                        "be mapped; list them instead."}])
+    if metric not in MAP_METRICS:
+        return envelope("render_map", caveats=[{
+            "code": "unknown_metric", "rule": "§4",
+            "guidance": f"No mappable metric '{metric}'. Available: {', '.join(MAP_METRICS)}."}])
+
+    table_name, column, formatter, label = MAP_METRICS[metric]
+    rows = store.rows(
+        f"SELECT g.geo_id, m.{column} AS value, e.common_name, e.legal_name, "
+        f"f.peer_group_mismatch FROM geo_entity g "
+        f"JOIN entities e ON e.pid6=g.pid6 "
+        f"JOIN entity_flags f ON f.pid6=g.pid6 "
+        f"LEFT JOIN {table_name} m ON m.pid6=g.pid6 WHERE g.layer=?", layer)
+
+    values = {r["geo_id"]: r["value"] for r in rows if r["value"] is not None
+              and not r["peer_group_mismatch"]}
+
+    # 378 Oregon cities at state scale are dots, and comparing dot areas compares
+    # city land area, which carries no meaning here. Scoping to one county is
+    # what makes a place map readable.
+    only = extent_note = None
+    if county:
+        host = store.row(
+            "SELECT pid6, common_name, legal_name FROM entities WHERE gov_type_name='County' "
+            "AND (lower(common_name) LIKE ? OR lower(legal_name) LIKE ?)",
+            f"%{county.lower()}%", f"%{county.lower()}%")
+        if not host:
+            return envelope("render_map", caveats=[{
+                "code": "county_not_found", "rule": "§14",
+                "guidance": f"No county matching '{county}' is in the data."}])
+        only = {r["geo_id"] for r in store.rows(
+            "SELECT g.geo_id FROM geo_entity g JOIN entities e ON e.pid6=g.pid6 "
+            "WHERE g.layer=? AND e.host_county_pid6=?", layer, host["pid6"])}
+        extent_note = f"{host['common_name'] or host['legal_name']} only"
+
+    total = store.row("SELECT COUNT(*) AS n FROM entities WHERE gov_type_name IN "
+                      "('County','Municipal','School District','Special District')")["n"]
+
+    caveats = [caveat("inputs_not_outcomes")]
+    if layer == "school_district":
+        caveats.append({
+            "code": "geometry_by_name", "rule": "§9",
+            "guidance": "School district boundaries are matched by name, not by a shared "
+                        "identifier, and cover 156 of 223 districts. Say the map is partial."})
+    caveats.append({
+        "code": "map_is_partial", "rule": "§9",
+        "guidance": f"This layer covers one government type. Oregon has {total} local "
+                    "governments across four types, and special districts, the largest "
+                    "group, have no boundaries in this data. Never describe a single-layer "
+                    "map as showing public spending in a place."})
+
+    if layer == "place" and not county:
+        caveats.append({
+            "code": "place_map_unreadable_statewide", "rule": "§9",
+            "guidance": "At state scale Oregon's cities render as dots, and their polygon "
+                        "areas are land area rather than anything measured here. Scope the "
+                        "map to a county, or use a list."})
+
+    result = maps.choropleth(
+        layer, values,
+        f"{label} by {layer.replace('_', ' ')}",
+        extent_note or "Oregon, one government type only",
+        formatter=formatter, only=only)
+
+    return envelope("render_map",
+                    data={"layer": layer, "metric": metric, "county": county,
+                          "svg": result["svg"],
+                          "covered": result["covered"], "polygons": result["polygons"],
+                          "table": [{"name": r["common_name"] or r["legal_name"],
+                                     "value": formatter(r["value"])}
+                                    for r in rows if r["value"] is not None][:60]},
+                    caveats=caveats)
+
+
+TOOLS["render_chart"] = render_chart
+TOOLS["render_map"] = render_map

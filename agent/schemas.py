@@ -135,6 +135,47 @@ SCHEMAS = [
         },
     },
     {
+        "name": "render_chart",
+        "description": "Draw one chart for one entity. You choose the form and the entity "
+                       "and nothing else: titles, axis labels, colours and numbers are "
+                       "derived from the same data the other tools returned, so the chart "
+                       "cannot disagree with your prose. Forms: spending_composition, "
+                       "stability_components, peer_position, finances_over_time, "
+                       "workforce_composition. A chart that would misstate the data refuses "
+                       "and returns the reason drawn in its place; report the refusal rather "
+                       "than describing the comparison another way. " + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pid6": PID,
+                "form": {"type": "string",
+                         "enum": ["spending_composition", "stability_components",
+                                  "peer_position", "finances_over_time",
+                                  "workforce_composition"]},
+            },
+            "required": ["pid6", "form"],
+        },
+    },
+    {
+        "name": "render_map",
+        "description": "Draw a choropleth over one boundary layer. Counties and places join "
+                       "to boundaries exactly; school districts join by name and cover 156 of "
+                       "223; special districts have no boundaries in this data and cannot be "
+                       "mapped at all, so list them instead. Every map covers one government "
+                       "type, so it never shows all public spending in a place. Pass county "
+                       "to scope a place map, which is unreadable statewide. " + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "layer": {"type": "string", "enum": ["county", "place", "school_district"]},
+                "metric": {"type": "string",
+                           "enum": ["fiscal_stability", "capital_share", "total_spending"]},
+                "county": {"type": "string",
+                           "description": "Optional county name to scope the extent to."},
+            },
+        },
+    },
+    {
         "name": "run_sql",
         "description": "Read-only SQL escape hatch for questions no other tool covers. "
                        "Prefer a typed tool wherever one applies: rows returned here arrive "

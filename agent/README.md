@@ -4,8 +4,10 @@ Twelve typed tools over the store built by `etl/`, the §4 formatter, and the
 orchestrator that routes a question and runs the tool loop.
 
 ```
-python3 agent/test_tools.py         # 72 checks
+python3 agent/test_tools.py         # 79 checks
 python3 agent/test_orchestrator.py  # 44 checks, uses a scripted model
+python3 agent/test_viz.py           # 56 checks on the render layer
+python3 agent/gallery.py            # every chart form on one page, to look at
 ```
 
 ## The envelope
@@ -110,8 +112,54 @@ instruction it reads as a constraint on the answer.
 A tool call that fails returns an envelope explaining the failure rather than
 raising, so a bad call lets the model correct itself instead of killing the turn.
 
-## What is not here
+## `viz.py` and `maps.py` — the render layer
 
-No chart or map rendering. The tools return data and constraints; drawing is the
-render layer's job. Keeping that boundary sharp is what makes everything here
-testable without credentials, which is why the whole suite runs in CI.
+The model picks a form and an entity. It supplies no title, no axis label, no
+colour and no number: `render_chart` has exactly three parameters and a test
+asserts it never grows a fourth. Everything visible is derived from the same
+tool result that produced the prose, which keeps the chart and the sentence in
+agreement and makes a caption physically unable to assert something §4 forbids.
+A chart captioned "public safety investment and poverty" claims a relationship
+more forcefully than a sentence does, and no prompt instruction reliably stops a
+model writing it. Not having the parameter does.
+
+**Charts carry the same refusals as the tools.** A bar drawn against a degenerate
+peer median is as wrong as the sentence would be and worse in practice, because a
+picture reads as measurement. When a chart must not be drawn it returns the
+reason drawn in its place, since a blank space reads as a failure while a stated
+reason reads as a rule.
+
+Forms are bound to tool output shapes:
+
+| Form | Shape | Why this form |
+|---|---|---|
+| `spending_composition` | horizontal bars, one hue | Nominal categories, so a value ramp would double-encode length as colour |
+| `stability_components` | two meters | Each component is a ratio against a limit, and the composite hides which drives it |
+| `peer_position` | range strip, emphasis dot | The entity is the point; the peer range is context |
+| `finances_over_time` | two lines, one axis | Same unit, so never a second y-scale |
+| `workforce_composition` | horizontal bars, one hue | Shares of listed functions only |
+| choropleth | sequential bins | Counties and places only; see below |
+
+Every chart returns a table twin alongside the SVG, so no value is reachable
+only by hovering.
+
+**Colour was computed, not chosen.** The palette is the reference instance from
+the dataviz skill, run through its validator against both surfaces: the two
+categorical slots pass every gate in light and dark, and the choropleth bins pass
+the ordinal gates in both. Values are emitted as CSS custom properties with light
+fallbacks, so a page defining the tokens gets dark mode and a standalone SVG
+still renders.
+
+**Maps are constrained by coverage, not by drawing.** Counties and places join
+exactly, school districts by name at 156 of 223, and special districts have no
+boundaries at all, so they are not offerable as a layer. No data gets its own
+neutral well off the ramp, and the ramp's light end is a mid step, because a
+near-white lightest bin is indistinguishable from an empty one and turns a
+coverage gap into an apparent measurement. A statewide place map warns that it is
+unreadable: 378 Oregon cities render as dots, and comparing dot areas compares
+city land area. Pass a county to scope it.
+
+`gallery.py` renders every form to one page. The validator checks colour; it does
+not catch a label collision, a legend sitting on an axis, or a map drawing over
+its own legend. Those were all real defects here, found by rendering the page and
+looking at it, which is the only way they are ever found.
