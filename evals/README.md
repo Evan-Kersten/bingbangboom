@@ -1,27 +1,40 @@
 # Evals
 
 ```
-python3 evals/run.py --probe              # no model needed, runs in CI
+python3 evals/run.py --probe                # no model needed, runs in CI
+python3 evals/run.py --route                # also checks classifier routing
 python3 evals/run.py --model claude-opus-5  # needs ANTHROPIC_API_KEY
 ```
 
 22 cases. Most are traps: the correct answer is a refusal, a correction, or a
 labeled approximation, and a fluent direct answer is the failure.
 
-## Two modes, two different questions
+## Three modes, three different questions
 
-**Probe mode** asserts that the tool layer actually hands the model the caveat
-each rule depends on. It needs no credentials and no network, so it gates every
-build. This is what catches a guardrail regression.
+**Probe mode** asserts the tool layer hands the model the caveat each rule
+depends on. No credentials, no network, gates every build. Catches guardrail
+regressions.
 
-**Model mode** puts the question to a model and asserts on the answer: required
-and forbidden phrasing, length, and §4 style. This is what tells you whether a
-prompt change helped.
+**Route mode** also asserts the classifier reaches the sections each case
+declares it needs. This found seven real misroutings when it was first turned
+on, including a causation question landing on a bare factual lookup and a
+two-entity comparison never loading §13.
 
-Neither replaces the other, and the gap between them is the interesting signal.
-A caveat that reaches the context and is then ignored passes the probe and fails
-the model run. That is precisely the failure mode worth being able to see, and
-it is invisible if you only test one way.
+**Model mode** runs the question through the orchestrator with tools attached
+and asserts on the answer: required and forbidden phrasing, length, and §4 style.
+
+## Delivery versus adherence
+
+Model mode reports two kinds of failure separately, and the distinction is the
+reason the harness is built this way:
+
+    delivery    the caveat never reached the model. A tool layer bug.
+    adherence   the caveat reached the model and the answer broke the rule
+                anyway. A prompt or model bug.
+
+They are indistinguishable in the answer text and have completely different
+fixes. The orchestrator's trace records which caveats were actually delivered,
+which is what lets the runner tell them apart.
 
 ## Why these cases
 
@@ -47,11 +60,17 @@ Representative traps:
 
 ## Prompt routing
 
-`build_context` implements the §5 routing table: sections 1 through 5 always,
-plus only the sections a case routes to. Across the case set this averages 28%
-of the full prompt, so most turns carry roughly a third of the text. That cuts
-tokens, and it should raise adherence, since the model is not holding eleven
-sections of conditionals while answering a factual lookup.
+The orchestrator implements the §5 routing table: sections 1 through 5 and 14
+always, plus only the sections the question routes to. Across the case set this
+averages roughly a third of the full prompt. That cuts tokens, and it should
+raise adherence, since the model is not holding eleven sections of conditionals
+while answering a factual lookup.
+
+`routes_to` in a case means what §5's table loads, not every rule that bears on
+the answer. Section-specific knowledge outside the routed set arrives through
+tool caveats instead, which is the whole design: §6's rule that a school
+district's spending composition carries no information reaches the model as a
+`single_category_entity` caveat whether or not §6 is in the prompt.
 
 Whether it does raise adherence is itself measurable: run the set with routing
 on and off and compare. That is the first experiment to do once credentials

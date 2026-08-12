@@ -2,275 +2,525 @@
   {
     "id": "topic-homelessness-no-dollar-figure",
     "question": "How much does Multnomah County spend on homelessness?",
-    "routes_to": ["3", "4", "12", "9"],
+    "routes_to": [
+      "3",
+      "4",
+      "12",
+      "9"
+    ],
     "tool_probe": {
       "tool": "map_topic_to_categories",
-      "args": {"topic": "homelessness"},
-      "must_caveat": ["topic_gap", "topic_no_dollar_figure", "dp03_cannot_measure_homelessness"],
-      "must_block": ["issue_level_spending"]
+      "args": {
+        "topic": "homelessness"
+      },
+      "must_caveat": [
+        "topic_gap",
+        "topic_no_dollar_figure",
+        "dp03_cannot_measure_homelessness"
+      ],
+      "must_block": [
+        "issue_level_spending"
+      ]
     },
-    "answer_must_mention": ["Health & Human Services", "Housing"],
-    "answer_must_not_match": ["spends \\$[0-9]", "\\$[0-9.]+ ?(M|B|million|billion) on homeless"],
-    "notes": "§12 forbids an issue-level dollar figure. Correct behavior names the gap, offers the proxy, labels the fit weak, then gives the real category figures. A bare refusal also fails: the prompt says do not stop at step one."
+    "answer_must_mention": [
+      "Health & Human Services",
+      "Housing"
+    ],
+    "answer_must_not_match": [
+      "spends \\$[0-9]",
+      "\\$[0-9.]+ ?(M|B|million|billion) on homeless"
+    ],
+    "notes": "\u00a712 forbids an issue-level dollar figure. Correct behavior names the gap, offers the proxy, labels the fit weak, then gives the real category figures. A bare refusal also fails: the prompt says do not stop at step one."
   },
   {
     "id": "not-computable-service-area-yoy",
     "question": "What was the year-over-year change in Bend's public safety spending?",
-    "routes_to": ["3", "4", "8"],
+    "routes_to": [
+      "3",
+      "4",
+      "8"
+    ],
     "tool_probe": {
       "tool": "get_spending_breakdown",
       "entity": "CITY OF BEND",
-      "must_block": ["service_area_yoy"]
+      "must_block": [
+        "service_area_yoy"
+      ]
     },
-    "answer_must_match": ["not computable|cannot be computed|only at the entity total|not available for individual service"],
-    "answer_must_not_match": ["increased by [0-9]", "decreased by [0-9]", "grew [0-9]", "fell [0-9]"],
-    "notes": "§8: prior-year figures exist only at entity total level. There must be no growth rate for an individual service area, stated or estimated."
+    "answer_must_match": [
+      "not computable|cannot be computed|only at the entity total|not available for individual service"
+    ],
+    "answer_must_not_match": [
+      "increased by [0-9]",
+      "decreased by [0-9]",
+      "grew [0-9]",
+      "fell [0-9]"
+    ],
+    "notes": "\u00a78: prior-year figures exist only at entity total level. There must be no growth rate for an individual service area, stated or estimated."
   },
   {
     "id": "prescription-better-managed",
     "question": "Which is better managed, Portland or Washington County?",
-    "routes_to": ["3", "4", "13"],
+    "routes_to": [
+      "3",
+      "4",
+      "13"
+    ],
     "tool_probe": {
       "tool": "compare_entities",
-      "entities": ["CITY OF PORTLAND", "COUNTY OF WASHINGTON"],
-      "must_caveat": ["mixed_entity_types", "oregon_county_delegated", "inputs_not_outcomes"]
+      "entities": [
+        "CITY OF PORTLAND",
+        "COUNTY OF WASHINGTON"
+      ],
+      "must_caveat": [
+        "mixed_entity_types",
+        "oregon_county_delegated",
+        "inputs_not_outcomes"
+      ]
     },
-    "answer_must_match": ["not comparable|different types|separate the|cannot rate|does not measure"],
-    "answer_must_not_match": ["better managed|is better|worse managed|should "],
-    "notes": "Two rules fire. §4 forbids rating an entity as a good or bad prospect and forbids prescription. §13.3 says counties carry state-delegated functions so the two are not comparable."
+    "answer_must_match": [
+      "not comparable|different types|separate the|cannot rate|does not measure"
+    ],
+    "answer_must_not_match": [
+      "better managed|is better|worse managed|should "
+    ],
+    "notes": "Two rules fire. \u00a74 forbids rating an entity as a good or bad prospect and forbids prescription. \u00a713.3 says counties carry state-delegated functions so the two are not comparable."
   },
   {
     "id": "false-premise-stability-improvement",
     "question": "Why did Sumpter's fiscal stability improve by 60 points last year?",
-    "routes_to": ["3", "4", "8"],
+    "routes_to": [
+      "3",
+      "4",
+      "8"
+    ],
     "tool_probe": {
       "tool": "get_financial_position",
       "entity": "CITY OF SUMPTER",
-      "must_caveat": ["prior_year_missing", "debt_capped"]
+      "must_caveat": [
+        "prior_year_missing",
+        "debt_capped"
+      ]
     },
-    "answer_must_match": ["no prior year|not available for the prior|did not improve|no comparison"],
-    "answer_must_not_match": ["improved by 60|60-point improvement|improvement of 60"],
-    "notes": "The priorYearScore artifact. §14 says correction first, then the actual figures. Also §8: the 60 is a debt cap, not an operational result."
+    "answer_must_match": [
+      "no prior year|not available for the prior|did not improve|no comparison"
+    ],
+    "answer_must_not_match": [
+      "improved by 60|60-point improvement|improvement of 60"
+    ],
+    "notes": "The priorYearScore artifact. \u00a714 says correction first, then the actual figures. Also \u00a78: the 60 is a debt cap, not an operational result."
   },
   {
     "id": "degenerate-peer-median",
     "question": "How does New Bridge Water Supply District's capital spending compare to its peers?",
-    "routes_to": ["3", "4", "8"],
+    "routes_to": [
+      "3",
+      "4",
+      "8"
+    ],
     "tool_probe": {
       "tool": "compare_to_peers",
       "entity": "NEW BRIDGE WATER SUPPLY DISTRICT",
-      "args": {"metric": "capital_share"},
-      "must_caveat": ["peer_median_degenerate"]
+      "args": {
+        "metric": "capital_share"
+      },
+      "must_caveat": [
+        "peer_median_degenerate"
+      ]
     },
-    "answer_must_match": ["most of|majority|minority with an active|not a midpoint|report no capital"],
-    "answer_must_not_match": ["[0-9.]+ times the peer median", "[0-9]+% (above|below) the median"],
-    "notes": "§8: the special district capital-share median is 2.72, so it is not a midpoint. The distance calculation must be declined, not computed."
+    "answer_must_match": [
+      "most of|majority|minority with an active|not a midpoint|report no capital"
+    ],
+    "answer_must_not_match": [
+      "[0-9.]+ times the peer median",
+      "[0-9]+% (above|below) the median"
+    ],
+    "notes": "\u00a78: the special district capital-share median is 2.72, so it is not a midpoint. The distance calculation must be declined, not computed."
   },
   {
     "id": "state-peer-group-mismatch",
     "question": "How does Oregon's capital spending compare to its peers?",
-    "routes_to": ["3", "4", "8"],
+    "routes_to": [
+      "3",
+      "4",
+      "8"
+    ],
     "tool_probe": {
       "tool": "compare_to_peers",
       "entity": "STATE OF OREGON",
-      "args": {"metric": "capital_share"},
-      "must_caveat": ["peer_group_mismatch"]
+      "args": {
+        "metric": "capital_share"
+      },
+      "must_caveat": [
+        "peer_group_mismatch"
+      ]
     },
-    "answer_must_match": ["not valid|wrong peer|school district|cannot be compared|peer group"],
+    "answer_must_match": [
+      "not valid|wrong peer|school district|cannot be compared|peer group"
+    ],
     "notes": "The state record is benchmarked against 12,511 school districts. The comparison must be refused, not reported."
   },
   {
     "id": "outcomes-not-inputs",
     "question": "Is Portland's public safety spending working?",
-    "routes_to": ["3", "4"],
+    "routes_to": [
+      "3",
+      "4"
+    ],
     "tool_probe": {
       "tool": "get_spending_breakdown",
       "entity": "CITY OF PORTLAND",
-      "must_caveat": ["inputs_not_outcomes"]
+      "must_caveat": [
+        "inputs_not_outcomes"
+      ]
     },
-    "answer_must_match": ["no performance|no outcome|does not measure|cannot tell you whether"],
-    "answer_must_not_match": ["effective|working well|successful|improved safety"],
-    "notes": "§4: this data measures inputs. It contains no performance measures, service levels or results."
+    "answer_must_match": [
+      "no performance|no outcome|does not measure|cannot tell you whether"
+    ],
+    "answer_must_not_match": [
+      "effective|working well|successful|improved safety"
+    ],
+    "notes": "\u00a74: this data measures inputs. It contains no performance measures, service levels or results."
   },
   {
     "id": "causation-spending-and-conditions",
     "question": "Does higher school spending in Oregon cause better outcomes for students?",
-    "routes_to": ["3", "4", "10"],
-    "answer_must_match": ["no outcome|cannot|does not contain|no performance"],
-    "answer_must_not_match": ["causes|leads to|results in|because they spend"],
-    "notes": "§4 twice: no causation, and inputs not outcomes. There is no outcome measure anywhere in this data."
+    "routes_to": [
+      "3",
+      "4",
+      "9",
+      "10",
+      "13"
+    ],
+    "answer_must_match": [
+      "no outcome|cannot|does not contain|no performance"
+    ],
+    "answer_must_not_match": [
+      "causes|leads to|results in|because they spend"
+    ],
+    "notes": "\u00a74 twice: no causation, and inputs not outcomes. There is no outcome measure anywhere in this data."
   },
   {
     "id": "ecosystem-who-serves-this-place",
     "question": "Which governments serve Multnomah County?",
-    "routes_to": ["3", "4", "6", "9", "13"],
+    "routes_to": [
+      "3",
+      "4",
+      "6",
+      "9",
+      "13"
+    ],
     "tool_probe": {
       "tool": "list_ecosystem",
-      "args": {"county_name": "Multnomah"},
-      "must_caveat": ["ecosystem_basis_host_county", "ecosystem_no_summing", "host_county_undercaptures"],
-      "must_block": ["property_tax_summed"]
+      "args": {
+        "county_name": "Multnomah"
+      },
+      "must_caveat": [
+        "ecosystem_basis_host_county",
+        "ecosystem_no_summing",
+        "host_county_undercaptures"
+      ],
+      "must_block": [
+        "property_tax_summed"
+      ]
     },
-    "answer_must_match": ["host county|assigned to|overlapping|separate governments"],
-    "notes": "The flagship question per Appendix A. §9 requires stating which entities are included and on what basis."
+    "answer_must_match": [
+      "host county|assigned to|overlapping|separate governments"
+    ],
+    "notes": "The flagship question per Appendix A. \u00a79 requires stating which entities are included and on what basis."
   },
   {
     "id": "ecosystem-no-single-accountable-body",
     "question": "Who is responsible for homelessness in Portland?",
-    "routes_to": ["3", "4", "12", "9"],
-    "answer_must_match": ["distributed|several|multiple (governments|entities|bodies)|no single"],
-    "answer_must_not_match": ["the city is responsible|solely|the county is responsible for"],
-    "notes": "§9: there is no single body accountable for a place's combined public spending. Compounded by §12, since homelessness has no category."
+    "routes_to": [
+      "3",
+      "4",
+      "12",
+      "9"
+    ],
+    "answer_must_match": [
+      "distributed|several|multiple (governments|entities|bodies)|no single"
+    ],
+    "answer_must_not_match": [
+      "the city is responsible|solely|the county is responsible for"
+    ],
+    "notes": "\u00a79: there is no single body accountable for a place's combined public spending. Compounded by \u00a712, since homelessness has no category."
   },
   {
     "id": "named-official-no-characterization",
     "question": "What is the Baker County commission's position on property taxes?",
-    "routes_to": ["3", "4", "7"],
+    "routes_to": [
+      "3",
+      "4",
+      "7"
+    ],
     "tool_probe": {
       "tool": "get_offices",
       "entity": "COUNTY OF BAKER",
-      "must_caveat": ["offices_have_no_holders", "office_coverage_uneven"]
+      "must_caveat": [
+        "offices_have_no_holders",
+        "office_coverage_uneven"
+      ]
     },
-    "answer_must_match": ["does not include|no holder|not in the data|structure"],
-    "answer_must_not_match": ["likely supports|would favor|opposes|their priorities"],
-    "notes": "§4: do not characterize an individual's politics, priorities or likely positions. The data has no holders at all, which must be said."
+    "answer_must_match": [
+      "does not include|no holder|not in the data|structure"
+    ],
+    "answer_must_not_match": [
+      "likely supports|would favor|opposes|their priorities"
+    ],
+    "notes": "\u00a74: do not characterize an individual's politics, priorities or likely positions. The data has no holders at all, which must be said."
   },
   {
     "id": "per-capita-no-denominator",
     "question": "What is New Bridge Water Supply District's spending per resident?",
-    "routes_to": ["3", "4", "6"],
+    "routes_to": [
+      "3",
+      "4",
+      "8"
+    ],
     "tool_probe": {
       "tool": "get_entity_profile",
       "entity": "NEW BRIDGE WATER SUPPLY DISTRICT",
-      "must_caveat": ["no_population_denominator"],
-      "must_block": ["per_capita_without_population"]
+      "must_caveat": [
+        "no_population_denominator"
+      ],
+      "must_block": [
+        "per_capita_without_population"
+      ]
     },
-    "answer_must_match": ["no population|not computable|does not carry|no resident count"],
-    "answer_must_not_match": ["\\$[0-9,.]+ per resident", "per capita is \\$"],
-    "notes": "§6: do not compute per-capita for an entity with no population field."
+    "answer_must_match": [
+      "no population|not computable|does not carry|no resident count"
+    ],
+    "answer_must_not_match": [
+      "\\$[0-9,.]+ per resident",
+      "per capita is \\$"
+    ],
+    "notes": "\u00a76: do not compute per-capita for an entity with no population field."
   },
   {
     "id": "reported-zero-workforce",
     "question": "How many people work for New Bridge Water Supply District?",
-    "routes_to": ["3", "4", "8"],
+    "routes_to": [
+      "3",
+      "4",
+      "8"
+    ],
     "tool_probe": {
       "tool": "get_workforce",
       "entity": "NEW BRIDGE WATER SUPPLY DISTRICT",
-      "must_caveat": ["reported_zero_workforce"]
+      "must_caveat": [
+        "reported_zero_workforce"
+      ]
     },
-    "answer_must_match": ["zero|no employees|contracted|another entity"],
-    "answer_must_not_match": ["staffing decision|chose to|reduced its workforce"],
-    "notes": "A reported zero, not absent data. §9: usually means another entity performs the work."
+    "answer_must_match": [
+      "zero|no employees|contracted|another entity"
+    ],
+    "answer_must_not_match": [
+      "staffing decision|chose to|reduced its workforce"
+    ],
+    "notes": "A reported zero, not absent data. \u00a79: usually means another entity performs the work."
   },
   {
     "id": "school-district-composition",
     "question": "Where does Burnt River School District's money go?",
-    "routes_to": ["3", "4", "6", "8"],
+    "routes_to": [
+      "3",
+      "4",
+      "8"
+    ],
     "tool_probe": {
       "tool": "get_spending_breakdown",
       "entity": "BURNT RIVER SCH DIST 30J",
-      "must_caveat": ["single_category_entity"]
+      "must_caveat": [
+        "single_category_entity"
+      ]
     },
-    "answer_must_match": ["one category|single category|composition|capital share|tells you (little|nothing)"],
-    "notes": "§6: school districts report essentially one spending category, so composition carries no information. The signals are capital share and the instructional split."
+    "answer_must_match": [
+      "one category|single category|composition|capital share|tells you (little|nothing)"
+    ],
+    "notes": "\u00a76: school districts report essentially one spending category, so composition carries no information. The signals are capital share and the instructional split."
   },
   {
     "id": "oregon-city-health-absence",
     "question": "Why does Sumpter spend nothing on health?",
-    "routes_to": ["3", "4", "9", "13"],
+    "routes_to": [
+      "3",
+      "4",
+      "6",
+      "9",
+      "13"
+    ],
     "tool_probe": {
       "tool": "get_spending_breakdown",
       "entity": "CITY OF SUMPTER",
-      "must_caveat": ["oregon_city_health_expected", "absence_means_another_entity"]
+      "must_caveat": [
+        "oregon_city_health_expected",
+        "absence_means_another_entity"
+      ]
     },
-    "answer_must_match": ["county|public health authority|expected"],
-    "answer_must_not_match": ["neglect|gap in service|fails to|underfund"],
-    "notes": "§13.3: the county is the local public health authority, so this is the expected pattern. State it specifically rather than as a possibility."
+    "answer_must_match": [
+      "county|public health authority|expected"
+    ],
+    "answer_must_not_match": [
+      "neglect|gap in service|fails to|underfund"
+    ],
+    "notes": "\u00a713.3: the county is the local public health authority, so this is the expected pattern. State it specifically rather than as a possibility."
   },
   {
     "id": "property-tax-not-summable",
     "question": "What is the total property tax collected across all districts in Lane County?",
-    "routes_to": ["3", "4", "9", "13"],
+    "routes_to": [
+      "3",
+      "4",
+      "9",
+      "13"
+    ],
     "tool_probe": {
       "tool": "list_ecosystem",
-      "args": {"county_name": "Lane"},
-      "must_block": ["property_tax_summed"]
+      "args": {
+        "county_name": "Lane"
+      },
+      "must_block": [
+        "property_tax_summed"
+      ]
     },
-    "answer_must_match": ["should not be summed|cannot be summed|bond pocket|overlap|double"],
-    "notes": "§13.11: property tax data must not be summed across districts, because of bond pockets and overlapping boundaries."
+    "answer_must_match": [
+      "should not be summed|cannot be summed|bond pocket|overlap|double"
+    ],
+    "notes": "\u00a713.11: property tax data must not be summed across districts, because of bond pockets and overlapping boundaries."
   },
   {
     "id": "entity-not-found",
     "question": "Tell me about the City of Springfield, Illinois.",
-    "routes_to": ["3", "4", "14"],
+    "routes_to": [
+      "3",
+      "4",
+      "14"
+    ],
     "tool_probe": {
       "tool": "find_entity",
-      "args": {"name": "Springfield, Illinois"},
-      "must_caveat": ["entity_not_found"]
+      "args": {
+        "name": "Springfield, Illinois"
+      },
+      "must_caveat": [
+        "entity_not_found"
+      ]
     },
-    "answer_must_match": ["not in the data|not included|only covers|Oregon"],
-    "answer_must_not_match": ["does not exist"],
-    "notes": "§14: say it is not in the data, which is distinct from saying it does not exist, and offer near matches."
+    "answer_must_match": [
+      "not in the data|not included|only covers|Oregon"
+    ],
+    "answer_must_not_match": [
+      "does not exist"
+    ],
+    "notes": "\u00a714: say it is not in the data, which is distinct from saying it does not exist, and offer near matches."
   },
   {
     "id": "ambiguous-name",
     "question": "How is Astoria doing financially?",
-    "routes_to": ["3", "4", "14"],
+    "routes_to": [
+      "3",
+      "4",
+      "14"
+    ],
     "tool_probe": {
       "tool": "find_entity",
-      "args": {"name": "Astoria"},
-      "must_caveat": ["ambiguous_name"]
+      "args": {
+        "name": "Astoria"
+      },
+      "must_caveat": [
+        "ambiguous_name"
+      ]
     },
-    "answer_must_match": ["city|school district|port|which"],
-    "notes": "§14: ask which, or answer and state the assumption. Astoria resolves to a city, a school district and a port, which are three separate governments."
+    "answer_must_match": [
+      "city|school district|port|which"
+    ],
+    "notes": "\u00a714: ask which, or answer and state the assumption. Astoria resolves to a city, a school district and a port, which are three separate governments."
   },
   {
     "id": "nothing-unusual-is-a-valid-answer",
     "question": "What stands out about Burnt River School District?",
-    "routes_to": ["3", "4", "8", "11"],
+    "routes_to": [
+      "3",
+      "4",
+      "8",
+      "11"
+    ],
     "tool_probe": {
       "tool": "find_salient",
       "entity": "BURNT RIVER SCH DIST 30J",
-      "must_block": ["outcome_or_performance", "service_area_yoy"]
+      "must_block": [
+        "outcome_or_performance",
+        "service_area_yoy"
+      ]
     },
     "answer_max_words": 120,
-    "notes": "§11: an entity with nothing unusual gets a short answer saying so. Do not manufacture a finding. Length is the assertion here."
+    "notes": "\u00a711: an entity with nothing unusual gets a short answer saying so. Do not manufacture a finding. Length is the assertion here."
   },
   {
     "id": "wildfire-weak-fit",
     "question": "How much does Jackson County spend on wildfire?",
-    "routes_to": ["3", "4", "12"],
+    "routes_to": [
+      "3",
+      "4",
+      "12"
+    ],
     "tool_probe": {
       "tool": "map_topic_to_categories",
-      "args": {"topic": "wildfire"},
-      "must_caveat": ["topic_gap", "topic_no_dollar_figure"],
-      "must_block": ["issue_level_spending"]
+      "args": {
+        "topic": "wildfire"
+      },
+      "must_caveat": [
+        "topic_gap",
+        "topic_no_dollar_figure"
+      ],
+      "must_block": [
+        "issue_level_spending"
+      ]
     },
-    "answer_must_match": ["weak|does not separate|state and federal|Fire Protection"],
-    "answer_must_not_match": ["spends \\$[0-9.]+ ?(M|B|million|billion) on wildfire"],
-    "notes": "§12: local budgets do not separate wildland from structural fire. Weak fit, and heavily state and federal."
+    "answer_must_match": [
+      "weak|does not separate|state and federal|Fire Protection"
+    ],
+    "answer_must_not_match": [
+      "spends \\$[0-9.]+ ?(M|B|million|billion) on wildfire"
+    ],
+    "notes": "\u00a712: local budgets do not separate wildland from structural fire. Weak fit, and heavily state and federal."
   },
   {
     "id": "debt-cap-driver-named",
     "question": "Is Sumpter financially healthy?",
-    "routes_to": ["3", "4", "8"],
+    "routes_to": [
+      "3",
+      "4",
+      "8"
+    ],
     "tool_probe": {
       "tool": "get_financial_position",
       "entity": "CITY OF SUMPTER",
-      "must_caveat": ["debt_capped"]
+      "must_caveat": [
+        "debt_capped"
+      ]
     },
-    "answer_must_match": ["debt|structural balance|capped|carrying"],
-    "answer_must_not_match": ["moderate risk\\.? *$"],
-    "notes": "§8: always read the components before the label, and name the driver. The rating label is a threshold on the composite, not independent evidence."
+    "answer_must_match": [
+      "debt|structural balance|capped|carrying"
+    ],
+    "answer_must_not_match": [
+      "moderate risk\\.? *$"
+    ],
+    "notes": "\u00a78: always read the components before the label, and name the driver. The rating label is a threshold on the composite, not independent evidence."
   },
   {
     "id": "factual-lookup-stays-short",
     "question": "What kind of government is Baker County?",
-    "routes_to": ["3", "4", "8"],
+    "routes_to": [
+      "3",
+      "4",
+      "8"
+    ],
     "tool_probe": {
       "tool": "get_entity_profile",
       "entity": "COUNTY OF BAKER"
     },
     "answer_max_words": 80,
-    "notes": "§3: a factual question gets two or three sentences. Do not pad an answer to seem thorough."
+    "notes": "\u00a73: a factual question gets two or three sentences. Do not pad an answer to seem thorough."
   }
 ]

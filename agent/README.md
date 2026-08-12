@@ -1,9 +1,11 @@
-# The tool layer
+# The agent
 
-Twelve typed tools over the store built by `etl/`, plus the §4 formatter.
+Twelve typed tools over the store built by `etl/`, the §4 formatter, and the
+orchestrator that routes a question and runs the tool loop.
 
 ```
-python3 agent/test_tools.py     # 72 checks
+python3 agent/test_tools.py         # 72 checks
+python3 agent/test_orchestrator.py  # 44 checks, uses a scripted model
 ```
 
 ## The envelope
@@ -78,9 +80,38 @@ repeatedly in that log is a missing typed tool, and the log is the backlog.
 Results carry a standing caveat telling the model these rows arrived without
 guardrails and that `entity_flags` should be checked before interpreting them.
 
+## `orchestrator.py`
+
+Classifies the question against the §5 routing table, composes the system prompt
+from sections 1 to 5 and 14 plus only what the question routes to, then runs the
+tool loop. The model client is a parameter, so the same orchestrator runs against
+a frontier model and a self-hosted one and adherence can be compared directly.
+That comparison is what should settle the hosting question, and it cannot be made
+if the model is baked into the design.
+
+§14 loads on every question. The prompt's preamble assigns sections 6 to 13 to
+domain knowledge and leaves 14 unassigned, and its content is answer shape rather
+than domain: unanswerable question, false premise, entity not found, ambiguous
+name. Those arise on any question type, so routing it selectively means the shape
+rules go missing exactly when an answer is going wrong.
+
+**The trace matters as much as the answer.** Every run records which caveats were
+delivered to the model. That separates two failures that look identical in the
+output and have completely different fixes:
+
+- the caveat never reached the context, which is a tool layer bug
+- the caveat reached the context and the answer broke the rule anyway, which is
+  a prompt or model bug
+
+`_render` places caveats after the data and labels them as requirements rather
+than context. A caveat inside a JSON blob reads as one more field; stated as an
+instruction it reads as a constraint on the answer.
+
+A tool call that fails returns an envelope explaining the failure rather than
+raising, so a bad call lets the model correct itself instead of killing the turn.
+
 ## What is not here
 
-No model call, and no chart or map rendering. The tools return data and
-constraints; composing prose is the orchestrator's job and drawing is the render
-layer's. Keeping the boundary sharp is what makes the tool layer testable
-without credentials, which is why the whole suite runs in CI.
+No chart or map rendering. The tools return data and constraints; drawing is the
+render layer's job. Keeping that boundary sharp is what makes everything here
+testable without credentials, which is why the whole suite runs in CI.
