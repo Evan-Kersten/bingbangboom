@@ -1,4 +1,7 @@
 # Derived build output. Reproduce with: python3 etl/build.py
 build/
+
+# Pre-rendered interface, ~150 MB. Built and deployed by CI, never committed.
+site/
 __pycache__/
 *.pyc

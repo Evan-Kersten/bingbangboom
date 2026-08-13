@@ -262,13 +262,83 @@ tr:last-child td { border-bottom: 0; }
 const $ = (id) => document.getElementById(id);
 let entity = null, busy = false;
 
+/* Two modes behind one call. Served, this hits the API; exported to static
+   files, it reads the pre-rendered answer for the same question. The interface
+   above this line does not know the difference. */
+let ENTITIES = null;
+
 async function api(path, body) {
+  if (window.PF_STATIC) return staticApi(path, body);
   const options = body
     ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }
     : {};
   const response = await fetch(path, options);
   return response.json();
 }
+
+async function readJson(path) {
+  const response = await fetch(path);
+  if (!response.ok) throw new Error(path);
+  return response.json();
+}
+
+async function staticApi(path, body) {
+  if (path === '/api/mode') return readJson('data/mode.json');
+
+  if (path.startsWith('/api/search')) {
+    ENTITIES ||= await readJson('data/entities.json');
+    const term = decodeURIComponent(path.split('q=')[1] || '').toLowerCase().trim();
+    if (term.length < 2) return { matches: [] };
+    const matches = ENTITIES
+      .filter((e) => (e.common_name || '').toLowerCase().includes(term) ||
+                     (e.legal_name || '').toLowerCase().includes(term))
+      .sort((a, b) => (a.common_name || a.legal_name).length -
+                      (b.common_name || b.legal_name).length)
+      .slice(0, 12);
+    return { matches };
+  }
+
+  if (path.startsWith('/api/presets')) {
+    const pid6 = path.split('pid6=')[1];
+    if (!pid6) return { entity: null, presets: STATIC_PRESET_SHELL };
+    return readJson(`data/${pid6}/presets.json`);
+  }
+
+  if (path === '/api/preset') {
+    try {
+      return await readJson(`data/${body.pid6}/${body.id}.json`);
+    } catch {
+      return { blocks: [{ kind: 'answer', text:
+        'That question has no answer for this government in the data.' }], trace: [] };
+    }
+  }
+
+  if (path === '/api/ask') {
+    return { blocks: [{ kind: 'answer', text:
+      'This is the pre-rendered version, so free text is not available here. ' +
+      'Every preset works and the figures, charts and rules are the same ones a ' +
+      'model would be handed. Run the server with an API key for free text.' }],
+      trace: [] };
+  }
+  return {};
+}
+
+/* Before an entity is chosen there is nothing to gate on, so the shell is
+   rendered disabled and the real availability arrives with the entity. */
+const STATIC_PRESET_SHELL = [
+  ['profile', 'What kind of government is this?', 'Orientation'],
+  ['finance', 'What should I know about its finances?', 'Orientation'],
+  ['spending', 'Where does the money actually go?', 'Orientation'],
+  ['salient', 'What stands out about this government?', 'What stands out'],
+  ['driver', 'What is driving the fiscal stability score?', 'Financial position'],
+  ['peers', 'Where does it differ most from its peers?', 'Financial position'],
+  ['trend', 'How has revenue and spending moved?', 'Financial position'],
+  ['workforce', 'How is the workforce distributed?', 'Workforce'],
+  ['governance', 'Who governs this entity?', 'Governance'],
+  ['ecosystem', 'Which governments serve this place?', 'Ecosystem'],
+  ['report', 'Give me the full report', 'Reports'],
+  ['limits', 'What can this data not tell me?', 'Data limits'],
+].map(([id, label, group]) => ({ id, label, group, available: false }));
 
 (async function init() {
   const info = await api('/api/mode');
@@ -281,13 +351,16 @@ async function api(path, body) {
   style.textContent = info.css;
   document.head.appendChild(style);
 
-  const grounded = info.mode === 'grounded';
-  $('welcome-mode').textContent = grounded
-    ? 'Running without a model, so the presets answer and free text does not. The figures, charts and rules are the same ones a model would be handed.'
-    : 'A model is attached, so free-text questions run through the full agent loop.';
-  $('composer-note').textContent = grounded
-    ? 'Free text needs ANTHROPIC_API_KEY. Presets work now.'
-    : 'Ask anything, or pick a preset.';
+  const hasModel = info.mode === 'full';
+  $('welcome-mode').textContent = hasModel
+    ? 'A model is attached, so free-text questions run through the full agent loop.'
+    : 'Running without a model, so the presets answer and free text does not. The figures, charts and rules are the same ones a model would be handed.';
+  $('composer-note').textContent = hasModel
+    ? 'Ask anything, or pick a preset.'
+    : (info.mode === 'static'
+        ? `Pre-rendered ${info.built || ''}. Presets work; free text needs the server.`
+        : 'Free text needs ANTHROPIC_API_KEY. Presets work now.');
+  if (!hasModel) $('input').placeholder = 'Pick a question on the left…';
   loadPresets();
 })();
 
