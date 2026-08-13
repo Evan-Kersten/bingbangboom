@@ -205,7 +205,7 @@
 
     rows.forEach((row) => {
       const length = Math.max(0, Math.abs(row.value) / largest * plotWidth);
-      body += textEl(plotLeft - 10, y + thickness / 2 + 4, truncate(row.label, 26),
+      body += textEl(plotLeft - 10, y + thickness / 2 + 4, truncate(row.label, DATA.layout.barLabelChars),
         { anchor: 'end' });
       body += barPath(plotLeft, y, length, thickness) + ' fill="' + token('s1')
         + '"><title>' + esc(row.label) + ': ' + esc(formatter(row.value))

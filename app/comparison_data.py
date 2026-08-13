@@ -114,6 +114,7 @@ def build(store):
             "barThickness": viz.BAR_THICKNESS,
             "barGap": viz.BAR_GAP,
             "labelColumn": viz.LABEL_COLUMN,
+            "barLabelChars": viz.BAR_LABEL_CHARS,
             "valueColumn": viz.VALUE_COLUMN,
             "width": 680,
             "seriesHeight": 300,

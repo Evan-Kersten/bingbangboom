@@ -656,9 +656,9 @@ def answer_preset(preset_id, pid6=None, county=None):
                 if written:
                     prose[section["id"]] = written
             blocks.append({"kind": "text", "text": (
-                f"A {len(sections)}-section profile follows, assembled from "
-                f"{len(results)} tool results. Every figure in it is read out from the "
-                "data rather than written up: no model wrote this.")})
+                f"A {len(sections)}-section profile follows. Every figure in it is read "
+                "out of the data rather than written up, and each section carries the "
+                "rules bound to it.")})
             blocks.append({"kind": "report", "html": R.render_report(plan, prose),
                            "sections": len(sections),
                            "budget": plan["data"]["total_word_budget"]})

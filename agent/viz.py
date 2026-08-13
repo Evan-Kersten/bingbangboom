@@ -136,6 +136,9 @@ BAR_THICKNESS = 24          # cap, never fill the slot
 BAR_GAP = 2                 # surface gap between adjacent bars
 LABEL_COLUMN = 190
 VALUE_COLUMN = 78
+# The label column is 180px of usable width at 12px. Twenty-six characters of
+# "Housing & Community Development" overran it and clipped against the frame.
+BAR_LABEL_CHARS = 23
 
 
 def horizontal_bars(title, subtitle, rows, formatter=fmt.money, width=680,
@@ -168,7 +171,7 @@ def horizontal_bars(title, subtitle, rows, formatter=fmt.money, width=680,
         length = max(0.0, abs(row["value"]) / largest * plot_width)
         colour = "s1" if (emphasis is None or row["label"] == emphasis) else "dim"
         body.append(text_el(plot_left - 10, y + BAR_THICKNESS / 2 + 4,
-                            truncate(row["label"]), anchor="end"))
+                            truncate(row["label"], BAR_LABEL_CHARS), anchor="end"))
         body.append(f'{bar_path(plot_left, y, length, BAR_THICKNESS)} '
                     f'fill="{token(colour)}"><title>{esc(row["label"])}: '
                     f'{esc(formatter(row["value"]))}</title></path>')
