@@ -40,6 +40,13 @@ jobs:
         with:
           python-version: '3.11'
 
+      # The pre-rendered build assembles comparisons in the browser, so the
+      # parity suite drives that implementation against the Python one and fails
+      # on any disagreement. It needs a JavaScript runtime to do that.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
       # The dissolve pilot writes into the same store, so it runs as the last
       # step of the build rather than as a step here. It was a separate step
       # while a rebuild silently dropped its table; now a build that does not
@@ -58,6 +65,7 @@ jobs:
           python3 agent/test_reports.py
           python3 agent/test_blocks.py
           python3 app/test_server.py
+          python3 app/test_parity.py
           python3 evals/run.py --route
 
       - name: Pre-render the interface

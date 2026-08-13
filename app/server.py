@@ -277,6 +277,151 @@ def _compare_headline(result):
     return line
 
 
+def _section_readout(section, entity=None):
+    """One or two sentences of real figures for a report section.
+
+    A report plan is written for a model to fill in, so an unwritten section
+    renders as its own brief: "To write here… Budget 60 words." That is the
+    right scaffold for the model path and the wrong thing entirely to show a
+    reader, who did not ask for the instructions. In grounded mode there is no
+    model, so the readouts are assembled here from the same figures, the same
+    way every other preset answers without one.
+
+    Templated rather than generated, deliberately. The interface says no model
+    wrote this, so it has to read as a readout and not as prose.
+    """
+    data = section.get("data") or {}
+    section_id = section["id"]
+    name = (entity["common_name"] or entity["legal_name"]) if entity else "this place"
+
+    if section_id == "scope":
+        absent = data.get("absent") or []
+        if not absent:
+            return ("Every block this report draws on is present for this government. "
+                    "The data still measures what is spent and who is employed, and "
+                    "contains no performance measures, service levels or results.")
+        return (f"{len(absent)} of the blocks this report can draw on are missing here: "
+                f"{', '.join(absent)}. That is an absence of data, not a report of zero. "
+                "Nothing here measures results either.")
+
+    if section_id == "identity":
+        population = data.get("population")
+        employees = data.get("total_employees")
+        # The Census type names are labels, not English. "Portland is a
+        # Municipal" is not a sentence a reader should have to parse.
+        plain = {"Municipal": "a city", "County": "a county",
+                 "School District": "a school district",
+                 "Special District": "a special district",
+                 "State": "a state government"}.get(
+                     (entity or {}).get("gov_type_name"), "a government")
+        parts = [f"{name} is {plain}"]
+        if population:
+            parts.append(f"serving {fmt.count(population)} residents")
+        if employees:
+            parts.append(f"with {fmt.count(employees)} employees on the payroll")
+        return ", ".join(parts) + "."
+
+    if section_id == "scale":
+        peers = data.get("peers") or {}
+        if not peers:
+            return "No peer distribution covers this government for spending per resident."
+        where = {"top quarter": "the top quarter", "bottom quarter": "the bottom quarter",
+                 "middle half": "the middle half"}.get(data.get("quartile"), "the range")
+        return (f"{name} spends {data['formatted']} per resident, which places it in "
+                f"{where} of {fmt.count(peers['n'])} {data['peer_group']} entities. The "
+                f"median is {fmt.rate(peers['median'])} and the middle half runs "
+                f"{fmt.rate(peers['p25'])} to {fmt.rate(peers['p75'])}.")
+
+    if section_id == "spending":
+        areas = data.get("service_areas") or []
+        if not areas:
+            return "This government has no spending breakdown in the data."
+        top = areas[0]
+        line = (f"The largest reported area is {top['service_area']} at "
+                f"{fmt.money(top['total'])}, {fmt.percent(top['percentage'])} of spending.")
+        if data.get("other_exceeds_largest_named"):
+            line += (" An unclassified bucket is larger still, so this breakdown is "
+                     "partial and no category here is the biggest.")
+        return line
+
+    if section_id == "inside_largest":
+        functions = data.get("functions") or []
+        if not functions:
+            return "No functions are reported inside this area."
+        top = functions[0]
+        line = (f"Inside {data['service_area']}, the largest function is {top['label']} at "
+                f"{fmt.money(top['value'])}, of which {fmt.money(top['addressable'])} is "
+                "vendor addressable.")
+        if top.get("peer_median"):
+            line += (f" The median {top['label']} budget among peers reporting it is "
+                     f"{fmt.money(top['peer_median'])}.")
+        line += (" The addressable figure is a derivation, not a reported line: operating "
+                 "and capital less personnel and less amounts that cannot be purchased.")
+        return line
+
+    if section_id == "workforce":
+        employees = data.get("total_employees")
+        if not employees:
+            return ("This government reports no employees. That usually means the work is "
+                    "contracted out or another entity performs it.")
+        line = f"{fmt.count(employees)} employees"
+        if data.get("employees_per_1000"):
+            line += f", {fmt.rate(data['employees_per_1000'])} per 1,000 residents"
+        if data.get("average_annual_wage"):
+            line += f", at an average wage of {fmt.rate(data['average_annual_wage'])}"
+        areas = data.get("by_service_area") or []
+        if areas:
+            line += (f". The largest group works in {areas[0]['service_area']}, "
+                     f"{fmt.percent(areas[0]['percentage'])} of listed staff")
+        return line + ". Shares are of listed functions, not of all staff."
+
+    if section_id == "trend":
+        rows = section.get("table") or []
+        if len(rows) < 2:
+            return "Fewer than two years are available, so there is no trend to read."
+        return (f"Revenue and spending are shown from {rows[0]['year']} to "
+                f"{rows[-1]['year']}, at entity totals. No change here can be attributed "
+                "to any single service area.")
+
+    if section_id == "salience":
+        if data.get("nothing_unusual"):
+            return ("Nothing in this profile clears an attention threshold. The government "
+                    "is close to typical for its peer group.")
+        lead = data.get("lead") or {}
+        return (f"The most structurally unusual thing here is that {lead.get('finding')}. "
+                f"Read that as {lead.get('reading')}.")
+
+    if section_id == "governance":
+        seats = data.get("total_seats")
+        if not seats:
+            return ("The data includes no office records for this government. That is the "
+                    "data's limit, not a statement that it has no governing body.")
+        roles = data.get("roles") or []
+        return (f"{seats} seats are recorded across {len(roles)} roles. The data carries no "
+                "holder names, so who sits in them is not something this can answer.")
+
+    if section_id == "membership":
+        return (f"{data.get('total')} governments are filed under this county. They are "
+                "listed by type below. Their budgets cannot be summed: overlapping "
+                "jurisdictions tax the same property, so a total would double-count.")
+
+    if section_id == "cross_boundary":
+        return (f"{data.get('count')} further governments operate here but are filed under "
+                "a neighbouring county, so a host-county list misses them. Their finances "
+                "are recorded against that other county.")
+
+    if section_id == "geography":
+        return (f"{data.get('mappable')} of {data.get('total')} governments here have "
+                "boundaries in the data, so a map of this place is necessarily partial. "
+                "The list is the complete answer.")
+
+    if section_id == "responsibility":
+        return ("No single body is accountable for this place's combined public spending. "
+                "Responsibility is distributed across the governments named above.")
+
+    return None
+
+
 def _gap(points):
     """A gap in percentage points. Below ten, the decimal is the difference
     between two rows; above it, the decimal is noise."""
@@ -500,8 +645,22 @@ def answer_preset(preset_id, pid6=None, county=None):
                                 county_name=county or (entity["host_county"] if entity else None))
         results.append(plan)
         if plan["data"]:
-            blocks.append({"kind": "report", "html": R.render_report(plan),
-                           "sections": len(plan["data"]["sections"]),
+            sections = plan["data"]["sections"]
+            # Without a model there is nobody to write the sections, and a plan
+            # rendered unwritten shows a reader its own authoring brief. The
+            # readouts stand in, assembled from the figures each section already
+            # carries.
+            prose = {}
+            for section in sections:
+                written = _section_readout(section, entity)
+                if written:
+                    prose[section["id"]] = written
+            blocks.append({"kind": "text", "text": (
+                f"A {len(sections)}-section profile follows, assembled from "
+                f"{len(results)} tool results. Every figure in it is read out from the "
+                "data rather than written up: no model wrote this.")})
+            blocks.append({"kind": "report", "html": R.render_report(plan, prose),
+                           "sections": len(sections),
                            "budget": plan["data"]["total_word_budget"]})
     else:
         return {"blocks": [{"kind": "text", "text": f"No preset '{preset_id}'."}],

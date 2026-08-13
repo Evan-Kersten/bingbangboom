@@ -51,6 +51,12 @@ def export(out_dir):
     # The search index is small enough to filter in the browser, which is both
     # simpler than a search endpoint and faster than one.
     write(os.path.join(data_dir, "entities.json"), entities)
+    # Everything the browser needs to assemble a comparison for any set a
+    # reader picks. About 400 KB, 90 KB over the wire, against a combinatorial
+    # number of pages if each set were pre-rendered instead.
+    import comparison_data
+    write(os.path.join(data_dir, "comparison.json"), comparison_data.build(store))
+
     write(os.path.join(data_dir, "service_areas.json"), {
         "areas": [r["service_area"] for r in store.rows(
             "SELECT service_area, COUNT(*) AS n FROM spending_by_service_area "
@@ -85,32 +91,6 @@ def export(out_dir):
             total += write(os.path.join(data_dir, pid6, f"{preset['id']}.json"), answer)
             written += 1
 
-        # The comparison tray lets a reader pick any set of governments, and
-        # every set of four across twelve areas is far more pages than a static
-        # build should carry. What is pre-rendered is each government against
-        # its own nearest peers, which is the comparison the presets make; the
-        # interface says plainly that an arbitrary set needs the server.
-        group, _ = S.peer_set(pid6)
-        if len(group) > 1:
-            for form, area in (("per_capita_over_time", None),
-                               ("entities_over_time", None),
-                               ("per_capita_by_service_area", S.DEFAULT_AREA),
-                               ("service_area_across_entities", S.DEFAULT_AREA)):
-                result = S.T.render_comparison(
-                    store, group, form, service_area=area,
-                    indexed=(form == "per_capita_over_time"))
-                payload = {"blocks": [b for b in [
-                    {"kind": "answer", "text": S._compare_headline(result)},
-                    ({"kind": "chart", "svg": result["data"]["svg"],
-                      "table": result["data"].get("table")}
-                     if result["data"].get("svg") else None),
-                    S.B.limits([result])] if b],
-                    "trace": ["render_comparison"]}
-                name = form + (f".{area}" if area else "")
-                total += write(os.path.join(data_dir, "compare", pid6, f"{name}.json"),
-                               payload)
-                written += 1
-
         if index % 250 == 0:
             print(f"  {index}/{len(entities)} entities, {total/1e6:.0f} MB so far")
 
@@ -121,6 +101,9 @@ def export(out_dir):
 
     # The interface itself, with a flag telling it to read files rather than
     # call an API. One source file, two modes, so they cannot drift.
+    shutil.copyfile(os.path.join(HERE, "comparison.js"),
+                    os.path.join(out_dir, "comparison.js"))
+
     with open(os.path.join(HERE, "index.html")) as fh:
         html = fh.read()
     html = html.replace("<script>\nconst $ =",

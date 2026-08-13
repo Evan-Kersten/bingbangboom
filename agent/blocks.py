@@ -42,7 +42,7 @@ BLOCK_ORDER = {
     "what_stands_out": ["interpretation", "answer", "figure", "chart", "table",
                         "limits", "next"],
     "place_or_cross_entity": ["interpretation", "answer", "figure", "chart",
-                              "table", "map", "limits", "next"],
+                              "table", "map", "report", "limits", "next"],
     "issue_or_topic": ["interpretation", "answer", "table", "limits", "next"],
     "investment_vs_conditions": ["interpretation", "answer", "table", "limits", "next"],
 }

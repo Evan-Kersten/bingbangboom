@@ -432,6 +432,7 @@ tr:last-child td { border-bottom: 0; }
   </main>
 </div>
 
+<script src="comparison.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 let entity = null, busy = false;
@@ -439,7 +440,7 @@ let entity = null, busy = false;
 /* Two modes behind one call. Served, this hits the API; exported to static
    files, it reads the pre-rendered answer for the same question. The interface
    above this line does not know the difference. */
-let ENTITIES = null;
+let ENTITIES = null, COMPARISON = null;
 
 async function api(path, body) {
   if (window.PF_STATIC) return staticApi(path, body);
@@ -496,19 +497,13 @@ async function staticApi(path, body) {
   }
 
   if (path === '/api/compare') {
-    // Every combination of four governments across twelve areas is far more
-    // pages than a static export should carry, so the pre-rendered build offers
-    // the peer comparisons the presets use and says what it cannot do.
-    try {
-      return await readJson(`data/compare/${body.pid6_list[0]}/${body.form}` +
-        (body.form.includes('service_area') ? `.${encodeURIComponent(body.service_area)}` : '') +
-        '.json');
-    } catch {
-      return { blocks: [{ kind: 'answer', text:
-        'This build is pre-rendered, so it carries each government against its own ' +
-        'nearest peers rather than every combination a reader might pick. Run the ' +
-        'server to compare any set.' }], trace: [] };
-    }
+    // Assembled here from shipped figures, so the answer is about the set the
+    // reader picked. This used to key on the first selection alone and return
+    // that government's pre-rendered peer set, which meant asking for Portland
+    // and Medford got Portland against three cities nobody had named.
+    COMPARISON ||= await readJson('data/comparison.json');
+    PFCompare.load(COMPARISON);
+    return PFCompare.compare(body);
   }
 
   if (path === '/api/ask') {
