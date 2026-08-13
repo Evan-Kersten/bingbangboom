@@ -32,7 +32,7 @@ PROMPT_PATH = os.path.join(
 # not domain: unanswerable question, false premise, entity not found, ambiguous
 # name, follow-up. Those can arise on any question type, so loading it only for
 # some means the shape rules are missing exactly when an answer goes wrong.
-ALWAYS = ["1", "2", "3", "4", "5", "14"]
+ALWAYS = ["1", "2", "3", "4", "5", "14", "15"]
 
 ROUTING = {
     "factual_lookup":          ["8"],
