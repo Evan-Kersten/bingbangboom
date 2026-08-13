@@ -737,9 +737,15 @@ import viz            # noqa: E402
 # no colour and no number, so a caption cannot assert a relationship the data
 # does not contain and a chart cannot disagree with the prose beside it.
 CHART_FORMS = (
-    "spending_composition", "stability_components", "peer_position",
+    "spending_composition", "service_area_functions", "peer_range",
     "finances_over_time", "workforce_composition",
 )
+
+# Which peer metric each entity type is most usefully placed against. Fiscal
+# stability is deliberately absent: it is a composite whose two components move
+# for opposite reasons, so a position on it tells a reader less than a position
+# on any single measure underneath it.
+DEFAULT_PEER_METRIC = "expenditure_per_capita"
 
 
 def _named(entity):
@@ -777,64 +783,75 @@ def render_chart(store, pid6, form):
             if flags.get("other_share_high"):
                 note = ("Other exceeds 20% of spending. Other is a Census classification "
                         "artifact, so this breakdown is partial.")
+            import explore
+            drilled = explore.drill(store, pid6)["data"].get("areas") or []
+            peer_by_area = {a["label"]: a for a in drilled}
             svg = viz.horizontal_bars(
                 f"{name}: spending by service area",
                 f"Census functional categories, {areas[0]['year']}",
-                [{"label": a["service_area"], "value": a["total"]} for a in areas],
+                [{"label": a["service_area"], "value": a["total"],
+                  "peer_median": None, "peer_degenerate": 1} for a in areas],
                 note=note)
             table = [{"service area": a["service_area"], "amount": fmt.money(a["total"]),
-                      "share": fmt.percent(a["percentage"])} for a in areas]
+                      "share": fmt.percent(a["percentage"]),
+                      "peer median share": fmt.percent(
+                          (peer_by_area.get(a["service_area"]) or {}).get("peer_median_share"))
+                      or "not comparable"} for a in areas]
 
-    elif form == "stability_components":
-        source = get_financial_position(store, pid6)
-        caveats, blocked = source["caveats"], source["not_computable"]
-        data = source["data"]
-        components = data.get("components") or {}
-        if not components:
-            svg = viz.refusal(f"{name}: fiscal stability components",
-                              "This entity has no fiscal stability record.")
+    elif form == "service_area_functions":
+        import explore
+        area = store.row("SELECT service_area FROM spending_by_service_area WHERE pid6=? "
+                         "ORDER BY total DESC LIMIT 1", pid6)
+        if not area:
+            svg = viz.refusal(f"{name}: functions by service area",
+                              "This entity has no spending breakdown in the data.")
         else:
-            structural = components["structural_balance"]
-            debt = components["debt_to_revenue"]
-            rows = [
-                {"label": "Structural balance", "value": structural["score"],
-                 "detail": f"{fmt.percent(structural['value'])} of recurring revenue, "
-                           f"weighted 60%"},
-                {"label": "Debt to revenue", "value": debt["score"],
-                 "detail": f"{fmt.percent(debt['value'])} of revenue, weighted 40%"},
-            ]
-            subtitle = f"Composite {data['score']:.0f} of 100, {data['year'] if 'year' in data else ''}".strip(", ")
-            if flags.get("debt_capped"):
-                subtitle = ("Composite capped near 60: debt to revenue scores zero "
-                            "regardless of operational health")
-            svg = viz.meters(f"{name}: what drives the stability score", subtitle, rows)
-            table = [{"component": r["label"], "score": f"{r['value']:.0f}",
-                      "detail": r["detail"]} for r in rows]
+            source = explore.drill(store, pid6, area["service_area"])
+            caveats, blocked = source["caveats"], source["not_computable"]
+            functions = source["data"].get("functions") or []
+            if not functions:
+                svg = viz.refusal(f"{name}: functions in {area['service_area']}",
+                                  "No functions are reported inside this area.")
+            else:
+                svg = viz.horizontal_bars(
+                    f"{name}: inside {area['service_area']}",
+                    f"Functions within the largest service area, {source['data']['year']}",
+                    [{"label": f["label"], "value": f["value"],
+                      "peer_median": f["peer_median"],
+                      "peer_degenerate": f["peer_degenerate"]} for f in functions],
+                    note="Bars are operating plus capital. Vendor addressable is smaller.")
+                table = [{"function": f["label"], "spending": fmt.money(f["value"]),
+                          "vendor addressable": fmt.money(f["addressable"]),
+                          "share of entity": fmt.percent(f["share_of_entity"])}
+                         for f in functions]
 
-    elif form == "peer_position":
-        source = compare_to_peers(store, pid6, "capital_share")
+    elif form == "peer_range":
+        import explore
+        source = explore.compare_to_peer_group(store, pid6, DEFAULT_PEER_METRIC)
         caveats, blocked = source["caveats"], source["not_computable"]
         data = source["data"]
-        record = store.row("SELECT * FROM operating_vs_capital WHERE pid6=?", pid6)
-        if data.get("ratio_refused") or not record or record["peer_median"] is None:
-            # The refusal is the whole point. A dot placed against a median that
-            # most of the pool does not sit near reads as measurement.
+        if not data.get("peers"):
+            svg = viz.refusal(f"{name}: against peers",
+                              "No peer distribution covers this entity for that measure.")
+        elif data["peers"]["degenerate"]:
             svg = viz.refusal(
-                f"{name}: capital share against peers",
-                f"Not drawn. The peer median for {data.get('peer_group') or 'this pool'} is "
-                f"{data.get('peer_median')}, at or near zero, which means most of the pool "
-                f"reports no capital activity. It is not a midpoint, so a position against "
-                f"it would misstate where this entity sits.")
+                f"{name}: against peers",
+                "Not drawn. Most of this peer group reports nothing on this measure, so "
+                "the median is not a midpoint and a position against it would misstate "
+                "where this entity sits.")
         else:
-            svg = viz.peer_position(
-                f"{name}: capital share against peers",
-                f"{data['peer_group']}, {data['peer_count']} entities, {record['year']}",
-                record["capital_pct"], record["peer_low"], record["peer_median"],
-                record["peer_high"], "lowest", "highest")
-            table = [{"measure": "this entity", "value": fmt.percent(record["capital_pct"])},
-                     {"measure": "peer median", "value": fmt.percent(record["peer_median"])},
-                     {"measure": "peer low", "value": fmt.percent(record["peer_low"])},
-                     {"measure": "peer high", "value": fmt.percent(record["peer_high"])}]
+            stats = dict(data["peers"])
+            stats["peer_group"] = data["peer_group"]
+            svg = viz.peer_range(
+                f"{name}: {data['label'].lower()} against peers",
+                f"{data['peer_group']}, {stats['n']} entities",
+                data["value"], stats, formatter=fmt.rate, label=name)
+            table = [{"measure": "this entity", "value": data["formatted"]},
+                     {"measure": "peer median", "value": fmt.rate(stats["median"])},
+                     {"measure": "middle half",
+                      "value": f"{fmt.rate(stats['p25'])} to {fmt.rate(stats['p75'])}"},
+                     {"measure": "full range",
+                      "value": f"{fmt.rate(stats['low'])} to {fmt.rate(stats['high'])}"}]
 
     elif form == "finances_over_time":
         rows = store.rows(
@@ -878,17 +895,223 @@ def render_chart(store, pid6, form):
                     caveats=caveats, blocked=blocked)
 
 
+# -------------------------------------------------- multi-entity rendering
+
+COMPARISON_FORMS = ("entities_over_time", "service_area_across_entities",
+                    "per_capita_by_service_area", "per_capita_over_time")
+
+MEASURE_LABELS = {"expenditure": "Total spending", "revenue": "Total revenue",
+                  "debt": "Total debt"}
+
+
+def render_comparison(store, pid6_list, form="entities_over_time",
+                      measure="expenditure", service_area=None, indexed=False):
+    """Draw several governments on one axis.
+
+    Two forms, and the difference between them is not stylistic. Entity totals
+    run 2017 to 2023, so they are a line. Service-area spending is a single year
+    per entity, so it is a bar and never a line: drawing one year as a trend
+    would assert a direction the data does not contain (§8).
+    """
+    import explore
+
+    if form not in COMPARISON_FORMS:
+        return envelope("render_comparison", caveats=[{
+            "code": "unknown_form", "rule": "§4",
+            "guidance": f"No comparison form '{form}'. Available: {', '.join(COMPARISON_FORMS)}."}])
+
+    if form in ("service_area_across_entities", "per_capita_by_service_area") \
+            and not service_area:
+        return envelope("render_comparison", caveats=[{
+            "code": "service_area_required", "rule": "§10",
+            "guidance": "This form compares within one service area and needs to be told "
+                        "which. Without one every entity is 100% of its own spending."}])
+
+    svg = table = None
+
+    if form == "entities_over_time":
+        source = explore.compare_entities_over_time(store, pid6_list, measure)
+        data = source["data"]
+        series = data.get("series") or []
+        label = MEASURE_LABELS.get(measure, measure.title())
+        if len(series) < 2:
+            svg = viz.refusal(
+                f"{label} over time",
+                "Fewer than two entities have two or more years of data, so there is "
+                "nothing to compare. One year is a point, not a trend.")
+        else:
+            drawn = series[:4]
+            years = sorted({p[0] for s in drawn for p in s["points"]})
+            note = None
+            if len(series) > 4:
+                folded = ", ".join(s["label"] for s in series[4:])
+                note = f"Four lines drawn. Also requested: {folded}."
+            svg = viz.multi_series(
+                f"{label}: {len(drawn)} governments compared",
+                f"{years[0]} to {years[-1]}, entity totals rather than any single category",
+                drawn, note=note)
+            table = [dict([("year", year)] + [
+                (s["label"], fmt.money(dict(s["points"]).get(year)))
+                for s in drawn]) for year in years]
+
+    elif form == "per_capita_by_service_area":
+        source = explore.per_capita_by_service_area(store, pid6_list, service_area)
+        data = source["data"]
+        rows = data.get("entities") or []
+        if not rows:
+            svg = viz.refusal(
+                f"Spending on {service_area} per resident",
+                "None of these entities can be put on a per-resident basis for this "
+                "area: either they report nothing here, or they have no population in "
+                "the data. Neither is a report of zero spending.")
+        else:
+            years = data["years"]
+            span = (str(years[0]) if len(years) == 1
+                    else f"{min(years)} to {max(years)}, one year each")
+            single_type = len({r["gov_type"] for r in rows}) == 1
+            svg = viz.horizontal_bars(
+                f"{service_area}: spending per resident",
+                f"{len(rows)} governments, {span}",
+                [{"label": r["label"], "value": r["value"],
+                  "peer_median": r["peer_median"] if single_type else None,
+                  "peer_degenerate": 0 if (single_type and r["peer_median"]) else 1}
+                 for r in rows],
+                formatter=fmt.rate,
+                note=("Tick marks the median for this government type."
+                      if single_type and any(r["peer_median"] for r in rows) else
+                      "Mixed government types, so no single peer median applies."))
+            table = [{"government": r["label"], "type": r["gov_type"],
+                      "per resident": fmt.rate(r["value"]),
+                      "total": fmt.money(r["total"]),
+                      "population": fmt.count(r["population"]),
+                      "share of its own budget": fmt.percent(r["share"]),
+                      "vs type median": (f"{r['ratio']:.2f}×" if r["ratio"]
+                                         else "not comparable"),
+                      "year": r["year"]} for r in rows]
+
+    elif form == "per_capita_over_time":
+        source = explore.per_capita_over_time(store, pid6_list, indexed=indexed)
+        data = source["data"]
+        series = data.get("series") or []
+        baseline = data.get("baseline")
+        if len(series) < 2:
+            svg = viz.refusal(
+                "Spending per resident over time",
+                "Fewer than two entities can be drawn: an entity needs both a population "
+                "in the data and two or more years of spending. One year is a point, "
+                "not a trend.")
+        else:
+            drawn = series[:4]
+            years = sorted({p[0] for s in drawn for p in s["points"]})
+            note = ("Population is one estimate per entity and is held constant, so what "
+                    "moves here is spending.")
+            if len(series) > 4:
+                note += " Four lines drawn: " + ", ".join(s["label"] for s in series[4:]) \
+                    + " also requested."
+            svg = viz.multi_series(
+                ("Spending per resident, indexed" if indexed
+                 else "Spending per resident"),
+                (f"{years[0]} = 100, {len(drawn)} governments compared" if indexed
+                 else f"{years[0]} to {years[-1]}, entity totals divided by population"),
+                drawn,
+                formatter=(lambda v: f"{v:,.0f}") if indexed else fmt.rate,
+                note=note, reference=baseline,
+                baseline=100 if indexed else None)
+            table = []
+            for year in years:
+                row = {"year": year}
+                for entry in drawn:
+                    value = dict(entry["points"]).get(year)
+                    row[entry["label"]] = (f"{value:,.0f}" if indexed and value is not None
+                                           else fmt.rate(value))
+                if baseline:
+                    value = dict(baseline["points"]).get(year)
+                    row[baseline["label"]] = (f"{value:,.0f}" if indexed and value is not None
+                                              else fmt.rate(value))
+                table.append(row)
+
+    else:
+        source = explore.compare_service_area(store, pid6_list, service_area)
+        data = source["data"]
+        rows = data.get("entities") or []
+        if not rows:
+            svg = viz.refusal(
+                f"Spending on {service_area}",
+                "None of these entities reports spending in this area. That usually "
+                "means another government holds the responsibility, not that the "
+                "service is unfunded.")
+        else:
+            years = data["years"]
+            span = (str(years[0]) if len(years) == 1
+                    else f"{min(years)} to {max(years)}, one year each")
+            svg = viz.horizontal_bars(
+                f"Spending on {service_area}",
+                f"{len(rows)} governments, {span}",
+                [{"label": r["label"], "value": r["value"],
+                  "peer_median": None, "peer_degenerate": 1} for r in rows],
+                note="A snapshot, not a trend. Service-area spending exists for one "
+                     "year per entity, so none of these bars can be tracked over time.")
+            table = [{"government": r["label"], "type": r["gov_type"],
+                      "spending": fmt.money(r["value"]),
+                      "share of its own budget": fmt.percent(r["share"]),
+                      "peer median share": fmt.percent(r["peer_median_share"])
+                      if not r["peer_degenerate"] else "not comparable",
+                      "year": r["year"]} for r in rows]
+
+    return envelope(
+        "render_comparison",
+        data={"form": form, "measure": measure, "service_area": service_area,
+              "indexed": bool(indexed),
+              "svg": svg, "table": table, "refused": table is None,
+              "detail": source["data"]},
+        caveats=source["caveats"], blocked=source["not_computable"])
+
+
+# Each entry is the SQL that produces one value per pid6, plus how to format it
+# and what to call it. Fiscal stability is deliberately absent: a composite of two
+# components that move for opposite reasons tells a reader less, mapped, than any
+# single measure underneath it, and a choropleth of it invites exactly the ranking
+# §8 says the score cannot support.
 MAP_METRICS = {
-    "fiscal_stability": ("fiscal_stability", "score", fmt.percent,
-                         "Fiscal stability score"),
-    "capital_share": ("operating_vs_capital", "capital_pct", fmt.percent,
-                      "Capital share of spending"),
-    "total_spending": ("operating_vs_capital", "total_expenditure", fmt.money,
-                       "Total expenditure"),
+    "spending_per_resident": (
+        "SELECT o.pid6 AS pid6, o.total_expenditure * 1.0 / w.population AS value "
+        "FROM operating_vs_capital o JOIN workforce_profile w ON w.pid6 = o.pid6 "
+        "WHERE w.population > 0 AND o.total_expenditure > 0",
+        fmt.rate, "Spending per resident"),
+    "total_spending": (
+        "SELECT pid6, total_expenditure AS value FROM operating_vs_capital "
+        "WHERE total_expenditure > 0",
+        fmt.money, "Total expenditure"),
+    "capital_share": (
+        "SELECT pid6, capital_pct AS value FROM operating_vs_capital "
+        "WHERE capital_pct IS NOT NULL",
+        fmt.percent, "Capital share of spending"),
+    "employees_per_1000": (
+        "SELECT pid6, employees_per_1000 AS value FROM workforce_profile "
+        "WHERE employees_per_1000 > 0",
+        fmt.rate, "Employees per 1,000 residents"),
+    "average_wage": (
+        "SELECT pid6, average_annual_wage AS value FROM workforce_profile "
+        "WHERE average_annual_wage > 0",
+        fmt.rate, "Average annual wage"),
+}
+
+# Service-area metrics need the area named, so they are parameterised separately.
+SERVICE_AREA_MAP_METRICS = {
+    "service_area_share": (
+        "SELECT pid6, percentage AS value FROM spending_by_service_area "
+        "WHERE service_area = ? AND percentage IS NOT NULL",
+        fmt.percent, "Share of spending on"),
+    "service_area_per_resident": (
+        "SELECT s.pid6 AS pid6, s.total * 1.0 / w.population AS value "
+        "FROM spending_by_service_area s JOIN workforce_profile w ON w.pid6 = s.pid6 "
+        "WHERE s.service_area = ? AND w.population > 0 AND s.total > 0",
+        fmt.rate, "Spending per resident on"),
 }
 
 
-def render_map(store, layer="county", metric="fiscal_stability", county=None):
+def render_map(store, layer="county", metric="spending_per_resident", county=None,
+               service_area=None):
     """Choropleth over a boundary layer.
 
     Only counties and places join to geometry exactly. School districts join by
@@ -902,18 +1125,30 @@ def render_map(store, layer="county", metric="fiscal_stability", county=None):
             "guidance": f"No layer '{layer}'. Available: {', '.join(maps.LAYERS)}. "
                         "Special districts have no boundaries in this data and cannot "
                         "be mapped; list them instead."}])
-    if metric not in MAP_METRICS:
+    if metric in SERVICE_AREA_MAP_METRICS:
+        if not service_area:
+            return envelope("render_map", caveats=[{
+                "code": "service_area_required", "rule": "§9",
+                "guidance": f"'{metric}' maps one service area and needs to be told which."}])
+        inner, formatter, label = SERVICE_AREA_MAP_METRICS[metric]
+        arguments = (service_area, layer)
+        label = f"{label} {service_area}"
+    elif metric in MAP_METRICS:
+        inner, formatter, label = MAP_METRICS[metric]
+        arguments = (layer,)
+        service_area = None
+    else:
         return envelope("render_map", caveats=[{
             "code": "unknown_metric", "rule": "§4",
-            "guidance": f"No mappable metric '{metric}'. Available: {', '.join(MAP_METRICS)}."}])
+            "guidance": f"No mappable metric '{metric}'. Available: "
+                        f"{', '.join(list(MAP_METRICS) + list(SERVICE_AREA_MAP_METRICS))}."}])
 
-    table_name, column, formatter, label = MAP_METRICS[metric]
     rows = store.rows(
-        f"SELECT g.geo_id, m.{column} AS value, e.common_name, e.legal_name, "
+        f"SELECT g.geo_id, m.value AS value, e.common_name, e.legal_name, "
         f"f.peer_group_mismatch FROM geo_entity g "
         f"JOIN entities e ON e.pid6=g.pid6 "
         f"JOIN entity_flags f ON f.pid6=g.pid6 "
-        f"LEFT JOIN {table_name} m ON m.pid6=g.pid6 WHERE g.layer=?", layer)
+        f"LEFT JOIN ({inner}) m ON m.pid6=g.pid6 WHERE g.layer=?", *arguments)
 
     values = {r["geo_id"]: r["value"] for r in rows if r["value"] is not None
               and not r["peer_group_mismatch"]}
@@ -959,24 +1194,56 @@ def render_map(store, layer="county", metric="fiscal_stability", county=None):
                         "areas are land area rather than anything measured here. Scope the "
                         "map to a county, or use a list."})
 
+    if service_area:
+        caveats.append({
+            "code": "absence_is_not_zero", "rule": "§9",
+            "guidance": f"A boundary with no value reports nothing on {service_area}, which "
+                        "is not a report of zero. It usually means another government holds "
+                        "that responsibility here. The no-data colour is off the ramp for "
+                        "exactly this reason; do not read it as low."})
+    if metric in ("spending_per_resident", "service_area_per_resident",
+                  "employees_per_1000"):
+        caveats.append({
+            "code": "population_is_one_estimate", "rule": "§8",
+            "guidance": "The denominator is a single population estimate per entity, not a "
+                        "series. This is a level at one moment and carries no rate of change."})
+
     result = maps.choropleth(
         layer, values,
         f"{label} by {layer.replace('_', ' ')}",
         extent_note or "Oregon, one government type only",
         formatter=formatter, only=only)
 
+    listed = sorted((r for r in rows if r["value"] is not None
+                     and (only is None or r["geo_id"] in only)),
+                    key=lambda r: r["value"], reverse=True)
+
     return envelope("render_map",
                     data={"layer": layer, "metric": metric, "county": county,
-                          "svg": result["svg"],
+                          "service_area": service_area, "svg": result["svg"],
                           "covered": result["covered"], "polygons": result["polygons"],
                           "table": [{"name": r["common_name"] or r["legal_name"],
                                      "value": formatter(r["value"])}
-                                    for r in rows if r["value"] is not None][:60]},
+                                    for r in listed][:60]},
                     caveats=caveats)
 
 
 TOOLS["render_chart"] = render_chart
 TOOLS["render_map"] = render_map
+TOOLS["render_comparison"] = render_comparison
+
+
+# The drill-down and peer tools live in explore, which imports this module, so
+# they are bound here rather than defined here.
+def _bind_explore():
+    import explore
+    for name in ("drill", "compare_to_peer_group", "compare_entities_over_time",
+                 "compare_service_area", "per_capita_by_service_area",
+                 "per_capita_over_time"):
+        TOOLS[name] = getattr(explore, name)
+
+
+_bind_explore()
 
 
 def compose_report(store, kind="entity", pid6=None, county_name=None,

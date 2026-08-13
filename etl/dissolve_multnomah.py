@@ -153,10 +153,13 @@ def write_service_extent(db_path, features):
     return len(rows)
 
 
-def main():
+def main(argv=None):
+    """`argv` lets build.py call this in-process as the last ETL step; the
+    dissolved boundaries live in the same store, so they are rebuilt with it."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", default=os.path.join(REPO, "build"))
-    args = parser.parse_args()
+    parser.add_argument("--quiet", action="store_true")
+    args = parser.parse_args(argv)
     out_dir = os.path.abspath(args.out)
     os.makedirs(os.path.join(out_dir, "geo"), exist_ok=True)
 
@@ -243,8 +246,9 @@ def main():
     with open(os.path.join(out_dir, "multnomah_dissolve_report.json"), "w") as fh:
         json.dump(summary, fh, indent=2)
 
-    print(json.dumps(summary, indent=2))
-    return 0
+    if not args.quiet:
+        print(json.dumps(summary, indent=2))
+    return summary["special_districts_recovered"]
 
 
 if __name__ == "__main__":

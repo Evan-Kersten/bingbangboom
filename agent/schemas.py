@@ -135,12 +135,131 @@ SCHEMAS = [
         },
     },
     {
+        "name": "drill",
+        "description": "Open one government's spending, one level at a time. Called with a "
+                       "pid6 alone it returns the twelve service areas with each area's peer "
+                       "median share beside it. Add service_area and it returns the functions "
+                       "inside that area. Add function_name and it returns how that one "
+                       "function's total decomposes: operating, capital, personnel, amounts "
+                       "excluded, and the vendor-addressable remainder. Three levels is as "
+                       "deep as the data goes. Use this rather than get_spending_breakdown "
+                       "whenever the question is about a category rather than the whole "
+                       "budget. " + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pid6": PID,
+                "service_area": {"type": "string",
+                                 "description": "Level 2. Omit for the service-area list."},
+                "function_name": {"type": "string",
+                                  "description": "Level 3. Requires service_area first."},
+            },
+            "required": ["pid6"],
+        },
+    },
+    {
+        "name": "compare_to_peer_group",
+        "description": "Place one government in the distribution of its own type: low, "
+                       "first quartile, median, third quartile and high, with the count of "
+                       "peers and which quarter this entity falls in. Peer groups are within "
+                       "a government type, because an Oregon county carries state-delegated "
+                       "functions a city does not. Where most of the pool reports nothing on "
+                       "a measure the median is not a midpoint, and the ratio is refused "
+                       "rather than computed. " + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pid6": PID,
+                "metric": {"type": "string",
+                           "enum": ["total_expenditure", "total_revenue",
+                                    "expenditure_per_capita", "capital_share",
+                                    "employees_per_1000", "average_wage",
+                                    "personnel_share", "service_area_share",
+                                    "service_area_total"]},
+                "service_area": {"type": "string",
+                                 "description": "Required for the two service_area metrics."},
+            },
+            "required": ["pid6", "metric"],
+        },
+    },
+    {
+        "name": "per_capita_by_service_area",
+        "description": "Spending per resident on one service area, across several "
+                       "governments, with the median for each government type. This is the "
+                       "comparison absolute dollars cannot make: a large city outspends a "
+                       "small county on public safety by a margin that is purely population, "
+                       "and per resident the ranking is a different one. Entities with no "
+                       "population in the data are excluded and named rather than shown on "
+                       "another basis. " + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pid6_list": {"type": "array", "items": {"type": "string"}},
+                "service_area": {"type": "string"},
+            },
+            "required": ["pid6_list", "service_area"],
+        },
+    },
+    {
+        "name": "per_capita_over_time",
+        "description": "Spending per resident across years for several governments, with a "
+                       "dashed peer-median baseline over entities reporting in every year. "
+                       "Set indexed to start every line at 100 and compare growth rather "
+                       "than level. Two limits travel with the result and must be stated: "
+                       "population is a single estimate per entity and is held constant, so "
+                       "what moves is spending; and no price index exists in this data, so "
+                       "the baseline is peers and not inflation, and no figure is in real "
+                       "terms. " + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pid6_list": {"type": "array", "items": {"type": "string"}},
+                "indexed": {"type": "boolean",
+                            "description": "Rebase every line to 100 at the first year."},
+            },
+            "required": ["pid6_list"],
+        },
+    },
+    {
+        "name": "compare_entities_over_time",
+        "description": "Several governments on one measure across 2017 to 2023, at entity "
+                       "totals. Service-area spending is a single year per entity, so no "
+                       "category can be tracked over time for anyone; if the question asks "
+                       "for a service area over time, say that plainly and offer either this "
+                       "or per_capita_by_service_area instead of substituting one "
+                       "silently. " + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pid6_list": {"type": "array", "items": {"type": "string"}},
+                "measure": {"type": "string", "enum": ["expenditure", "revenue", "debt"]},
+            },
+            "required": ["pid6_list"],
+        },
+    },
+    {
+        "name": "compare_service_area",
+        "description": "Several governments within one service area, in absolute dollars, at "
+                       "the year each reports. A snapshot and never a trend. Prefer "
+                       "per_capita_by_service_area unless the question is specifically about "
+                       "budget size. " + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pid6_list": {"type": "array", "items": {"type": "string"}},
+                "service_area": {"type": "string"},
+            },
+            "required": ["pid6_list", "service_area"],
+        },
+    },
+    {
         "name": "render_chart",
         "description": "Draw one chart for one entity. You choose the form and the entity "
                        "and nothing else: titles, axis labels, colours and numbers are "
                        "derived from the same data the other tools returned, so the chart "
-                       "cannot disagree with your prose. Forms: spending_composition, "
-                       "stability_components, peer_position, finances_over_time, "
+                       "cannot disagree with your prose. Forms: spending_composition (service "
+                       "areas), service_area_functions (inside the largest area), peer_range "
+                       "(where the entity sits in its peer distribution), finances_over_time, "
                        "workforce_composition. A chart that would misstate the data refuses "
                        "and returns the reason drawn in its place; report the refusal rather "
                        "than describing the comparison another way. " + ENVELOPE_NOTE,
@@ -149,11 +268,39 @@ SCHEMAS = [
             "properties": {
                 "pid6": PID,
                 "form": {"type": "string",
-                         "enum": ["spending_composition", "stability_components",
-                                  "peer_position", "finances_over_time",
+                         "enum": ["spending_composition", "service_area_functions",
+                                  "peer_range", "finances_over_time",
                                   "workforce_composition"]},
             },
             "required": ["pid6", "form"],
+        },
+    },
+    {
+        "name": "render_comparison",
+        "description": "Draw several governments on one axis. Forms: "
+                       "per_capita_by_service_area (bars, spending per resident within one "
+                       "service area, with the type median ticked); per_capita_over_time "
+                       "(lines, 2017 to 2023, with a dashed peer-median baseline, and set "
+                       "indexed for growth rather than level); entities_over_time (lines, "
+                       "entity totals); service_area_across_entities (bars, absolute dollars "
+                       "within one area). Up to four lines are drawn and the rest are named. "
+                       "A service area cannot be drawn as a line for anyone, because "
+                       "service-area spending exists for one year per entity. " + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pid6_list": {"type": "array", "items": {"type": "string"}},
+                "form": {"type": "string",
+                         "enum": ["per_capita_by_service_area", "per_capita_over_time",
+                                  "entities_over_time", "service_area_across_entities"]},
+                "measure": {"type": "string", "enum": ["expenditure", "revenue", "debt"],
+                            "description": "For entities_over_time."},
+                "service_area": {"type": "string",
+                                 "description": "Required for both service-area forms."},
+                "indexed": {"type": "boolean",
+                            "description": "For per_capita_over_time: rebase lines to 100."},
+            },
+            "required": ["pid6_list", "form"],
         },
     },
     {
@@ -169,9 +316,13 @@ SCHEMAS = [
             "properties": {
                 "layer": {"type": "string", "enum": ["county", "place", "school_district"]},
                 "metric": {"type": "string",
-                           "enum": ["fiscal_stability", "capital_share", "total_spending"]},
+                           "enum": ["spending_per_resident", "total_spending",
+                                    "capital_share", "employees_per_1000", "average_wage",
+                                    "service_area_share", "service_area_per_resident"]},
                 "county": {"type": "string",
                            "description": "Optional county name to scope the extent to."},
+                "service_area": {"type": "string",
+                                 "description": "Required for the two service_area metrics."},
             },
         },
     },

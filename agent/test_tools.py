@@ -240,6 +240,15 @@ def main():
         "render_map": {"layer": "county"},
         "compare_normalized": {"pid6_list": [portland, baker_county]},
         "compose_report": {"kind": "entity", "pid6": baker_county},
+        "compare_to_peer_group": {"pid6": baker_county, "metric": "expenditure_per_capita"},
+        "compare_entities_over_time": {"pid6_list": [portland, baker_county]},
+        "compare_service_area": {"pid6_list": [portland, baker_county],
+                                 "service_area": "Public Safety"},
+        "per_capita_by_service_area": {"pid6_list": [portland, baker_county],
+                                       "service_area": "Public Safety"},
+        "per_capita_over_time": {"pid6_list": [portland, baker_county]},
+        "render_comparison": {"pid6_list": [portland, baker_county],
+                              "form": "entities_over_time"},
     }
     for name, tool in T.TOOLS.items():
         args = extra_args.get(name, {"pid6": baker_county})

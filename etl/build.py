@@ -30,6 +30,7 @@ import sqlite3
 import sys
 from collections import Counter, defaultdict
 
+import peers
 import shapefile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -773,6 +774,11 @@ def main():
         "Tools answering §7 must state that holders are not in the data.")
 
     conn = write_sqlite(os.path.join(out_dir, "pf.sqlite"), tables)
+
+    # Peer distributions are computed from the loaded tables rather than shipped
+    # in the payload, which only benchmarks the composite score.
+    peer_rows = peers.compute(conn)
+    peers.write(conn, peer_rows)
     write_csvs(out_dir, tables)
     write_duckdb_loader(out_dir, tables)
 
@@ -795,11 +801,25 @@ def main():
             for key in next(iter(flags.values())) if key != "pid6"
         },
         "defects": len(defects),
+        "peer_distributions": len(peer_rows),
     }
+    conn.close()
+
+    # The dissolve pilot writes service_extent into the same database, so a
+    # rebuild drops it unless the rebuild also runs it. Keeping it a separate
+    # script that has to be remembered is how the table went missing once
+    # already; a build that produces a store missing a table the tools query is
+    # not a build.
+    try:
+        import dissolve_multnomah
+        report["service_extent_rows"] = dissolve_multnomah.main(
+            argv=["--out", out_dir, "--quiet"])
+    except Exception as error:                       # pragma: no cover
+        report["service_extent_rows"] = f"skipped: {error}"
+
     with open(os.path.join(out_dir, "build_report.json"), "w") as fh:
         json.dump(report, fh, indent=2)
 
-    conn.close()
     print(json.dumps(report, indent=2))
     return 0
 

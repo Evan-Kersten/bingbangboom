@@ -24,42 +24,49 @@ renders in light.
 """
 
 import html
+import math
 
 import format as fmt
 
 # ---------------------------------------------------------------- palette
 
+# Public Foundry's identity: deep green ink, a working green for data, and a
+# pale mint ground. Validated with the dataviz checker against both surfaces.
+#
+#   categorical 4-series   PASS light and dark
+#   choropleth bins        PASS the ordinal gates in both
+#
+# Green leads because it is the brand, and blue and orange follow because green
+# beside orange collides under deutan while green beside blue does not. That
+# ordering is the colourblind-safety mechanism, not a preference.
 TOKENS = {
-    "surface": ("#fcfcfb", "#1a1a19"),
-    "ink": ("#0b0b0b", "#ffffff"),
-    "ink-2": ("#52514e", "#c3c2b7"),
-    "muted": ("#898781", "#898781"),
-    "grid": ("#e1e0d9", "#2c2c2a"),
-    "axis": ("#c3c2b7", "#383835"),
-    "s1": ("#2a78d6", "#3987e5"),
-    "s2": ("#eb6834", "#d95926"),
-    "dim": ("#c3c2b7", "#52514e"),        # de-emphasis for the emphasis form
-    "good": ("#0ca30c", "#0ca30c"),
-    "warning": ("#fab219", "#fab219"),
-    "serious": ("#ec835a", "#ec835a"),
-    "critical": ("#d03b3b", "#d03b3b"),
-    # Meter track. The palette's default is a lighter step of the fill's own ramp,
-    # which assumes a ramp-hued fill. These meters carry a status fill, so a blue
-    # track beside a green fill mixes two systems, and at a score of zero the
-    # track is all that shows and reads as a bar. Neutral is the honest track.
-    "track": ("#e6e5df", "#2c2c2a"),
-    "nodata": ("#e1e0d9", "#2c2c2a"),
-    "bin-1": ("#86b6ef", "#184f95"),
-    "bin-2": ("#5598e7", "#256abf"),
-    "bin-3": ("#2a78d6", "#3987e5"),
-    "bin-4": ("#1c5cab", "#6da7ec"),
-    "bin-5": ("#104281", "#9ec5f4"),
+    "surface": ("#FBFDFC", "#0E1512"),
+    "panel": ("#FFFFFF", "#151E1A"),
+    "page": ("#F2FAF5", "#0A100E"),
+    "ink": ("#0B3B2A", "#E8F3ED"),
+    "ink-2": ("#3D5C4E", "#A7C4B5"),
+    "muted": ("#6B8578", "#7E9A8B"),
+    "grid": ("#DCEBE2", "#22302A"),
+    "axis": ("#B9D3C5", "#2E4038"),
+    "s1": ("#1B7A4C", "#2E9E63"),
+    "s2": ("#2A78D6", "#3987E5"),
+    "s3": ("#EB6834", "#D95926"),
+    "s4": ("#4A3AA7", "#9085E9"),
+    "dim": ("#B9D3C5", "#3D5C4E"),
+    "good": ("#0CA30C", "#0CA30C"),
+    "warning": ("#B8791B", "#D2963F"),
+    "serious": ("#C4652F", "#E08A55"),
+    "critical": ("#A33A32", "#D9736A"),
+    "track": ("#E4F1EA", "#22302A"),
+    "nodata": ("#DCEBE2", "#22302A"),
+    "bin-1": ("#6BC79A", "#125635"),
+    "bin-2": ("#43B37F", "#1B7A4C"),
+    "bin-3": ("#2E9E63", "#2E9E63"),
+    "bin-4": ("#1B7A4C", "#5CC493"),
+    "bin-5": ("#125635", "#8FD9B4"),
 }
 
-# Single quotes inside the stack: this string is emitted into a double-quoted
-# SVG attribute, and a nested double quote closes the attribute early and makes
-# the whole document unparseable.
-FONT = "system-ui, -apple-system, 'Segoe UI', sans-serif"
+FONT = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
 
 
 def css(selector=".pf-viz"):
@@ -132,7 +139,7 @@ VALUE_COLUMN = 78
 
 
 def horizontal_bars(title, subtitle, rows, formatter=fmt.money, width=680,
-                    emphasis=None, note=None):
+                    emphasis=None, note=None, peer_key="peer_median"):
     """One hue for every bar: these categories are nominal, so a value ramp
     would double-encode bar length as hue and burn the only free channel.
 
@@ -147,7 +154,13 @@ def horizontal_bars(title, subtitle, rows, formatter=fmt.money, width=680,
     slot = BAR_THICKNESS + BAR_GAP + 8
     plot_left = LABEL_COLUMN
     plot_width = width - LABEL_COLUMN - VALUE_COLUMN
-    largest = max(abs(r["value"]) for r in rows) or 1
+    # The ticks share the bars' scale, so they set it too. Scaling to the bars
+    # alone clamps any median above the longest bar to the plot edge, where it
+    # reads as equal to the largest value rather than beyond it — which is the
+    # opposite of what the comparison says.
+    drawn_peers = [abs(r[peer_key]) for r in rows
+                   if r.get(peer_key) is not None and not r.get("peer_degenerate")]
+    largest = max([abs(r["value"]) for r in rows] + drawn_peers) or 1
 
     body = [top]
     y = offset + 8
@@ -161,14 +174,38 @@ def horizontal_bars(title, subtitle, rows, formatter=fmt.money, width=680,
                     f'{esc(formatter(row["value"]))}</title></path>')
         # The value rides outside the bar end, so it is never clipped by a
         # short bar and never needs a fit measurement.
+        # A peer median rides on the bar as a tick, so the reader sees the
+        # comparison without a second chart. Suppressed where the distribution
+        # is degenerate, since the tick would then assert a midpoint that is not
+        # one.
+        peer = row.get(peer_key)
+        if peer is not None and not row.get("peer_degenerate") and largest:
+            tick = plot_left + min(abs(peer) / largest * plot_width, plot_width)
+            body.append(f'<line x1="{tick:.1f}" y1="{y - 2}" x2="{tick:.1f}" '
+                        f'y2="{y + BAR_THICKNESS + 2}" stroke="{token("ink-2")}" '
+                        f'stroke-width="1.5"><title>peer median '
+                        f'{esc(formatter(peer))}</title></line>')
+
         body.append(text_el(plot_left + length + 8, y + BAR_THICKNESS / 2 + 4,
                             formatter(row["value"]), size=11.5, tabular=True))
         y += slot
 
+    if any(r.get(peer_key) is not None and not r.get("peer_degenerate") for r in rows):
+        y += 4
+        body.append(f'<line x1="0" y1="{y + 4}" x2="0" y2="{y + 14}" '
+                    f'stroke="{token("ink-2")}" stroke-width="1.5"/>')
+        body.append(text_el(8, y + 13, "peer median for this government type",
+                            size=11, fill="muted"))
+        y += 18
+
     if note:
         y += 6
-        body.append(text_el(0, y + 8, note, size=11, fill="muted"))
-        y += 16
+        # A note is prose and runs past the frame if it is set as one line. The
+        # column is the full width at 11px, which is about 96 characters.
+        for line in wrap(note, 96):
+            body.append(text_el(0, y + 8, line, size=11, fill="muted"))
+            y += 14
+        y += 2
 
     return frame(width, y + 8, "".join(body), f"{title}. {subtitle or ''}".strip())
 
@@ -344,6 +381,28 @@ def time_series(title, subtitle, series, formatter=fmt.money, width=680, height=
     return frame(width, height, "".join(body), f"{title}. {subtitle or ''}".strip())
 
 
+def nice_ticks(low, high, count=4):
+    """Round gridline values covering a range.
+
+    An axis labelled $905, $1,810, $2,715 is arithmetically correct and reads as
+    noise; the numbers are there to be compared against, so they land on 1, 2,
+    2.5 or 5 times a power of ten.
+    """
+    span = (high - low) or abs(high) or 1
+    raw = span / max(count, 1)
+    magnitude = 10 ** math.floor(math.log10(raw)) if raw > 0 else 1
+    for multiple in (1, 2, 2.5, 5, 10):
+        step = multiple * magnitude
+        if raw <= step:
+            break
+    start = math.floor(low / step) * step
+    ticks, value = [], start
+    while value <= high + step * 0.001:
+        ticks.append(round(value, 10))
+        value += step
+    return ticks or [low, high]
+
+
 def wrap(text, columns=84):
     lines, line = [], ""
     for word in text.split():
@@ -369,3 +428,208 @@ def refusal(title, reason, width=680):
     body.append(f'<rect x="0" y="26" width="3" height="{y - 40}" rx="1.5" '
                 f'fill="{token("warning")}"/>')
     return frame(width, y, "".join(body), f"{title}. {reason}")
+
+
+# ------------------------------------------------------- peer distribution
+
+def peer_range(title, subtitle, value, stats, formatter=fmt.money, width=680,
+               label="this entity"):
+    """Where one entity sits in its peer distribution.
+
+    Low, quartiles, median and high as a banded track with the entity marked,
+    which is the form the product already uses for a score and which generalises
+    to any metric. The quartile band is what stops a reader treating the median
+    as a target: half the pool sits inside it.
+    """
+    top, offset = header(title, subtitle, width)
+    left, plot_width = 20, width - 40
+    low, high = stats["low"], stats["high"]
+    span = (high - low) or 1
+
+    def place(v):
+        return left + (max(low, min(high, v)) - low) / span * plot_width
+
+    y = offset + 30
+    body = [top]
+
+    # Full range as a recessive track, interquartile as the solid band.
+    body.append(f'<rect x="{left}" y="{y - 5}" width="{plot_width}" height="10" rx="5" '
+                f'fill="{token("track")}"/>')
+    q1, q3 = place(stats["p25"]), place(stats["p75"])
+    body.append(f'<rect x="{q1:.1f}" y="{y - 5}" width="{max(2, q3 - q1):.1f}" height="10" '
+                f'rx="5" fill="{token("dim")}"><title>middle half of the peer group: '
+                f'{esc(formatter(stats["p25"]))} to {esc(formatter(stats["p75"]))}</title></rect>')
+
+    median_x = place(stats["median"])
+    body.append(f'<line x1="{median_x:.1f}" y1="{y - 11}" x2="{median_x:.1f}" y2="{y + 11}" '
+                f'stroke="{token("ink-2")}" stroke-width="2"/>')
+
+    entity_x = place(value)
+    body.append(f'<circle cx="{entity_x:.1f}" cy="{y}" r="8" fill="{token("surface")}"/>')
+    body.append(f'<circle cx="{entity_x:.1f}" cy="{y}" r="6" fill="{token("s1")}">'
+                f'<title>{esc(label)}: {esc(formatter(value))}</title></circle>')
+
+    def anchored(x, text_value, text_y, size, fill, weight="400"):
+        half = len(str(text_value)) * size * 0.29
+        anchor, place_x = "middle", x
+        if x - half < left:
+            anchor, place_x = "start", left
+        elif x + half > left + plot_width:
+            anchor, place_x = "end", left + plot_width
+        return text_el(place_x, text_y, text_value, size=size, fill=fill,
+                       anchor=anchor, weight=weight, tabular=True)
+
+    body.append(anchored(entity_x, formatter(value), y - 18, 13, "ink", "600"))
+    body.append(anchored(median_x, f"median {formatter(stats['median'])}", y + 28, 11, "muted"))
+
+    body.append(text_el(left, y + 48, formatter(low), size=10.5, fill="muted", tabular=True))
+    body.append(text_el(left + plot_width, y + 48, formatter(high), size=10.5,
+                        fill="muted", anchor="end", tabular=True))
+    body.append(text_el(left, y + 64, f"across {fmt.count(stats['n'])} {stats['peer_group']} peers",
+                        size=11, fill="muted"))
+
+    return frame(width, y + 76, "".join(body),
+                 f"{title}. {subtitle or ''} Entity at {formatter(value)}, "
+                 f"peer median {formatter(stats['median'])}.")
+
+
+def multi_series(title, subtitle, series, formatter=fmt.money, width=680, height=300,
+                 note=None, reference=None, baseline=None):
+    """Several entities on one measure over time.
+
+    One axis, one unit, up to four series. Past four the lines converge and the
+    legend stops carrying identity, so the caller folds the tail rather than
+    generating a fifth hue.
+
+    A reference series draws dashed and recessive behind the rest. It is a
+    baseline the other lines are read against, not a fifth entity, and giving it
+    a hue of its own would make it compete with them.
+
+    `baseline` sets the value the y-axis is anchored on, for indexed series where
+    100 rather than zero is the reference. Passing it releases the zero floor, so
+    it is only correct where the number genuinely has a non-zero origin.
+    """
+    series = [s for s in series if len([p for p in s["points"] if p[1] is not None]) > 1]
+    if not series:
+        return None
+    series = series[:4]
+    if reference and len([p for p in reference["points"] if p[1] is not None]) < 2:
+        reference = None
+
+    top, offset = header(title, subtitle, width)
+    left, right = 68, 150
+    tick_band, legend_band = 24, 30 + (18 if note else 0)
+    plot_top = offset + 26
+    plot_height = height - plot_top - tick_band - legend_band
+    plot_width = width - left - right
+
+    lines = series + ([reference] if reference else [])
+    years = sorted({p[0] for s in lines for p in s["points"] if p[1] is not None})
+    values = [p[1] for s in lines for p in s["points"] if p[1] is not None]
+    year_span = (years[-1] - years[0]) or 1
+
+    # A zero baseline is the default because bar-like comparisons of level need
+    # one. An index does not: it is read against its own base of 100, and holding
+    # the floor at zero pins every line into the top of the plot and hides the
+    # divergence the chart exists to show. `baseline` names the reference the
+    # axis is honest about; None means zero.
+    if baseline is not None:
+        floor = min(values + [baseline]) * 0.97
+        ceiling = max(values + [baseline]) * 1.03
+    else:
+        floor, ceiling = 0, max(values) or 1
+    domain = (ceiling - floor) or 1
+
+    px = lambda year: left + (year - years[0]) / year_span * plot_width
+    py = lambda v: plot_top + plot_height - ((v - floor) / domain) * plot_height
+
+    body = [top]
+    for v in nice_ticks(floor, ceiling, 4):
+        if v < floor:
+            continue
+        gy = py(v)
+        emphasised = baseline is not None and abs(v - baseline) < 1e-9
+        body.append(f'<line x1="{left}" y1="{gy:.1f}" x2="{left + plot_width}" y2="{gy:.1f}" '
+                    f'stroke="{token("axis" if emphasised else "grid")}" stroke-width="1"/>')
+        body.append(text_el(left - 10, gy + 4, formatter(v), size=10.5,
+                            fill="ink-2" if emphasised else "muted",
+                            anchor="end", tabular=True))
+
+    shown, last_x = [], None
+    for year in years:
+        x = px(year)
+        if last_x is None or x - last_x >= 44 or year == years[-1]:
+            if shown and year == years[-1] and x - last_x < 44:
+                shown.pop()
+            shown.append(year)
+            last_x = x
+    for year in shown:
+        body.append(text_el(px(year), plot_top + plot_height + 18, str(year), size=10.5,
+                            fill="muted", anchor="middle", tabular=True))
+
+    # Drawn first so the entities sit above it: a baseline is read through, not at.
+    if reference:
+        ref_points = [(px(y), py(v)) for y, v in reference["points"] if v is not None]
+        ref_path = " ".join(f"{'M' if i == 0 else 'L'}{x:.1f},{y:.1f}"
+                            for i, (x, y) in enumerate(ref_points))
+        body.append(f'<path d="{ref_path}" fill="none" stroke="{token("muted")}" '
+                    f'stroke-width="2" stroke-dasharray="6 4" stroke-linecap="round"/>')
+        for (x, y), (year, v) in zip(
+                ref_points, [p for p in reference["points"] if p[1] is not None]):
+            body.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="9" fill="transparent">'
+                        f'<title>{esc(reference["label"])} {year}: '
+                        f'{esc(formatter(v))}</title></circle>')
+
+    slots = ["s1", "s2", "s3", "s4"]
+    ends = []
+    for index, entry in enumerate(series):
+        colour = slots[index]
+        points = [(px(y), py(v)) for y, v in entry["points"] if v is not None]
+        path = " ".join(f"{'M' if i == 0 else 'L'}{x:.1f},{y:.1f}"
+                        for i, (x, y) in enumerate(points))
+        body.append(f'<path d="{path}" fill="none" stroke="{token(colour)}" stroke-width="2" '
+                    f'stroke-linejoin="round" stroke-linecap="round"/>')
+        for (x, y), (year, v) in zip(points, [p for p in entry["points"] if p[1] is not None]):
+            body.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="9" fill="transparent">'
+                        f'<title>{esc(entry["label"])} {year}: {esc(formatter(v))}</title></circle>')
+        ends.append((points[-1][1], points[-1][0], colour, entry["label"]))
+
+    # Nudge converging end labels apart rather than letting them overlap.
+    ends.sort()
+    placed = []
+    for y, x, colour, name in ends:
+        while placed and abs(y - placed[-1]) < 15:
+            y = placed[-1] + 15
+        placed.append(y)
+        body.append(text_el(x + 12, y + 4, truncate(name, 18), size=11, fill="ink-2"))
+
+    for y, x, colour, name in ends:
+        body.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="6" fill="{token("surface")}"/>')
+        body.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="4" fill="{token(colour)}"/>')
+
+    legend_y = plot_top + plot_height + tick_band + 14
+    x, rows_used = left, 1
+    entries = [(slots[i], e["label"], False) for i, e in enumerate(series)]
+    if reference:
+        entries.append(("muted", reference["label"], True))
+
+    for colour, raw_label, dashed in entries:
+        name = truncate(raw_label, 22)
+        span = 26 + len(name) * 6.2
+        if x > left and x + span > width - 20:      # wrap rather than run off the edge
+            x, rows_used = left, rows_used + 1
+            legend_y += 18
+        if dashed:
+            body.append(f'<line x1="{x}" y1="{legend_y - 3}" x2="{x + 12}" y2="{legend_y - 3}" '
+                        f'stroke="{token(colour)}" stroke-width="2" stroke-dasharray="4 3"/>')
+        else:
+            body.append(f'<rect x="{x}" y="{legend_y - 8}" width="10" height="10" rx="2" '
+                        f'fill="{token(colour)}"/>')
+        body.append(text_el(x + 16, legend_y + 1, name, size=11, fill="ink-2"))
+        x += span
+    if note:
+        body.append(text_el(left, legend_y + 20, note, size=11, fill="muted"))
+        rows_used += 1
+
+    return frame(width, max(height, legend_y + 30), "".join(body),
+                 f"{title}. {subtitle or ''}".strip())

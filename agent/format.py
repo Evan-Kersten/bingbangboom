@@ -43,6 +43,19 @@ def money(value):
     return "-" + text if negative else text
 
 
+def rate(value):
+    """A per-unit amount: per resident, per employee, a wage.
+
+    §4's rounding is written for budget lines, where $840K is more readable than
+    $843,217. A rate is not a budget line: rounding $1,283 per resident to "$1K"
+    destroys the figure rather than tidying it. Whole dollars with separators is
+    the readable form here, and the intent of the rule is readability.
+    """
+    if value is None:
+        return None
+    return f"${value:,.0f}"
+
+
 def percent(value):
     """Whole numbers at or above 10%, one decimal below, where the detail matters."""
     if value is None:

@@ -174,15 +174,35 @@ def choropleth(layer, values, title, subtitle, formatter=fmt.percent,
                     f'fill="{viz.token(BINS[index])}"/>')
         x += swatch + 2
     ramp_right = x - 2
-    body.append(viz.text_el(0, legend_y + 24, "lower", size=10.5, fill="muted"))
-    body.append(viz.text_el(ramp_right, legend_y + 24, "higher", size=10.5,
-                            fill="muted", anchor="end"))
+    # The bin edges, not "lower" and "higher". A reader looking at a shade wants
+    # to know what it is worth, and a ramp without numbers makes them guess.
+    if numbers:
+        body.append(viz.text_el(0, legend_y + 24, formatter(min(numbers)), size=10.5,
+                                fill="muted", tabular=True))
+        body.append(viz.text_el(ramp_right, legend_y + 24, formatter(max(numbers)),
+                                size=10.5, fill="muted", anchor="end", tabular=True))
+        # Interior breaks, labelled where they fit without colliding.
+        for index, edge in enumerate(breaks):
+            edge_x = (swatch + 2) * (index + 1) - 1
+            if 30 < edge_x < ramp_right - 30 and len(breaks) <= 2:
+                body.append(viz.text_el(edge_x, legend_y + 24, formatter(edge),
+                                        size=10.5, fill="muted", anchor="middle",
+                                        tabular=True))
+    else:
+        body.append(viz.text_el(0, legend_y + 24, "lower", size=10.5, fill="muted"))
+        body.append(viz.text_el(ramp_right, legend_y + 24, "higher", size=10.5,
+                                fill="muted", anchor="end"))
 
-    gap_x = ramp_right + 44
-    body.append(f'<rect x="{gap_x}" y="{legend_y}" width="{swatch}" height="10" '
-                f'fill="{viz.token("nodata")}"/>')
-    body.append(viz.text_el(gap_x + swatch + 8, legend_y + 9, "no data",
-                            size=10.5, fill="muted"))
+    # The no-data swatch is only shown where something actually has no data.
+    # Standing in the legend of a fully covered map, it invites a reader to hunt
+    # for a gap that is not there.
+    if covered < len(features):
+        gap_x = ramp_right + 44
+        body.append(f'<rect x="{gap_x}" y="{legend_y}" width="{swatch}" height="10" '
+                    f'fill="{viz.token("nodata")}"/>')
+        body.append(viz.text_el(gap_x + swatch + 8, legend_y + 9,
+                                f"no data ({len(features) - covered})",
+                                size=10.5, fill="muted"))
 
     coverage = f"{covered} of {len(features)} boundaries carry a value"
     body.append(viz.text_el(0, height - 8, note or coverage, size=11, fill="muted"))

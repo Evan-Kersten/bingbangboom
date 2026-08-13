@@ -49,19 +49,21 @@ def build(theme="light"):
 
     subjects = [
         ("spending_composition", "COUNTY OF BAKER",
-         "Nominal categories, so one hue for every bar. A value ramp here would "
-         "double-encode bar length as colour."),
-        ("stability_components", "CITY OF SUMPTER",
-         "Two meters rather than a bar chart: each component is a ratio against a "
-         "limit, and the composite hides which one drives it."),
+         "Level one of the drill-down. Nominal categories, so one hue for every bar; "
+         "a value ramp here would double-encode bar length as colour."),
+        ("service_area_functions", "COUNTY OF BAKER",
+         "Level two: the functions inside the largest service area, with a tick at "
+         "the median for this government type."),
+        ("peer_range", "CITY OF PORTLAND",
+         "Where one entity sits in its peer distribution. The interquartile band is "
+         "what stops a reader treating the median as a target."),
+        ("peer_range", "NEW BRIDGE WATER SUPPLY DISTRICT",
+         "The same call against a degenerate distribution. The chart refuses rather "
+         "than drawing a position against a median that is not a midpoint."),
         ("finances_over_time", "COUNTY OF BAKER",
          "Two series, same unit, one axis. Endpoint labels only."),
         ("workforce_composition", "COUNTY OF BAKER",
          "Shares are of listed functions, not of all staff."),
-        ("peer_position", "CITY OF PORTLAND",
-         "Emphasis form: the entity is the accent, the peer range is context."),
-        ("peer_position", "NEW BRIDGE WATER SUPPLY DISTRICT",
-         "The same call against a degenerate peer median. The chart refuses."),
     ]
 
     for form, entity, note in subjects:
@@ -69,18 +71,55 @@ def build(theme="light"):
         sections.append(figure(f"{form} · {entity.title()}", note,
                                result["data"]["svg"], result["data"]["table"]))
 
-    for layer, county in (("county", None), ("place", "Multnomah")):
-        result = T.render_map(store, layer, "fiscal_stability", county=county)
+    # ---- several governments on one axis ---------------------------------
+    cities = [pid(n) for n in ("CITY OF PORTLAND", "CITY OF BEND",
+                               "CITY OF EUGENE", "CITY OF SALEM")]
+    mixed = [pid("COUNTY OF MULTNOMAH")] + cities
+
+    comparisons = [
+        ("per_capita_by_service_area", mixed, {"service_area": "Public Safety"},
+         "Spending per resident on one service area. Absolute dollars rank these five "
+         "by population and answer nothing; per resident the order changes and the "
+         "county falls to the bottom, which is a fact about delegated responsibility."),
+        ("per_capita_over_time", cities, {"indexed": True},
+         "Every line rebased to 100 at the first year, with the dashed peer median "
+         "behind them. There is no price index in this data, so the baseline is peers "
+         "and not inflation, and nothing here is in real terms."),
+        ("per_capita_over_time", cities, {},
+         "The same four at level rather than growth. Indexing hides level, so the two "
+         "answer different questions and the form says which it is answering."),
+        ("service_area_across_entities", mixed, {"service_area": "Public Safety"},
+         "The same service area in absolute dollars: a snapshot, never a line, because "
+         "service-area spending exists for one year per entity."),
+    ]
+
+    for form, ids, extra, note in comparisons:
+        result = T.render_comparison(store, ids, form, **extra)
+        label = form + (" · indexed" if extra.get("indexed") else "")
+        sections.append(figure(f"{label} · {len(ids)} governments", note,
+                               result["data"]["svg"], result["data"]["table"]))
+
+    maps_shown = [
+        ("county", "spending_per_resident", None, None,
+         "What a county government spends per resident. Absolute spending would map "
+         "population, which every reader already knows."),
+        ("county", "service_area_per_resident", "Public Safety", None,
+         "One service area across all 36 counties. A blank county reports nothing "
+         "here, which usually means a city or district holds the responsibility, so "
+         "the no-data colour sits off the ramp and cannot be read as low."),
+        ("place", "spending_per_resident", None, "Multnomah",
+         "Statewide, Oregon's cities render as dots and their polygon areas are land "
+         "area, so a place map is scoped to one county."),
+    ]
+
+    for layer, metric, area, county, note in maps_shown:
+        result = T.render_map(store, layer, metric, county=county, service_area=area)
         data = result["data"]
         scope = f", scoped to {county} County" if county else ""
         sections.append(figure(
-            f"choropleth · {layer}{scope}",
-            f"{data['covered']} of {data['polygons']} boundaries carry a value. "
-            "No data has its own neutral, well off the ramp, so a coverage gap "
-            "cannot be read as a low value."
-            + (" Statewide, city polygons are dots, so a place map is scoped to a county."
-               if county else ""),
-            data["svg"], None))
+            f"choropleth · {metric} · {layer}{scope}",
+            f"{data['covered']} of {data['polygons']} boundaries carry a value. " + note,
+            data["svg"], data["table"][:8]))
 
     stamp = f' data-theme="{theme}"' if theme in ("light", "dark") else ""
     return f"""<!doctype html>

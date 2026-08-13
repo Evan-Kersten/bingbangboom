@@ -212,28 +212,54 @@ def entity_report(store, pid6):
         70, data=profile["data"], caveats=profile["caveats"],
         blocked=profile["not_computable"]))
 
-    financial = T.get_financial_position(store, pid6)
-    if financial["data"]:
-        chart = T.render_chart(store, pid6, "stability_components")
+    # Scale before composition. A reader who does not know whether this budget is
+    # large or small for its type cannot read a share, and the per-resident
+    # position says that in one figure where the composite score did not.
+    import explore
+    scale = explore.compare_to_peer_group(store, pid6, "expenditure_per_capita")
+    if scale["data"].get("peers"):
+        chart = T.render_chart(store, pid6, "peer_range")
         sections.append(_section(
-            "financial_position", "Financial position",
-            "Lead with the composite, then name the component that drives it. Never "
-            "present the rating label and the peer position as two separate findings.",
-            110, data=financial["data"], chart=chart["data"]["svg"],
-            table=chart["data"]["table"], caveats=financial["caveats"],
-            blocked=financial["not_computable"]))
+            "scale", "How big this budget is for its type",
+            "Give the figure per resident, then where it sits among peers: the median, "
+            "the middle half, and which quarter this entity falls in. State the peer "
+            "group and its count. A median without its pool is not a benchmark.",
+            100, data=scale["data"], chart=chart["data"]["svg"],
+            table=chart["data"]["table"], caveats=scale["caveats"],
+            blocked=scale["not_computable"]))
 
     spending = T.get_spending_breakdown(store, pid6)
     if spending["data"].get("service_areas"):
         chart = T.render_chart(store, pid6, "spending_composition")
         sections.append(_section(
             "spending", "Where the money goes",
-            "State the largest areas and their shares. If the unclassified bucket "
-            "exceeds the largest named category, say the breakdown is partial before "
-            "naming any category as the biggest.",
+            "State the largest areas and their shares, each against the median share "
+            "for this government type rather than against each other. If the "
+            "unclassified bucket exceeds the largest named category, say the breakdown "
+            "is partial before naming any category as the biggest.",
             110, data=spending["data"], chart=chart["data"]["svg"],
             table=chart["data"]["table"], caveats=spending["caveats"],
             blocked=spending["not_computable"]))
+
+        # One level deeper, into the largest area. This is the drill-down the
+        # report exists to demonstrate: a share is a starting point, and the
+        # functions underneath it are what a reader can act on.
+        largest = (spending["data"].get("largest_named") or {}).get("service_area")
+        if largest:
+            inside = explore.drill(store, pid6, largest)
+            functions = inside["data"].get("functions") or []
+            if functions:
+                chart = T.render_chart(store, pid6, "service_area_functions")
+                sections.append(_section(
+                    "inside_largest", f"Inside {largest}",
+                    "Name the functions and what each spends, against the median for "
+                    "that same function among peers that report it. Then give the "
+                    "vendor-addressable figure and say it is a derivation, not a "
+                    "reported line: operating and capital less personnel and less "
+                    "amounts that cannot be purchased.",
+                    110, data=inside["data"], chart=chart["data"]["svg"],
+                    table=chart["data"]["table"], caveats=inside["caveats"],
+                    blocked=inside["not_computable"]))
 
     # An entity reporting zero staff has no distribution to show. A section
     # headed "Workforce" over a chart of nothing is padding, and §3 says do not
@@ -256,14 +282,6 @@ def entity_report(store, pid6):
             "Entity totals only. Do not attribute a change to any single service area.",
             80, chart=trend_chart["data"]["svg"], table=trend_chart["data"]["table"],
             caveats=trend_chart["caveats"], blocked=trend_chart["not_computable"]))
-
-    peers = T.render_chart(store, pid6, "peer_position")
-    sections.append(_section(
-        "peers", "Against peers",
-        "A ratio, the peer group definition and the count. If the peer statistic is "
-        "degenerate, say so instead of computing a distance.",
-        80, chart=peers["data"]["svg"], table=peers["data"]["table"],
-        caveats=peers["caveats"], blocked=peers["not_computable"]))
 
     salient = T.find_salient(store, pid6)
     sections.append(_section(
@@ -323,7 +341,7 @@ def place_report(store, county_name):
                    for e in data["also_serving_filed_elsewhere"]],
             caveats=[caveat("host_county_undercaptures")]))
 
-    county_map = T.render_map(store, "place", "fiscal_stability", county=name.split()[0])
+    county_map = T.render_map(store, "place", "spending_per_resident", county=name.split()[0])
     if county_map["data"].get("svg"):
         sections.append(_section(
             "geography", "What can be mapped",
