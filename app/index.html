@@ -104,12 +104,16 @@ body {
   font-size: 15px; line-height: 1.55;
   -webkit-font-smoothing: antialiased;
 }
-.shell { display: grid; grid-template-columns: 296px 1fr; height: 100vh; }
+.shell { display: grid; grid-template-columns: 340px 1fr; height: 100vh; }
 
-/* ---------- sidebar ---------- */
+/* ---------- sidebar ----------
+   Four regions: search, the selected government, its questions, and the
+   comparison tray. Search and tray are pinned; the middle scrolls between them.
+   Nothing here opens a modal, because the chart must never be occluded while
+   the thing that controls it is being changed. */
 aside {
   background: var(--panel); border-right: 1px solid var(--edge);
-  display: flex; flex-direction: column; overflow: hidden;
+  display: flex; flex-direction: column; overflow: hidden; min-height: 0;
 }
 .brand { padding: 22px 20px 14px; display: flex; align-items: baseline; gap: 8px; }
 .brand h1 {
@@ -122,49 +126,164 @@ aside {
 }
 .mode.full { background: color-mix(in srgb, var(--pf-good) 18%, transparent); color: var(--pf-good); }
 
-.search { padding: 0 16px 12px; position: relative; }
+/* Region 1: search. */
+.search { padding: 0 16px 10px; position: relative; flex: 0 0 auto; }
 .search input {
-  width: 100%; padding: 9px 12px; font: inherit; font-size: 14px;
-  border: 1px solid var(--pf-axis); border-radius: 7px;
+  width: 100%; padding: 9px 34px 9px 12px; font: inherit; font-size: 14px;
+  border: 1px solid var(--pf-axis); border-radius: 8px;
   background: var(--pf-surface); color: var(--pf-ink);
 }
 .search input:focus { outline: 2px solid var(--pf-s1); outline-offset: -1px; border-color: transparent; }
 .search .hint {
   position: absolute; right: 26px; top: 10px; font-size: 11px; color: var(--pf-muted);
-  pointer-events: none;
+  pointer-events: none; font-variant-numeric: tabular-nums;
 }
-.search input:focus + .hint { display: none; }
+.search input:focus + .hint, .search input:not(:placeholder-shown) + .hint { display: none; }
+.facets {
+  padding: 0 20px 8px; font-size: 11px; color: var(--pf-muted);
+  font-variant-numeric: tabular-nums slashed-zero;
+}
 
-.results { overflow-y: auto; padding: 0 8px; flex: 0 0 auto; max-height: 40vh; }
+.results { overflow-y: auto; padding: 0 8px 6px; flex: 0 0 auto; max-height: 46vh; }
+.results:empty { padding: 0; }
+.rgroup {
+  font-size: 10px; letter-spacing: .09em; text-transform: uppercase; color: var(--pf-muted);
+  font-weight: 640; padding: 10px 10px 5px;
+}
+/* One primary meaning for the row, and the second action is a structurally
+   separate target on the right. A row that means two things depending on where
+   it is clicked cannot be aimed at. */
+.result-row { position: relative; display: flex; align-items: stretch; }
 .result {
-  width: 100%; text-align: left; background: none; border: 0; font: inherit;
-  padding: 8px 10px; border-radius: 6px; cursor: pointer; color: inherit;
-  display: flex; flex-direction: column; gap: 1px;
+  flex: 1; min-width: 0; text-align: left; background: none; border: 0; font: inherit;
+  padding: 6px 44px 6px 12px; border-radius: 7px; cursor: pointer; color: inherit;
+  display: flex; flex-direction: column; gap: 1px; position: relative;
 }
-.result:hover, .result:focus-visible { background: var(--pf-track); outline: none; }
-.result .nm { font-size: 13.5px; }
-.result .meta { font-size: 11.5px; color: var(--pf-muted); }
+.result .nm { font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The typed prefix stays plain and the rest is emphasised: a reader already
+   knows what they typed, and what differs between rows is the remainder. */
+.result .nm b { font-weight: 660; }
+.result .meta {
+  font-size: 11.5px; color: var(--pf-muted); display: flex; gap: 6px;
+  white-space: nowrap; overflow: hidden;
+}
+.result .mag { margin-left: auto; font-variant-numeric: tabular-nums slashed-zero; }
+/* Two highlight languages that never collide: the pointer tints, the keyboard
+   also draws a rail. Whichever device owns the position is legible at a glance. */
+.result:hover { background: var(--pf-track); }
+.result-row[aria-selected="true"] .result { background: var(--pf-track); }
+.result-row[aria-selected="true"] .result::before {
+  content: ''; position: absolute; left: 2px; top: 5px; bottom: 5px; width: 2px;
+  border-radius: 1px; background: var(--pf-s1);
+}
+.result-row .rail {
+  position: absolute; left: 2px; top: 5px; bottom: 5px; width: 3px; border-radius: 2px;
+}
+.result-row .add {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  font: inherit; font-size: 12px; line-height: 1; cursor: pointer;
+  width: 24px; height: 24px; border-radius: 12px;
+  background: var(--pf-track); border: 1px solid var(--edge); color: var(--pf-ink-2);
+  opacity: 0; display: grid; place-items: center;
+}
+.result-row:hover .add, .result-row[aria-selected="true"] .add, .add:focus-visible { opacity: 1; }
+.result-row .add:hover:not(:disabled) { border-color: var(--pf-s1); color: var(--pf-s1); }
+.result-row .add:disabled { cursor: default; }
+/* Already in the tray: shown always, not on hover, or a reader tries to add
+   the same government twice. */
+.result-row .add.in { opacity: 1; background: transparent; border-color: transparent; }
+.result-row .add.full { opacity: .35; }
 
-.chosen { padding: 14px 20px; border-top: 1px solid var(--edge); }
-.chosen .nm { font-family: var(--display); font-size: 17px; font-weight: 600; }
-.chosen .meta { font-size: 12px; color: var(--pf-muted); margin-top: 2px; }
+/* Region 2: the government everything below is about. Its name appears once,
+   here, rather than being interpolated into all sixteen questions. */
+.chosen { padding: 12px 20px; border-top: 1px solid var(--edge); flex: 0 0 auto; }
+.chosen .nm {
+  font-family: var(--display); font-size: 17px; font-weight: 600;
+  display: flex; align-items: center; gap: 7px;
+}
+.chosen .dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+.chosen .meta {
+  font-size: 11.5px; color: var(--pf-muted); margin-top: 2px;
+  font-variant-numeric: tabular-nums slashed-zero;
+}
+.chosen .compare-with {
+  margin-top: 8px; font: inherit; font-size: 12px; cursor: pointer; padding: 0;
+  background: none; border: 0; color: var(--pf-s1);
+}
+.chosen .compare-with:disabled { color: var(--pf-muted); cursor: default; }
 
-.presets { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 4px 12px 16px; }
+/* Region 3: the questions. Every group open: an accordion would hide the map of
+   what this can answer, which is the only reason the list exists. */
+.presets { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 2px 12px 14px; }
 .pgroup {
   font-size: 10px; letter-spacing: .09em; text-transform: uppercase; color: var(--pf-muted);
-  font-weight: 640; padding: 14px 8px 6px;
+  font-weight: 640; padding: 13px 8px 5px; position: sticky; top: 0;
+  background: var(--panel); z-index: 1;
 }
 .preset {
   width: 100%; text-align: left; font: inherit; font-size: 13px; cursor: pointer;
   background: none; border: 0; color: var(--pf-ink-2);
-  padding: 7px 10px; border-radius: 6px; line-height: 1.35;
+  padding: 6px 10px; border-radius: 6px; line-height: 1.35; position: relative;
 }
-.preset:hover:not(:disabled), .preset:focus-visible { background: var(--pf-track); color: var(--pf-ink); outline: none; }
-.preset:disabled { opacity: .38; cursor: not-allowed; }
-.preset:disabled { opacity: .45; }
+.preset:hover:not(:disabled), .preset:focus-visible {
+  background: var(--pf-track); color: var(--pf-ink); outline: none;
+}
+.preset:disabled { opacity: .45; cursor: not-allowed; }
 .preset.absent:disabled::after {
   content: ' · not in the data for this government'; font-size: 11px; color: var(--pf-muted);
 }
+.empty-hint {
+  padding: 26px 20px; font-size: 12.5px; color: var(--pf-muted); line-height: 1.55;
+}
+.empty-hint b { color: var(--pf-ink-2); font-weight: 600; }
+
+/* Region 4: the tray. Capacity is stated three ways, because one cue in a
+   sidebar goes unread: a count, an empty slot, and a button that will not fire. */
+.tray {
+  border-top: 1px solid var(--edge); padding: 12px 16px 14px; background: var(--panel);
+  flex: 0 0 auto;
+}
+.tray h2 {
+  font-size: 10px; letter-spacing: .09em; text-transform: uppercase;
+  color: var(--pf-muted); font-weight: 640; margin: 0 0 8px;
+  display: flex; justify-content: space-between; align-items: baseline;
+}
+.tray h2 .of { font-variant-numeric: tabular-nums; letter-spacing: 0; text-transform: none; }
+.tray .empty { font-size: 12px; color: var(--pf-muted); line-height: 1.5; margin: 0; }
+.tray .empty kbd {
+  font: inherit; font-size: 11px; background: var(--pf-track); border: 1px solid var(--edge);
+  border-radius: 4px; padding: 1px 5px; color: var(--pf-ink-2);
+}
+.picked { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 9px; }
+.chip {
+  font: inherit; font-size: 12px; cursor: pointer; display: inline-flex; gap: 6px;
+  align-items: center; background: var(--pf-track); color: var(--pf-ink);
+  border: 1px solid var(--edge); padding: 3px 8px; border-radius: 14px; height: 28px;
+  max-width: 100%;
+}
+.chip .dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
+.chip .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip::after { content: '×'; color: var(--pf-muted); font-size: 14px; }
+.chip:hover::after { color: var(--pf-s3); }
+/* Highlighted by the first backspace, removed by the second, so an overshoot
+   never silently destroys a selection that took a search to find. */
+.chip.armed { border-color: var(--pf-s3); box-shadow: 0 0 0 2px color-mix(in srgb, var(--pf-s3) 22%, transparent); }
+.slot {
+  height: 28px; border: 1px dashed var(--pf-axis); border-radius: 14px;
+  display: inline-flex; align-items: center; gap: 6px; padding: 0 10px;
+  font-size: 11.5px; color: var(--pf-muted);
+}
+.tray select {
+  width: 100%; font: inherit; font-size: 12.5px; padding: 6px 8px; margin-bottom: 6px;
+  border: 1px solid var(--pf-axis); border-radius: 6px;
+  background: var(--pf-surface); color: var(--pf-ink);
+}
+.tray .draw {
+  width: 100%; font: inherit; font-size: 13px; font-weight: 560; cursor: pointer;
+  background: var(--pf-s1); color: #fff; border: 0; padding: 8px; border-radius: 7px;
+  margin-top: 4px;
+}
+.tray .draw:disabled { opacity: .4; cursor: not-allowed; }
 
 /* ---------- conversation ---------- */
 main { display: flex; flex-direction: column; overflow: hidden; }
@@ -213,7 +332,8 @@ th {
   text-align: left; font-size: 10px; letter-spacing: .07em; text-transform: uppercase;
   color: var(--pf-muted); border-bottom: 1px solid var(--pf-axis); padding: 6px 14px 6px 0;
 }
-td { padding: 6px 14px 6px 0; border-bottom: 1px solid var(--edge); font-variant-numeric: tabular-nums; }
+td { padding: 6px 14px 6px 0; border-bottom: 1px solid var(--edge);
+     font-variant-numeric: tabular-nums slashed-zero; }
 tr:last-child td { border-bottom: 0; }
 
 /* §15.1 interpretation: what was understood, before anything else. Overlapping
@@ -239,7 +359,8 @@ tr:last-child td { border-bottom: 0; }
   font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase;
   color: var(--pf-muted); font-weight: 620;
 }
-.figure .val { font-size: 27px; font-weight: 620; line-height: 1.15; letter-spacing: -.02em; }
+.figure .val { font-size: 27px; font-weight: 620; line-height: 1.15; letter-spacing: -.02em;
+               font-variant-numeric: tabular-nums slashed-zero; }
 .figure .val { font-family: var(--display); }
 .figure .ctx {
   font-size: 12px; color: var(--pf-ink-2); margin-top: 5px; padding-top: 6px;
@@ -372,26 +493,34 @@ tr:last-child td { border-bottom: 0; }
 <div class="shell">
   <aside>
     <div class="brand"><h1>Public Foundry</h1><span class="mode" id="mode">…</span></div>
+
     <div class="search">
-      <input id="q" type="search" placeholder="Search 1,529 governments" autocomplete="off" aria-label="Search governments">
+      <input id="q" type="search" placeholder="Search 1,529 governments"
+             autocomplete="off" spellcheck="false" role="combobox"
+             aria-expanded="false" aria-controls="results" aria-autocomplete="list"
+             aria-label="Search governments and questions">
       <span class="hint">/</span>
     </div>
-    <div class="results" id="results"></div>
+    <div class="facets" id="facets" hidden></div>
+    <div class="results" id="results" role="listbox" aria-label="Search results"></div>
+
     <div class="chosen" id="chosen" hidden></div>
     <div class="presets" id="presets"></div>
+
     <div class="tray">
-      <h2>Compare governments</h2>
+      <h2>Compare governments <span class="of" id="tray-count"></span></h2>
       <div class="picked" id="picked"></div>
-      <p class="empty" id="tray-empty">Hover a search result and press <b>+</b> to add it.
-      Two or more governments can be put on one axis.</p>
+      <p class="empty" id="tray-empty">Add up to four and chart them side by side.
+      Press <kbd>+</kbd> on a search result, or <kbd>⌘</kbd><kbd>↵</kbd> while it is
+      highlighted.</p>
       <div id="tray-controls" hidden>
-        <select id="cmp-form">
+        <select id="cmp-form" aria-label="What to compare">
           <option value="per_capita_by_service_area">Spending per resident, by service area</option>
           <option value="per_capita_over_time">Spending per resident, indexed over time</option>
           <option value="service_area_across_entities">Total spending on a service area</option>
           <option value="entities_over_time">Total spending over time</option>
         </select>
-        <select id="cmp-area"></select>
+        <select id="cmp-area" aria-label="Service area"></select>
         <button class="draw" id="cmp-draw">Draw the comparison</button>
       </div>
     </div>
@@ -561,106 +690,275 @@ const STATIC_PRESET_SHELL = [
   loadPresets();
   loadAreas();
   drawTray();
+  $('q').focus();
 })();
 
-/* ---------- search ---------- */
-let searchTimer;
-$('q').addEventListener('input', (event) => {
-  clearTimeout(searchTimer);
-  const term = event.target.value;
-  searchTimer = setTimeout(async () => {
-    if (term.trim().length < 2) { $('results').innerHTML = ''; return; }
-    const { matches } = await api('/api/search?q=' + encodeURIComponent(term));
-    $('results').innerHTML = matches.map((m, i) => `
-      <div class="result-row">
-        <button class="result" data-i="${i}">
-          <span class="nm">${esc(m.common_name || m.legal_name)}</span>
-          <span class="meta">${esc(m.gov_type_name)}${m.host_county ? ' · ' + esc(title(m.host_county)) : ''}</span>
-        </button>
-        <button class="add" data-add="${i}" title="Add to the comparison">+</button>
-      </div>`).join('');
-    [...$('results').querySelectorAll('.result')].forEach((node) => {
-      node.onclick = () => choose(matches[node.dataset.i]);
-    });
-    [...$('results').querySelectorAll('.add')].forEach((node) => {
-      node.onclick = (e) => { e.stopPropagation(); addToComparison(matches[node.dataset.add]); };
-    });
-  }, 130);
+/* ---------- search ----------
+   The ARIA combobox contract: arrow keys move a pointer inside the listbox
+   while DOM focus stays in the input, so a reader can keep typing to refine
+   without leaving the highlighted row. Moving focus into the list instead is
+   what makes "type three letters, arrow twice, add" stop being one gesture. */
+const SERIES = ['s1', 's2', 's3', 's4'];
+const MAX_COMPARE = 4;
+let comparison = [], AREAS = null, matches = [], active = -1, armedChip = -1;
+let pointerLive = true;
+
+function colourFor(pid6) {
+  const at = comparison.findIndex((c) => c.pid6 === pid6);
+  return at < 0 ? null : `var(--pf-${SERIES[at]})`;
+}
+
+function magnitude(match) {
+  if (match.population) return `${match.population.toLocaleString('en-US')} residents`;
+  if (match.total_expenditure) return moneyShort(match.total_expenditure);
+  return '';
+}
+
+function moneyShort(value) {
+  const size = Math.abs(value);
+  if (size >= 1e9) return `$${(size / 1e9).toFixed(1)}B`;
+  if (size >= 1e6) return `$${Math.round(size / 1e6)}M`;
+  if (size >= 1e3) return `$${Math.round(size / 1e3)}K`;
+  return `$${Math.round(size)}`;
+}
+
+/* A reader already knows the characters they typed. Emphasising the rest is
+   what makes six Springfields tell themselves apart at a glance. */
+function splitMatch(name, term) {
+  const at = name.toLowerCase().indexOf(term.toLowerCase());
+  if (!term || at < 0) return esc(name);
+  return esc(name.slice(0, at + term.length)) + '<b>' + esc(name.slice(at + term.length)) + '</b>';
+}
+
+function drawResults(term) {
+  const box = $('results');
+  if (!matches.length) {
+    box.innerHTML = '';
+    $('facets').hidden = true;
+    $('q').setAttribute('aria-expanded', 'false');
+    return;
+  }
+  const presetHits = entity ? presetsMatching(term) : [];
+  $('facets').hidden = false;
+  $('facets').textContent =
+    `${matches.length} government${matches.length === 1 ? '' : 's'}`
+    + (presetHits.length ? ` · ${presetHits.length} question${presetHits.length === 1 ? '' : 's'}` : '');
+
+  const rows = matches.map((m, i) => {
+    const name = m.common_name || m.legal_name;
+    const inTray = comparison.some((c) => c.pid6 === m.pid6);
+    const full = comparison.length >= MAX_COMPARE;
+    const colour = colourFor(m.pid6);
+    return `<div class="result-row" role="option" id="opt-${i}" data-i="${i}"
+                 aria-selected="${i === active}">
+      ${colour ? `<span class="rail" style="background:${colour}"></span>` : ''}
+      <button class="result" tabindex="-1">
+        <span class="nm">${splitMatch(name, term)}</span>
+        <span class="meta">
+          <span>${esc(m.gov_type_name)}${m.host_county ? ' · ' + esc(title(m.host_county)) : ''}</span>
+          <span class="mag">${esc(magnitude(m))}</span>
+        </span>
+      </button>
+      <button class="add ${inTray ? 'in' : ''} ${!inTray && full ? 'full' : ''}"
+              tabindex="-1" ${inTray || full ? 'disabled' : ''}
+              title="${inTray ? 'Already in the comparison'
+                : full ? 'Comparison is full — remove one to add another'
+                : 'Add to comparison'}"
+              aria-label="${inTray ? 'Already comparing' : 'Add'} ${esc(name)}"
+      >${inTray ? '✓' : '+'}</button>
+    </div>`;
+  }).join('');
+
+  const questions = presetHits.map((p) => `
+    <button class="preset" data-id="${p.id}" data-label="${esc(p.label)}"
+            data-question="1">${esc(p.label)}</button>`).join('');
+
+  box.innerHTML = `<div class="rgroup">Governments</div>${rows}`
+    + (questions ? `<div class="rgroup">Questions about ${esc(entityName())}</div>${questions}` : '');
+
+  box.querySelectorAll('.result-row').forEach((node) => {
+    const index = Number(node.dataset.i);
+    node.querySelector('.result').onclick = () => choose(matches[index]);
+    const add = node.querySelector('.add');
+    if (!add.disabled) {
+      add.onclick = (event) => { event.stopPropagation(); addToComparison(matches[index]); };
+    }
+    node.onmousemove = () => { if (pointerLive) setActive(index, false); };
+  });
+  box.querySelectorAll('[data-question]').forEach((node) => {
+    node.onclick = () => ask(node.dataset.label, { id: node.dataset.id });
+  });
+  $('q').setAttribute('aria-expanded', 'true');
+}
+
+function presetsMatching(term) {
+  if (!term || term.length < 2) return [];
+  const needle = term.toLowerCase();
+  return (PRESETS_CACHE || []).filter(
+    (p) => p.available && p.label.toLowerCase().includes(needle));
+}
+
+function setActive(index, scroll) {
+  active = index;
+  const rows = [...$('results').querySelectorAll('.result-row')];
+  rows.forEach((node, i) => node.setAttribute('aria-selected', String(i === index)));
+  const node = rows[index];
+  $('q').setAttribute('aria-activedescendant', node ? node.id : '');
+  if (node && scroll) node.scrollIntoView({ block: 'nearest' });
+}
+
+$('q').addEventListener('input', async (event) => {
+  const term = event.target.value.trim();
+  armedChip = -1; drawTray();
+  if (term.length < 2) { matches = []; active = -1; drawResults(''); return; }
+  // No debounce. The whole entity list is in the browser, so filtering is a
+  // synchronous pass over 1,529 rows and a delay would only add latency to a
+  // keystroke that has already been answered.
+  const result = await api('/api/search?q=' + encodeURIComponent(term));
+  if ($('q').value.trim() !== term) return;   // a later keystroke already won
+  matches = result.matches;
+  active = matches.length ? 0 : -1;
+  drawResults(term);
+  setActive(active, false);
 });
 
-document.addEventListener('keydown', (event) => {
-  if (event.key === '/' && document.activeElement !== $('q') && document.activeElement !== $('input')) {
-    event.preventDefault(); $('q').focus();
+$('q').addEventListener('keydown', (event) => {
+  const rows = matches.length;
+  if (event.key === 'ArrowDown' || (event.ctrlKey && event.key === 'n')) {
+    event.preventDefault(); pointerLive = false;
+    if (rows) setActive(Math.min(active + 1, rows - 1), true);
+  } else if (event.key === 'ArrowUp' || (event.ctrlKey && event.key === 'p')) {
+    event.preventDefault(); pointerLive = false;
+    if (rows) setActive(Math.max(active - 1, 0), true);
+  } else if (event.key === 'Enter' && active >= 0 && matches[active]) {
+    event.preventDefault();
+    // Primary is select; the modifier is the second action, so the row itself
+    // never has two meanings.
+    if (event.metaKey || event.ctrlKey) addToComparison(matches[active]);
+    else choose(matches[active]);
+  } else if (event.key === 'Escape') {
+    event.preventDefault();
+    if ($('q').value) { $('q').value = ''; matches = []; active = -1; drawResults(''); }
+    else $('q').blur();
+  } else if (event.key === 'Backspace' && !$('q').value && comparison.length) {
+    // First press arms the last chip, second removes it. An overshoot while
+    // clearing a typo should not destroy a selection that took a search.
+    event.preventDefault();
+    if (armedChip < 0) armedChip = comparison.length - 1;
+    else { comparison.splice(armedChip, 1); armedChip = -1; }
+    drawTray(); drawResults($('q').value.trim());
   }
 });
 
+document.addEventListener('mousemove', () => { pointerLive = true; }, { passive: true });
+
+document.addEventListener('keydown', (event) => {
+  if ((event.key === '/' || (event.key === 'k' && (event.metaKey || event.ctrlKey)))
+      && document.activeElement !== $('q') && document.activeElement !== $('input')) {
+    event.preventDefault(); $('q').focus(); $('q').select();
+  }
+});
+
+function entityName() {
+  return entity ? (entity.common_name || entity.legal_name) : '';
+}
+
 function choose(match) {
   entity = match;
-  addToComparison(match, true);
+  const colour = colourFor(match.pid6);
+  const population = match.population
+    ? `pop. ${match.population.toLocaleString('en-US')}` : null;
   $('chosen').hidden = false;
-  $('chosen').innerHTML = `<div class="nm">${esc(match.common_name || match.legal_name)}</div>
-    <div class="meta">${esc(match.legal_name)}</div>`;
-  $('results').innerHTML = '';
+  $('chosen').innerHTML = `
+    <div class="nm">${colour ? `<span class="dot" style="background:${colour}"></span>` : ''}
+      ${esc(entityName())}</div>
+    <div class="meta">${esc(match.gov_type_name)}${
+      match.host_county ? ' · ' + esc(title(match.host_county)) + ' County' : ''}${
+      population ? ' · ' + population : ''}</div>
+    <button class="compare-with" id="compare-with">⊕ Compare with…</button>`;
+  $('compare-with').onclick = () => { $('q').focus(); $('q').select(); };
+  matches = []; active = -1;
   $('q').value = '';
+  drawResults('');
   loadPresets();
 }
 
+let PRESETS_CACHE = null;
+
 async function loadPresets() {
-  const { presets } = await api('/api/presets' + (entity ? '?pid6=' + entity.pid6 : ''));
+  if (!entity) {
+    PRESETS_CACHE = null;
+    $('presets').innerHTML = `<div class="empty-hint">
+      Search for a city, county, school district or special district to begin.
+      <br><br>Then follow one budget down: <b>where the money goes</b>, into the
+      <b>functions</b> inside one service area, to <b>what of it is purchasable</b>.</div>`;
+    return;
+  }
+  const { presets } = await api('/api/presets?pid6=' + entity.pid6);
+  PRESETS_CACHE = presets;
   const groups = {};
   presets.forEach((p) => { (groups[p.group] ||= []).push(p); });
   $('presets').innerHTML = Object.entries(groups).map(([group, items]) => `
     <div class="pgroup">${esc(group)}</div>
     ${items.map((p) => {
-      const needsEntity = !entity && p.id !== 'ecosystem' && p.id !== 'map_area';
-      const absent = Boolean(entity) && !p.available;
+      const absent = !p.available;
       return `<button class="preset${absent ? ' absent' : ''}" data-id="${p.id}"
-        data-label="${esc(p.label)}" ${needsEntity || absent ? 'disabled' : ''
-      }>${esc(p.label)}</button>`;
+        data-label="${esc(p.label)}" ${absent ? 'disabled' : ''}>${esc(p.label)}</button>`;
     }).join('')}`).join('');
-  [...document.querySelectorAll('.preset')].forEach((node) => {
+  [...$('presets').querySelectorAll('.preset')].forEach((node) => {
     node.onclick = () => ask(node.dataset.label, { id: node.dataset.id });
   });
 }
 
-/* ---------- comparison tray ---------- */
-/* Four lines is the cap the renderer enforces, so the tray stops at four rather
-   than letting a reader build a set the chart will silently truncate. */
-const MAX_COMPARE = 4;
-let comparison = [], AREAS = null;
-
+/* ---------- comparison tray ----------
+   Capacity is stated three ways at once, because a single cue in a sidebar goes
+   unread: a count in the heading, an empty slot where the next one lands, and a
+   button that will not fire below two. */
 function addToComparison(match, quiet) {
   if (comparison.some((c) => c.pid6 === match.pid6)) return;
-  if (comparison.length >= MAX_COMPARE) {
-    if (!quiet) comparison.shift();
-    else return;
-  }
+  if (comparison.length >= MAX_COMPARE) return;
   comparison.push(match);
+  armedChip = -1;
   drawTray();
+  drawResults($('q').value.trim());
 }
 
 function drawTray() {
-  const picked = $('picked'), controls = $('tray-controls');
-  picked.innerHTML = comparison.map((c, i) =>
-    `<button data-i="${i}">${esc(c.common_name || c.legal_name)}</button>`).join('');
-  [...picked.children].forEach((node) => {
-    node.onclick = () => { comparison.splice(+node.dataset.i, 1); drawTray(); };
-  });
+  const picked = $('picked');
   const ready = comparison.length >= 2;
+  const full = comparison.length >= MAX_COMPARE;
+
+  picked.innerHTML = comparison.map((c, i) => `
+    <button class="chip${i === armedChip ? ' armed' : ''}" data-i="${i}"
+            aria-label="Remove ${esc(c.common_name || c.legal_name)} from the comparison">
+      <span class="dot" style="background:var(--pf-${SERIES[i]})"></span>
+      <span class="nm">${esc(c.common_name || c.legal_name)}</span>
+    </button>`).join('')
+    + (full ? '' : `<span class="slot">＋ ${comparison.length === 1
+        ? 'add one more' : comparison.length ? 'add another' : ''}</span>`);
+
+  [...picked.querySelectorAll('.chip')].forEach((node) => {
+    node.onclick = () => {
+      comparison.splice(Number(node.dataset.i), 1);
+      armedChip = -1;
+      drawTray(); drawResults($('q').value.trim());
+    };
+  });
+
+  $('tray-count').textContent = comparison.length ? `${comparison.length} of ${MAX_COMPARE}` : '';
   $('tray-empty').hidden = comparison.length > 0;
-  controls.hidden = comparison.length === 0;
+  $('tray-controls').hidden = comparison.length === 0;
   $('cmp-draw').disabled = !ready;
   $('cmp-draw').textContent = ready
-    ? `Draw ${comparison.length} governments`
-    : 'Add one more government';
+    ? `Chart ${comparison.length} governments`
+    : 'Add one more to compare';
   syncAreaVisibility();
 }
 
 /* Two of the four forms are within a service area and two are not, so the area
    picker appears only where it changes the answer. */
 function syncAreaVisibility() {
-  const form = $('cmp-form').value;
-  $('cmp-area').hidden = !form.includes('service_area');
+  $('cmp-area').hidden = !$('cmp-form').value.includes('service_area');
 }
 
 async function loadAreas() {

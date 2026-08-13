@@ -44,9 +44,15 @@ def export(out_dir):
     data_dir = os.path.join(out_dir, "data")
     os.makedirs(data_dir, exist_ok=True)
 
+    # The magnitude rides along because it is what tells two same-named
+    # governments apart in a result row, and the browser filters this list
+    # itself rather than calling a search endpoint.
     entities = store.rows(
-        "SELECT pid6, legal_name, common_name, gov_type_name, host_county FROM entities "
-        "ORDER BY gov_type_name, common_name")
+        "SELECT e.pid6, e.legal_name, e.common_name, e.gov_type_name, e.host_county, "
+        "w.population, o.total_expenditure FROM entities e "
+        "LEFT JOIN workforce_profile w ON w.pid6 = e.pid6 "
+        "LEFT JOIN operating_vs_capital o ON o.pid6 = e.pid6 "
+        "ORDER BY e.gov_type_name, e.common_name")
 
     # The search index is small enough to filter in the browser, which is both
     # simpler than a search endpoint and faster than one.

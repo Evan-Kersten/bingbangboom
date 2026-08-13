@@ -277,6 +277,24 @@ def _compare_headline(result):
     return line
 
 
+def _with_magnitude(match):
+    """Attach the one figure that tells two same-named governments apart.
+
+    Oregon has several Springfields and a great many Washingtons, and a row
+    reading only "Municipal · Marion" does not distinguish them. Population where
+    there is one, total spending otherwise, because a school district serves an
+    enrollment rather than a resident count.
+    """
+    row = STORE.row(
+        "SELECT w.population, o.total_expenditure FROM entities e "
+        "LEFT JOIN workforce_profile w ON w.pid6 = e.pid6 "
+        "LEFT JOIN operating_vs_capital o ON o.pid6 = e.pid6 WHERE e.pid6 = ?",
+        match["pid6"]) or {}
+    return {**match,
+            "population": row.get("population"),
+            "total_expenditure": row.get("total_expenditure")}
+
+
 def _section_readout(section, entity=None):
     """One or two sentences of real figures for a report section.
 
@@ -757,7 +775,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if len(term) < 2:
                 return self._json({"matches": []})
             result = T.find_entity(STORE, term, limit=12)
-            return self._json({"matches": result["data"]["matches"],
+            return self._json({"matches": [_with_magnitude(m)
+                                           for m in result["data"]["matches"]],
                                "ambiguous": any(c["code"] == "ambiguous_name"
                                                 for c in result["caveats"])})
 
