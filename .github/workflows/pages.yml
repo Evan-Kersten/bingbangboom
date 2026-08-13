@@ -40,14 +40,15 @@ jobs:
         with:
           python-version: '3.11'
 
+      # The dissolve pilot writes into the same store, so it runs as the last
+      # step of the build rather than as a step here. It was a separate step
+      # while a rebuild silently dropped its table; now a build that does not
+      # produce it is not a build.
       - name: Build the store
         run: python3 etl/build.py
 
       - name: Verify the store
         run: python3 etl/verify.py
-
-      - name: Add measured service extent
-        run: python3 etl/dissolve_multnomah.py
 
       - name: Run the test suites
         run: |

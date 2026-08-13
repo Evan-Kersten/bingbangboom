@@ -252,4 +252,8 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    # main() returns the district count for build.py, which reports it. A
+    # process exit code is not a return value: handing it 31 recovered districts
+    # is handing it exit 31, which every CI runner reads as a failure.
+    main()
+    sys.exit(0)
