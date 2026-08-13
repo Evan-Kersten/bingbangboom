@@ -30,10 +30,19 @@ LAYERS = {
 BINS = ["bin-1", "bin-2", "bin-3", "bin-4", "bin-5"]
 
 
+# Boundary files are read-only and parse to tens of megabytes of coordinates.
+# Re-reading one per call is what made a whole-corpus export re-parse Oregon's
+# 378 place polygons fifteen hundred times.
+_LAYERS_LOADED = {}
+
+
 def load_layer(layer, build=BUILD):
-    path, key = LAYERS[layer]
-    with open(os.path.join(build, path)) as fh:
-        return json.load(fh), key
+    key = (layer, build)
+    if key not in _LAYERS_LOADED:
+        path, property_key = LAYERS[layer]
+        with open(os.path.join(build, path)) as fh:
+            _LAYERS_LOADED[key] = (json.load(fh), property_key)
+    return _LAYERS_LOADED[key]
 
 
 def _project(features, width, height, padding=12):

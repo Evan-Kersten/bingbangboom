@@ -35,20 +35,33 @@ BLOCK_ORDER = {
     "governance": ["interpretation", "answer", "table", "limits", "next"],
     "financial_interpretation": ["interpretation", "answer", "figure", "chart",
                                  "limits", "next"],
-    "what_stands_out": ["interpretation", "answer", "chart", "limits", "next"],
-    "place_or_cross_entity": ["interpretation", "answer", "table", "map",
-                              "limits", "next"],
+    # A "what stands out" answer takes a table where the finding is a ranking of
+    # divergences: the lead goes in the answer and the ranking is what the reader
+    # checks it against. A cross-entity answer takes a chart, because several
+    # governments on one axis is a comparison a table makes the reader perform.
+    "what_stands_out": ["interpretation", "answer", "figure", "chart", "table",
+                        "limits", "next"],
+    "place_or_cross_entity": ["interpretation", "answer", "figure", "chart",
+                              "table", "map", "limits", "next"],
     "issue_or_topic": ["interpretation", "answer", "table", "limits", "next"],
     "investment_vs_conditions": ["interpretation", "answer", "table", "limits", "next"],
 }
 
 # Follow-ups are offered only where the block behind them exists for the entity.
+# Ordered so the first few carry a reader downward: from the whole budget, to
+# the categories it splits into, to the functions inside one, to what of that is
+# actually purchasable. A follow-up that opens a new topic is offered after the
+# ones that go deeper into this one.
 NEXT_QUESTIONS = [
     ("has_spending_breakdown", "Where does the money actually go?"),
-    ("has_fiscal_stability", "What is driving the fiscal stability score?"),
+    ("has_spending_breakdown", "Which service areas is it unusual on?"),
+    ("has_financial_functions", "Take me inside its largest service area"),
+    ("has_financial_functions", "What in its biggest function is actually purchasable?"),
+    ("has_operating_vs_capital", "Is this budget large or small for its type?"),
+    ("has_spending_breakdown", "How does its public safety spending compare per resident?"),
+    ("has_financial_trends", "Has spending per resident outgrown its peers?"),
     ("has_workforce", "How is the workforce distributed?"),
     ("has_offices", "Who governs this entity?"),
-    ("has_financial_trends", "How has revenue and spending moved?"),
     (None, "Which governments serve this place?"),
     (None, "What can this data not tell me?"),
 ]
@@ -83,11 +96,14 @@ def interpretation(store, entity, vintages=None, assumption=None):
     }
 
 
-def figure(label, value_text, marks=None, basis=None, year=None):
+def figure(label, value_text, marks=None, basis=None, year=None, context=None):
+    """`context` is the comparison the figure is read against, which §8 requires
+    to travel with any number offered as large or small. A median without its
+    pool is not a benchmark, so it belongs on the figure, not in a footnote."""
     kinds = sorted(marks or [])
     return {"kind": "figure", "label": label,
             "value": fmt.mark(value_text, kinds),
-            "basis": basis, "year": year,
+            "basis": basis, "year": year, "context": context,
             "legend": fmt.mark_legend(kinds)}
 
 

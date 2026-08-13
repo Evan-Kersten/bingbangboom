@@ -151,6 +151,35 @@ def compare_to_peer_group(store, pid6, metric, service_area=None):
 
 # ------------------------------------------------------------- drill-down
 
+def _function_medians(store, gov_type):
+    """Median operating-plus-capital spending per named function, by type.
+
+    Taken over entities that report the function, so it says what a government
+    that does this spends, not what a typical government spends. A pool under
+    three is not a median and returns None, which suppresses the tick.
+    """
+    buckets = {}
+    for record in store.rows(
+            "SELECT f.function_name AS name, "
+            "       COALESCE(f.operating_expenditures, 0) "
+            "     + COALESCE(f.capital_expenditures, 0) AS v "
+            "FROM financial_functions f JOIN entities e ON e.pid6 = f.pid6 "
+            "WHERE e.gov_type_name = ? AND COALESCE(f.operating_expenditures, 0) "
+            "  + COALESCE(f.capital_expenditures, 0) > 0", gov_type):
+        buckets.setdefault(record["name"], []).append(record["v"])
+
+    out = {}
+    for name, values in buckets.items():
+        values.sort()
+        if len(values) < 3:
+            out[name] = {"median": None, "n": len(values)}
+            continue
+        median, p75 = quantile(values, 0.5), quantile(values, 0.75)
+        degenerate = not median or (p75 and median / p75 < DEGENERATE_RATIO)
+        out[name] = {"median": None if degenerate else median, "n": len(values)}
+    return out
+
+
 def drill(store, pid6, service_area=None, function_name=None):
     """One level of the breakdown, deepening as arguments are supplied."""
     entity = T._entity(store, pid6)
@@ -214,28 +243,19 @@ def drill(store, pid6, service_area=None, function_name=None):
         # the typical function rather than to other Police Protection budgets, and
         # the area median is built from vendor-addressable totals, which are a
         # different quantity from the operating-plus-capital figure shown.
+        medians = _cached(store, ("fn_median", gov_type),
+                          lambda: _function_medians(store, gov_type))
         functions = []
         for row in rows:
-            values = sorted(
-                record["v"] for record in store.rows(
-                    "SELECT COALESCE(f.operating_expenditures, 0) "
-                    "     + COALESCE(f.capital_expenditures, 0) AS v "
-                    "FROM financial_functions f JOIN entities e ON e.pid6 = f.pid6 "
-                    "WHERE f.function_name = ? AND e.gov_type_name = ? "
-                    "AND COALESCE(f.operating_expenditures, 0) "
-                    "  + COALESCE(f.capital_expenditures, 0) > 0",
-                    row["function_name"], gov_type))
-            median = quantile(values, 0.5) if len(values) >= 3 else None
-            p75 = quantile(values, 0.75) if len(values) >= 3 else None
-            degenerate = not median or (p75 and median / p75 < DEGENERATE_RATIO)
+            stats = medians.get(row["function_name"]) or {"median": None, "n": 0}
             functions.append({
                 "label": row["function_name"],
                 "value": (row["operating_expenditures"] or 0) + (row["capital_expenditures"] or 0),
                 "addressable": row["total_function_pae"],
                 "share_of_entity": row["pct_of_entity_total"],
-                "peer_median": None if degenerate else median,
-                "peer_n": len(values),
-                "peer_degenerate": int(bool(degenerate)),
+                "peer_median": stats["median"],
+                "peer_n": stats["n"],
+                "peer_degenerate": int(stats["median"] is None),
             })
 
         compared = [f for f in functions if f["peer_median"]]
@@ -441,6 +461,22 @@ def compare_service_area(store, pid6_list, service_area):
 DEGENERATE_RATIO = 0.05
 
 
+def _cached(store, key, build):
+    """Memoize a whole-type scan on the store.
+
+    A per-resident peer distribution is a scan of every entity of a government
+    type, and it is identical for every entity of that type. Recomputing it per
+    call is what turned a forty-second static export into an hour-long one. The
+    store is opened read-only, so a value cannot go stale inside its lifetime.
+    """
+    cache = getattr(store, "_explore_cache", None)
+    if cache is None:
+        cache = store._explore_cache = {}
+    if key not in cache:
+        cache[key] = build()
+    return cache[key]
+
+
 def quantile(ordered, fraction):
     if not ordered:
         return None
@@ -457,6 +493,47 @@ def _population(store, pid6):
     row = store.row("SELECT population, year FROM workforce_profile WHERE pid6=? "
                     "AND population > 0", pid6)
     return (row["population"], row["year"]) if row else (None, None)
+
+
+def _per_capita_area_stats(store, gov_type, service_area):
+    values = sorted(
+        record["v"] for record in store.rows(
+            "SELECT s.total * 1.0 / w.population AS v "
+            "FROM spending_by_service_area s "
+            "JOIN workforce_profile w ON w.pid6 = s.pid6 "
+            "JOIN entities e ON e.pid6 = s.pid6 "
+            "WHERE s.service_area = ? AND e.gov_type_name = ? "
+            "AND w.population > 0 AND s.total > 0", service_area, gov_type))
+    if len(values) < 3:
+        return None
+    median, p75 = quantile(values, 0.5), quantile(values, 0.75)
+    return {"n": len(values), "low": values[0], "p25": quantile(values, 0.25),
+            "median": median, "p75": p75, "high": values[-1],
+            "degenerate": bool(median <= 0 or (p75 and median / p75 < DEGENERATE_RATIO))}
+
+
+def _per_capita_baseline(store, gov_type):
+    """Median per-resident spending by year, over a balanced panel.
+
+    Balanced on purpose: a median taken over a pool that changes size year to
+    year moves when its membership moves, and that would read as a trend.
+    """
+    panel = {}
+    for record in store.rows(
+            "SELECT f.pid6, f.year, f.expenditure * 1.0 / w.population AS v "
+            "FROM financial_trends f "
+            "JOIN workforce_profile w ON w.pid6 = f.pid6 "
+            "JOIN entities e ON e.pid6 = f.pid6 "
+            "WHERE e.gov_type_name = ? AND w.population > 0 AND f.expenditure > 0",
+            gov_type):
+        panel.setdefault(record["pid6"], {})[record["year"]] = record["v"]
+    all_years = sorted({y for v in panel.values() for y in v})
+    balanced = [v for v in panel.values() if len(v) == len(all_years)]
+    if len(balanced) < 5:
+        return None
+    return {"label": f"{gov_type} median", "gov_type": gov_type, "n": len(balanced),
+            "points": [(year, quantile(sorted(v[year] for v in balanced), 0.5))
+                       for year in all_years]}
 
 
 def per_capita_by_service_area(store, pid6_list, service_area):
@@ -504,21 +581,10 @@ def per_capita_by_service_area(store, pid6_list, service_area):
     # band a reader compares against is built the way the bars are.
     peers = {}
     for gov_type in sorted({r["gov_type"] for r in rows}):
-        values = sorted(
-            record["v"] for record in store.rows(
-                "SELECT s.total * 1.0 / w.population AS v "
-                "FROM spending_by_service_area s "
-                "JOIN workforce_profile w ON w.pid6 = s.pid6 "
-                "JOIN entities e ON e.pid6 = s.pid6 "
-                "WHERE s.service_area = ? AND e.gov_type_name = ? "
-                "AND w.population > 0 AND s.total > 0", service_area, gov_type))
-        if len(values) >= 3:
-            median, p75 = quantile(values, 0.5), quantile(values, 0.75)
-            peers[gov_type] = {
-                "n": len(values), "low": values[0], "p25": quantile(values, 0.25),
-                "median": median, "p75": p75, "high": values[-1],
-                "degenerate": bool(median <= 0 or (p75 and median / p75 < DEGENERATE_RATIO)),
-            }
+        stats = _cached(store, ("pc_area", gov_type, service_area),
+                        lambda t=gov_type: _per_capita_area_stats(store, t, service_area))
+        if stats:
+            peers[gov_type] = stats
     for row in rows:
         stats = peers.get(row["gov_type"])
         row["peer_median"] = stats["median"] if stats and not stats["degenerate"] else None
@@ -621,24 +687,10 @@ def per_capita_over_time(store, pid6_list, indexed=False, reference=True):
     baseline = None
     if reference and len({s["gov_type"] for s in series}) == 1 and series:
         gov_type = series[0]["gov_type"]
-        panel = {}
-        for record in store.rows(
-                "SELECT f.pid6, f.year, f.expenditure * 1.0 / w.population AS v "
-                "FROM financial_trends f "
-                "JOIN workforce_profile w ON w.pid6 = f.pid6 "
-                "JOIN entities e ON e.pid6 = f.pid6 "
-                "WHERE e.gov_type_name = ? AND w.population > 0 AND f.expenditure > 0",
-                gov_type):
-            panel.setdefault(record["pid6"], {})[record["year"]] = record["v"]
-        all_years = sorted({y for v in panel.values() for y in v})
-        balanced = [v for v in panel.values() if len(v) == len(all_years)]
-        if len(balanced) >= 5:
-            baseline = {
-                "label": f"{gov_type} median",
-                "gov_type": gov_type, "n": len(balanced),
-                "points": [(year, quantile(sorted(v[year] for v in balanced), 0.5))
-                           for year in all_years],
-            }
+        cached = _cached(store, ("pc_baseline", gov_type),
+                         lambda: _per_capita_baseline(store, gov_type))
+        # Copied because indexing rewrites the points in place.
+        baseline = dict(cached, points=list(cached["points"])) if cached else None
 
     if indexed and series:
         def rebase(points):

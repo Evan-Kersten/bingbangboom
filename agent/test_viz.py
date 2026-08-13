@@ -140,6 +140,39 @@ def main():
     check("and the refusal says why",
           "point, not a trend" in result["data"]["svg"])
 
+    print("\nconverging end labels terminate")
+    # Four cities whose lines finish within a few points of each other put four
+    # end labels inside one line height. The nudge that separates them used to
+    # re-test the gap it had just created, and (a + 15) - a is not exactly 15 in
+    # binary floating point, so it could set the same value forever and hang the
+    # request. A time limit is the only assertion that catches a hang.
+    import signal, time
+    years = list(range(2017, 2024))
+    converging = [
+        {"label": name, "points": list(zip(years, values))}
+        for name, values in [
+            ("Portland", [100.0, 107.72, 115.64, 122.85, 128.03, 135.97, 142.78]),
+            ("Salem", [100.0, 102.51, 107.13, 109.37, 111.58, 114.52, 128.48]),
+            ("Eugene", [100.0, 102.46, 106.43, 113.16, 117.32, 122.34, 131.68]),
+            ("Gresham", [100.0, 108.44, 112.16, 99.51, 106.44, 111.24, 120.87])]]
+    reference = {"label": "Municipal median",
+                 "points": list(zip(years, [100.0, 98.93, 101.7, 114.54, 119.2,
+                                            118.71, 124.29]))}
+    signal.signal(signal.SIGALRM, lambda *_: (_ for _ in ()).throw(TimeoutError()))
+    signal.alarm(10)
+    try:
+        drawn = viz.multi_series("t", "s", converging, formatter=lambda v: f"{v:,.0f}",
+                                 note="n", reference=reference, baseline=100)
+        hung = False
+    except TimeoutError:
+        drawn, hung = None, True
+    finally:
+        signal.alarm(0)
+    check("four converging end labels do not hang the renderer", not hung)
+    check("and all four are still drawn",
+          bool(drawn) and all(name in drawn for name in
+                              ("Portland", "Salem", "Eugene", "Gresham")))
+
     print("\nseveral governments on one axis")
     cities = [portland, store.row(
         "SELECT pid6 FROM entities WHERE legal_name='CITY OF BEND'")["pid6"]]

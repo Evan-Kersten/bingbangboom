@@ -456,12 +456,14 @@ Sections 3 and 14 govern what an answer says. This section governs what it is ma
 | Factual lookup | Interpretation · Answer · Figure · Limits · Next |
 | Governance and structure | Interpretation · Answer · Table · Limits · Next |
 | Financial interpretation | Interpretation · Answer · Figure · Chart · Limits · Next |
-| What stands out | Interpretation · Answer · Chart (only if a finding has shape) · Limits · Next |
-| Place or cross-entity | Interpretation · Answer · Table · Map · Limits · Next |
+| What stands out | Interpretation · Answer · Figure · Chart (only if a finding has shape) · Table · Limits · Next |
+| Place or cross-entity | Interpretation · Answer · Figure · Chart · Table · Map · Limits · Next |
 | Issue or topic | Interpretation · Answer (naming the gap first) · Table · Limits · Next |
 | Investment versus conditions | Interpretation · Answer · Table · Limits · Next |
 
 Blocks are dropped, never padded. An entity with nothing unusual gets Interpretation, Answer, Limits and Next, and no chart.
+
+A cross-entity answer takes a Chart because several governments on one axis is a comparison a table makes the reader perform. A "what stands out" answer takes a Table where the finding is a ranking of divergences rather than one figure: the lead goes in the Answer, and the rest of the ranking is what the reader checks it against.
 
 The precedence in §5 still governs within the Answer block: scope limits first, ecosystem membership second, proxy disclosure third, figures last.
 
@@ -501,17 +503,17 @@ A chart of a single number. A pie chart. Two y-axes. A rainbow scale for magnitu
 
 Interface configuration, not prompt text. Surface three to five at a time, gated by entity type and available data.
 
-**Orientation** — What kind of government is this? · What should I know about this government's finances? · Where does the money actually go? · What has changed since last year?
+**Orientation** — What kind of government is this? · Is this budget large or small for its type? · Where does the money actually go? · What has changed since last year?
 
-**What stands out** — What stands out about this government? · Is anything unusual in this budget? · Where does this entity differ most from its peers? · Is the workforce shifting in any direction?
+**Follow the money** — Which service areas is it unusual on? · Take me inside its largest service area · What in its biggest function is actually purchasable? · Which entity is responsible for this service?
+
+**Against other governments** — How does its public safety spending compare per resident? · Has spending per resident outgrown its peers? · How have revenue and spending moved? · Where does this entity differ most from its peers?
 
 **Governance** — Who governs this entity? · How is the governing body structured? · Are these positions elected or appointed? · How many seats are on the board?
 
-**Financial position** — Is this government financially healthy? · What is driving the fiscal stability score? · How much debt is this government carrying, and what does that mean? · Are they in a building cycle right now? · How stable is their revenue year to year?
+**Workforce** — How is the workforce distributed? · Is staffing growing or shrinking, and where? · How much of the budget goes to people? · What stands out about this government?
 
-**Workforce** — How is the workforce distributed? · Is staffing growing or shrinking, and where? · How much of the budget goes to people?
-
-**Ecosystem** — Which governments serve this place? · Who else operates in this county? · Which entity is responsible for this service? · Are there entities here that cross county lines?
+**Place** — Which governments serve this place? · Who else operates in this county? · Map public safety spending across Oregon · Are there entities here that cross county lines?
 
 **Conditions** *(only when DP03 is present and the entity is resident-serving)* — Who does this government serve? · How does spending here compare to the conditions residents face? · Is this government's spending unusual given who it serves?
 
@@ -520,3 +522,9 @@ Interface configuration, not prompt text. Surface three to five at a time, gated
 Keep "Which governments serve this place" prominent. It is the question this platform answers better than the alternatives, and most users do not know the ecosystem exists until they see it.
 
 Keep the data-limits group visible and phrased as real questions. A user who asks what the data cannot do and gets a competent answer will trust every other answer more.
+
+**Do not offer the fiscal stability score as a preset.** It is a composite of two components that move for opposite reasons, so a reader learns less from a position on it than from a position on any single measure underneath it, and a preset phrased around the score invites exactly the ranking §8 says it cannot support. Where a question would have opened on the score, open on spending per resident against the peer distribution instead: it is one number, it has a low, a median and a high, and it means one thing.
+
+**Order a group so it descends.** Within "Follow the money" the presets go whole budget, then the categories it splits into, then the functions inside one, then what of that is purchasable. A reader who follows the group in order has performed the drill-down without being told it exists.
+
+**A comparison preset states its peer set before the chart.** "Against the three Oregon counties closest in population" is part of the answer, not a caption. Nearest by population rather than largest, or every comparison in the product becomes a comparison against Portland.

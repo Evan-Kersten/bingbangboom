@@ -134,11 +134,31 @@ Forms are bound to tool output shapes:
 | Form | Shape | Why this form |
 |---|---|---|
 | `spending_composition` | horizontal bars, one hue | Nominal categories, so a value ramp would double-encode length as colour |
-| `stability_components` | two meters | Each component is a ratio against a limit, and the composite hides which drives it |
-| `peer_position` | range strip, emphasis dot | The entity is the point; the peer range is context |
+| `service_area_functions` | horizontal bars, median ticks | Level two of the drill-down; the tick is the median for that named function among peers reporting it, on the same operating-plus-capital basis as the bar |
+| `peer_range` | quartile band, entity marker | The interquartile band is what stops a reader treating the median as a target |
 | `finances_over_time` | two lines, one axis | Same unit, so never a second y-scale |
 | `workforce_composition` | horizontal bars, one hue | Shares of listed functions only |
 | choropleth | sequential bins | Counties and places only; see below |
+
+Four more put several governments on one axis, through `render_comparison`:
+
+| Form | Shape | Why this form |
+|---|---|---|
+| `per_capita_by_service_area` | bars, per resident | Absolute dollars rank a set by population, which the reader already knows |
+| `per_capita_over_time` | lines, dashed peer baseline | Optionally rebased to 100, which shows growth and deliberately hides level |
+| `service_area_across_entities` | bars, absolute | A snapshot and never a line: service-area spending is one year per entity |
+| `entities_over_time` | lines, entity totals | The only measure that genuinely spans 2017 to 2023 |
+
+**Fiscal stability is not a chart form.** It is a composite whose two components
+move for opposite reasons, so a position on it tells a reader less than a
+position on any single measure underneath it. `peer_range` on spending per
+resident replaced it.
+
+**Two limits travel with every per-resident series.** Population is a single
+estimate per entity rather than a series, so the denominator is held constant and
+what moves in the lines is spending. And no price index is in this data, so the
+dashed baseline is the peer median and not inflation: nothing here is in real
+terms, and a line above the baseline has outgrown its peers rather than prices.
 
 Every chart returns a table twin alongside the SVG, so no value is reachable
 only by hovering.

@@ -1114,11 +1114,22 @@ def render_map(store, layer="county", metric="spending_per_resident", county=Non
                service_area=None):
     """Choropleth over a boundary layer.
 
+    Memoized on its arguments. The store is read-only, so a map drawn twice with
+    the same arguments is the same map, and a whole-corpus export asks for the
+    statewide one once per entity.
+
     Only counties and places join to geometry exactly. School districts join by
     name and cover 156 of 223. Special districts have no boundaries at all, so
     they are not offerable as a layer: two thirds of Oregon's governments cannot
     be drawn, and the honest form for them is a list.
     """
+    cache = getattr(store, "_map_cache", None)
+    if cache is None:
+        cache = store._map_cache = {}
+    signature = (layer, metric, county, service_area)
+    if signature in cache:
+        return cache[signature]
+
     if layer not in maps.LAYERS:
         return envelope("render_map", caveats=[{
             "code": "unknown_layer", "rule": "§9",
@@ -1218,14 +1229,16 @@ def render_map(store, layer="county", metric="spending_per_resident", county=Non
                      and (only is None or r["geo_id"] in only)),
                     key=lambda r: r["value"], reverse=True)
 
-    return envelope("render_map",
-                    data={"layer": layer, "metric": metric, "county": county,
-                          "service_area": service_area, "svg": result["svg"],
-                          "covered": result["covered"], "polygons": result["polygons"],
-                          "table": [{"name": r["common_name"] or r["legal_name"],
-                                     "value": formatter(r["value"])}
-                                    for r in listed][:60]},
-                    caveats=caveats)
+    cache[signature] = envelope(
+        "render_map",
+        data={"layer": layer, "metric": metric, "county": county,
+              "service_area": service_area, "svg": result["svg"],
+              "covered": result["covered"], "polygons": result["polygons"],
+              "table": [{"name": r["common_name"] or r["legal_name"],
+                         "value": formatter(r["value"])}
+                        for r in listed][:60]},
+        caveats=caveats)
+    return cache[signature]
 
 
 TOOLS["render_chart"] = render_chart

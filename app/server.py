@@ -46,41 +46,92 @@ STORE = T.Store()
 # preset id -> §5 question type, which §15.2 turns into a block order
 QUESTION_TYPE = {
     "profile": "factual_lookup",
-    "finance": "financial_interpretation",
-    "driver": "financial_interpretation",
+    "scale": "financial_interpretation",
     "spending": "financial_interpretation",
+    "inside": "financial_interpretation",
+    "purchasable": "financial_interpretation",
+    "unusual_areas": "what_stands_out",
+    "vs_peers_area": "place_or_cross_entity",
+    "vs_peers_time": "place_or_cross_entity",
     "workforce": "financial_interpretation",
     "trend": "financial_interpretation",
-    "peers": "financial_interpretation",
     "salient": "what_stands_out",
     "governance": "governance",
     "ecosystem": "place_or_cross_entity",
+    "map_area": "place_or_cross_entity",
     "limits": "factual_lookup",
     "report": "place_or_cross_entity",
 }
 
+# Fiscal stability is absent by design. It is a composite of two components that
+# move for opposite reasons, so a reader learns less from a position on it than
+# from a position on any single measure underneath it, and every question below
+# is answerable without it.
 PRESETS = [
     # (id, label, group, required availability key, handler)
     ("profile", "What kind of government is this?", "Orientation", None, "profile"),
-    ("finance", "What should I know about its finances?", "Orientation",
-     "has_fiscal_stability", "finance"),
+    ("scale", "Is this budget large or small for its type?", "Orientation",
+     "has_operating_vs_capital", "scale"),
     ("spending", "Where does the money actually go?", "Orientation",
      "has_spending_breakdown", "spending"),
-    ("salient", "What stands out about this government?", "What stands out",
-     "has_fiscal_stability", "salient"),
-    ("driver", "What is driving the fiscal stability score?", "Financial position",
-     "has_fiscal_stability", "driver"),
-    ("peers", "Where does it differ most from its peers?", "Financial position",
-     "has_operating_vs_capital", "peers"),
-    ("trend", "How has revenue and spending moved?", "Financial position",
+
+    ("unusual_areas", "Which service areas is it unusual on?", "Follow the money",
+     "has_spending_breakdown", "unusual_areas"),
+    ("inside", "Take me inside its largest service area", "Follow the money",
+     "has_financial_functions", "inside"),
+    ("purchasable", "What in its biggest function is actually purchasable?",
+     "Follow the money", "has_financial_functions", "purchasable"),
+
+    ("vs_peers_area", "How does its public safety spending compare per resident?",
+     "Against other governments", "has_spending_breakdown", "vs_peers_area"),
+    ("vs_peers_time", "Has spending per resident outgrown its peers?",
+     "Against other governments", "has_financial_trends", "vs_peers_time"),
+    ("trend", "How have revenue and spending moved?", "Against other governments",
      "has_financial_trends", "trend"),
+
     ("workforce", "How is the workforce distributed?", "Workforce",
      "has_workforce", "workforce"),
-    ("governance", "Who governs this entity?", "Governance", "has_offices", "governance"),
-    ("ecosystem", "Which governments serve this place?", "Ecosystem", None, "ecosystem"),
+    ("salient", "What stands out about this government?", "Workforce",
+     "has_operating_vs_capital", "salient"),
+
+    ("ecosystem", "Which governments serve this place?", "Place", None, "ecosystem"),
+    ("map_area", "Map public safety spending across Oregon", "Place", None, "map_area"),
+    ("governance", "Who governs this entity?", "Place", "has_offices", "governance"),
+
     ("report", "Give me the full report", "Reports", None, "report"),
-    ("limits", "What can this data not tell me?", "Data limits", None, "limits"),
+    ("limits", "What can this data not tell me?", "Reports", None, "limits"),
 ]
+
+# The service area the two comparison presets open on. Public safety is the one
+# category almost every general-purpose government reports, which is what makes
+# it a defensible default rather than a favourite.
+DEFAULT_AREA = "Public Safety"
+
+COMPARISON_FORMS = ("per_capita_by_service_area", "per_capita_over_time",
+                    "service_area_across_entities", "entities_over_time")
+
+
+def peer_set(pid6, count=3):
+    """The entity plus its nearest peers by population, within its own type.
+
+    Nearest by population rather than largest, because a comparison against the
+    four biggest governments in Oregon is a comparison against Portland however
+    the question was phrased. §13.3 keeps the set inside one government type.
+    """
+    anchor = STORE.row(
+        "SELECT e.pid6, e.gov_type_name, w.population FROM entities e "
+        "JOIN workforce_profile w ON w.pid6 = e.pid6 WHERE e.pid6=? AND w.population > 0",
+        pid6)
+    if not anchor:
+        return [pid6], None
+    neighbours = STORE.rows(
+        "SELECT e.pid6 FROM entities e JOIN workforce_profile w ON w.pid6 = e.pid6 "
+        "WHERE e.gov_type_name = ? AND e.pid6 != ? AND w.population > 0 "
+        "ORDER BY ABS(w.population - ?) LIMIT ?",
+        anchor["gov_type_name"], pid6, anchor["population"], count)
+    basis = (f"the {count} Oregon {anchor['gov_type_name']} entities closest in "
+             f"population")
+    return [pid6] + [n["pid6"] for n in neighbours], basis
 
 
 def model_client():
@@ -111,11 +162,31 @@ def _headline(entity, result):
     name = entity["common_name"] or entity["legal_name"]
     tool = result["tool"]
 
-    if tool == "get_financial_position" and data.get("score") is not None:
-        driver = {"debt_to_revenue": "debt to revenue",
-                  "structural_balance": "structural balance"}.get(data.get("driver"), "")
-        return (f"Fiscal stability {data['score']:.0f} of 100, rated {data['rating_label']}. "
-                f"The lower component is {driver}.")
+    if tool == "compare_to_peer_group" and data.get("peers"):
+        peers = data["peers"]
+        where = {"top quarter": "the top quarter of", "bottom quarter": "the bottom quarter of",
+                 "middle half": "the middle half of"}.get(data.get("quartile"), "")
+        return (f"{data['label']} is {data['formatted']}, which sits in {where} "
+                f"{fmt.count(peers['n'])} {data['peer_group']} entities. The median is "
+                f"{fmt.rate(peers['median'])} and the middle half runs "
+                f"{fmt.rate(peers['p25'])} to {fmt.rate(peers['p75'])}.")
+    if tool == "drill" and data.get("level") == "function":
+        top = data["functions"][0]
+        line = (f"Inside {data['service_area']}, the largest function is {top['label']} "
+                f"at {fmt.money(top['value'])}, of which {fmt.money(top['addressable'])} "
+                "is vendor addressable.")
+        if top.get("peer_median"):
+            line += (f" The median {top['label']} budget among peers reporting it is "
+                     f"{fmt.money(top['peer_median'])}.")
+        return line
+    if tool == "drill" and data.get("level") == "line_item":
+        items = {i["label"]: i["value"] for i in data["items"]}
+        return (f"{data['function']} runs {fmt.money(items.get('Operating expenditure'))} "
+                f"operating and {fmt.money(items.get('Capital expenditure'))} capital. "
+                f"After {fmt.money(items.get('Personnel, adjusted'))} of personnel and "
+                f"{fmt.money(items.get('Excluded amounts'))} that cannot be purchased, "
+                f"{fmt.money(items.get('Vendor addressable'))} is addressable. That last "
+                "figure is a derivation, not a reported line.")
     if tool == "get_spending_breakdown" and data.get("service_areas"):
         top = data["service_areas"][0]
         return (f"Largest reported area is {top['service_area']} at "
@@ -142,6 +213,72 @@ def _headline(entity, result):
     return None
 
 
+def _compare_headline(result):
+    """One sentence over a multi-entity chart: the range, and who is at the ends.
+
+    A comparison with no sentence leaves the reader to find the finding, and the
+    finding here is almost always the spread rather than any single bar.
+    """
+    data = result["data"]
+    detail = data.get("detail") or {}
+    form = data["form"]
+
+    if form in ("per_capita_by_service_area", "service_area_across_entities"):
+        rows = detail.get("entities") or []
+        if not rows:
+            return ("None of these governments reports spending in that area. That "
+                    "usually means another government holds the responsibility, not "
+                    "that the service is unfunded.")
+        formatter = fmt.rate if form == "per_capita_by_service_area" else fmt.money
+        basis = ("per resident" if form == "per_capita_by_service_area"
+                 else "in total dollars, which ranks by population")
+        top, bottom = rows[0], rows[-1]
+        line = (f"On {detail['service_area']} {basis}, {top['label']} is highest at "
+                f"{formatter(top['value'])} and {bottom['label']} lowest at "
+                f"{formatter(bottom['value'])}.")
+        if len(rows) > 1 and bottom["value"]:
+            line += f" That is a {top['value'] / bottom['value']:.1f}× spread."
+        absent = detail.get("absent") or []
+        if absent:
+            line += (f" {len(absent)} of the set reports nothing here: "
+                     f"{', '.join(absent)}.")
+        excluded = detail.get("excluded_no_population") or []
+        if excluded:
+            line += (f" {len(excluded)} has no population in the data and cannot be "
+                     f"put on this basis: {', '.join(excluded)}.")
+        return line
+
+    series = detail.get("series") or []
+    if len(series) < 2:
+        return ("Fewer than two of these governments can be drawn over time. An entity "
+                "needs two or more years, and a per-resident line needs a population.")
+    growth = sorted(
+        ((s["label"], s["points"][-1][1] / s["points"][0][1])
+         for s in series if s["points"][0][1]), key=lambda pair: pair[1], reverse=True)
+    years = f"{series[0]['points'][0][0]} and {series[0]['points'][-1][0]}"
+    line = (f"Between {years}, {growth[0][0]} grew fastest at {growth[0][1]:.2f}× and "
+            f"{growth[-1][0]} slowest at {growth[-1][1]:.2f}×.")
+    baseline = detail.get("baseline")
+    if baseline and baseline["points"][0][1]:
+        pace = baseline["points"][-1][1] / baseline["points"][0][1]
+        ahead = [name for name, ratio in growth if ratio > pace]
+        line += (f" The {baseline['gov_type']} median grew {pace:.2f}× over the same "
+                 f"years, so {len(ahead)} of {len(growth)} outgrew their peers.")
+    if detail.get("indexed"):
+        line += (" These lines show growth and deliberately hide level: a government "
+                 "that doubled from a low base outruns one that grew slightly from a "
+                 "high one.")
+    return line
+
+
+def _gap(points):
+    """A gap in percentage points. Below ten, the decimal is the difference
+    between two rows; above it, the decimal is noise."""
+    if abs(points) >= 10:
+        return f"{points:+.0f} pts"
+    return f"{points:+.1f} pts"
+
+
 def answer_preset(preset_id, pid6=None, county=None):
     """Run a preset. Returns blocks the UI renders in order."""
     entity = T._entity(STORE, pid6) if pid6 else None
@@ -166,18 +303,135 @@ def answer_preset(preset_id, pid6=None, county=None):
                 blocks.append({"kind": "chart", "svg": chart["data"]["svg"],
                                "table": chart["data"].get("table")})
 
+    def add_comparison(result, extra_blocks=True):
+        """A multi-entity chart, which carries its own table rather than a headline."""
+        results.append(result)
+        data = result["data"]
+        if data.get("svg"):
+            blocks.append({"kind": "chart", "svg": data["svg"],
+                           "table": data.get("table")})
+        elif extra_blocks:
+            blocks.append({"kind": "text",
+                           "text": "That comparison cannot be drawn from this data."})
+
+    import explore
+
     if preset_id == "profile":
         add(T.get_entity_profile(STORE, pid6))
-    elif preset_id in ("finance", "driver"):
-        add(T.get_financial_position(STORE, pid6), "stability_components")
+    elif preset_id == "scale":
+        add(explore.compare_to_peer_group(STORE, pid6, "expenditure_per_capita"),
+            "peer_range")
     elif preset_id == "spending":
         add(T.get_spending_breakdown(STORE, pid6), "spending_composition")
+    elif preset_id == "unusual_areas":
+        result = explore.drill(STORE, pid6)
+        results.append(result)
+        areas = result["data"].get("areas") or []
+        # §11 ranks by divergence from the peer, not by size. The largest line in
+        # a budget is almost always the same category for every government of a
+        # type, so ranking by size answers a question nobody asked.
+        rated = [a for a in areas
+                 if a.get("peer_median_share") and not a.get("peer_degenerate")]
+        for area in rated:
+            area["gap"] = (area["share"] or 0) - area["peer_median_share"]
+        rated.sort(key=lambda a: abs(a["gap"]), reverse=True)
+        if rated:
+            lead = rated[0]
+            direction = "more" if lead["gap"] > 0 else "less"
+            blocks.append({"kind": "text", "text": (
+                f"The largest divergence from peers is {lead['label']}: "
+                f"{fmt.percent(lead['share'])} of spending against a median of "
+                f"{fmt.percent(lead['peer_median_share'])} across "
+                f"{fmt.count(lead['peer_n'])} peers, which is "
+                f"{abs(lead['gap']):.0f} points {direction}.")})
+            blocks.append({"kind": "table", "rows": [
+                {"service area": a["label"], "share here": fmt.percent(a["share"]),
+                 "peer median": fmt.percent(a["peer_median_share"]),
+                 "gap": _gap(a["gap"]), "amount": fmt.money(a["value"])}
+                for a in rated]})
+        else:
+            blocks.append({"kind": "text", "text": (
+                "No service area here has a sound peer median to diverge from. Most "
+                "of this peer group reports nothing in most areas, so a median is "
+                "not a midpoint and a gap against it would not mean anything.")})
+    elif preset_id == "inside":
+        area = STORE.row("SELECT service_area FROM financial_functions WHERE pid6=? "
+                         "GROUP BY service_area ORDER BY SUM(total_function_pae) DESC "
+                         "LIMIT 1", pid6)
+        add(explore.drill(STORE, pid6, area["service_area"]) if area
+            else T.envelope("drill"), "service_area_functions")
+    elif preset_id == "purchasable":
+        top = STORE.row("SELECT service_area, function_name FROM financial_functions "
+                        "WHERE pid6=? ORDER BY total_function_pae DESC LIMIT 1", pid6)
+        if top:
+            result = explore.drill(STORE, pid6, top["service_area"], top["function_name"])
+            add(result)
+            items = result["data"].get("items") or []
+            if items:
+                blocks.append({"kind": "table", "rows": [
+                    {"component": i["label"], "amount": fmt.money(i["value"]),
+                     "what it is": i["note"]} for i in items]})
+        else:
+            add(T.envelope("drill", caveats=[{
+                "code": "no_functions", "rule": "§2",
+                "guidance": "This entity reports no functions, so there is nothing to "
+                            "decompose. That is an absence of detail, not a report of "
+                            "zero spending."}]))
+    elif preset_id == "vs_peers_area":
+        group, basis = peer_set(pid6)
+        if len(group) < 2:
+            blocks.append({"kind": "text", "text": (
+                "This entity has no population in the data, so a per-resident "
+                "comparison cannot be built for it. Special districts and school "
+                "districts serve areas that are not a resident count.")})
+            results.append(T.envelope("per_capita_by_service_area", caveats=[{
+                "code": "no_population_denominator", "rule": "§10",
+                "guidance": "No population, so no per-resident basis."}]))
+        else:
+            blocks.append({"kind": "text", "text": (
+                f"Compared against {basis}, on spending per resident rather than "
+                "total dollars: totals rank these by population, which the reader "
+                "already knows.")})
+            add_comparison(T.render_comparison(
+                STORE, group, "per_capita_by_service_area", service_area=DEFAULT_AREA))
+    elif preset_id == "vs_peers_time":
+        group, basis = peer_set(pid6)
+        if len(group) < 2:
+            blocks.append({"kind": "text", "text": (
+                "This entity has no population in the data, so it cannot be put on "
+                "a per-resident axis.")})
+            results.append(T.envelope("per_capita_over_time", caveats=[{
+                "code": "no_population_denominator", "rule": "§10",
+                "guidance": "No population, so no per-resident basis."}]))
+        else:
+            blocks.append({"kind": "text", "text": (
+                f"Every line starts at 100 in the first year, against {basis}, with "
+                "the dashed line showing the median for this government type. There "
+                "is no price index in this data, so that baseline is peers and not "
+                "inflation.")})
+            add_comparison(T.render_comparison(
+                STORE, group, "per_capita_over_time", indexed=True))
+    elif preset_id == "map_area":
+        area_map = T.render_map(STORE, "county", "service_area_per_resident",
+                                service_area=DEFAULT_AREA)
+        results.append(area_map)
+        data = area_map["data"]
+        if data.get("svg"):
+            blocks.append({"kind": "text", "text": (
+                f"County spending on {DEFAULT_AREA} per resident, across all 36 Oregon "
+                "counties. This is county government only: cities, school districts "
+                "and special districts spend here too and are not on this map.")})
+            polygons = data.get("polygons") or 0
+            blocks.append({"kind": "map", "svg": data["svg"],
+                           "coverage": (data.get("covered", 0) / polygons)
+                           if polygons else None})
+            blocks.append({"kind": "table", "rows": [
+                {"county": r["name"], "per resident": r["value"]}
+                for r in (data.get("table") or [])[:10]]})
     elif preset_id == "workforce":
         add(T.get_workforce(STORE, pid6), "workforce_composition")
     elif preset_id == "trend":
-        add(T.get_financial_position(STORE, pid6), "finances_over_time")
-    elif preset_id == "peers":
-        add(T.compare_to_peers(STORE, pid6, "capital_share"), "peer_position")
+        add(T.get_entity_profile(STORE, pid6), "finances_over_time")
     elif preset_id == "salient":
         add(T.find_salient(STORE, pid6))
     elif preset_id == "governance":
@@ -211,7 +465,7 @@ def answer_preset(preset_id, pid6=None, county=None):
                      "type": e["gov_type_name"],
                      "filed under": (e["filed_county"] or "").title()}
                     for e in data["also_serving_filed_elsewhere"]]})
-            county_map = T.render_map(STORE, "place", "fiscal_stability",
+            county_map = T.render_map(STORE, "place", "spending_per_resident",
                                       county=(data["county"] or "").split()[0])
             results.append(county_map)
             map_data = county_map["data"]
@@ -269,10 +523,18 @@ def answer_preset(preset_id, pid6=None, county=None):
     marks = B.marks_for(flags)
     for result in results:
         data = result.get("data") or {}
-        if result["tool"] == "get_financial_position" and data.get("score") is not None:
+        if result["tool"] == "compare_to_peer_group" and data.get("peers"):
             composed.append(B.figure(
-                "Fiscal stability", f"{data['score']:.0f} of 100",
-                year=(result.get("vintage") or {}).get("finance")))
+                data["label"], data["formatted"], marks=marks,
+                context=f"peer median {fmt.rate(data['peers']['median'])} across "
+                        f"{fmt.count(data['peers']['n'])} {data['peer_group']} entities"))
+        elif result["tool"] == "drill" and data.get("level") == "line_item":
+            addressable = next((i["value"] for i in data["items"]
+                                if i["label"] == "Vendor addressable"), None)
+            composed.append(B.figure(
+                f"Vendor addressable, {data['function']}", fmt.money(addressable),
+                marks=marks, year=data.get("year"),
+                context="a derivation, not a reported line"))
         elif result["tool"] == "get_spending_breakdown" and data.get("service_areas"):
             top = data["service_areas"][0]
             composed.append(B.figure(
@@ -332,6 +594,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                                "ambiguous": any(c["code"] == "ambiguous_name"
                                                 for c in result["caveats"])})
 
+        if parsed.path == "/api/service_areas":
+            # Ordered by how many governments report them, so the picker opens on
+            # the areas a comparison will actually find data in.
+            return self._json({"areas": [r["service_area"] for r in STORE.rows(
+                "SELECT service_area, COUNT(*) AS n FROM spending_by_service_area "
+                "WHERE total > 0 GROUP BY service_area ORDER BY n DESC")]})
+
         if parsed.path == "/api/presets":
             pid6 = (query.get("pid6") or [None])[0]
             available = {}
@@ -358,6 +627,32 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if parsed.path == "/api/preset":
             return self._json(answer_preset(payload.get("id"), payload.get("pid6"),
                                             payload.get("county")))
+
+        if parsed.path == "/api/compare":
+            # The reader picks the governments and the measure; every label,
+            # number and caveat still comes from the tool layer. What is
+            # selectable is the question, not the answer.
+            ids = [str(p) for p in (payload.get("pid6_list") or []) if p]
+            form = payload.get("form") or "per_capita_by_service_area"
+            if form not in COMPARISON_FORMS:
+                return self._json({"error": f"no form '{form}'"}, 400)
+            if len(ids) < 2:
+                return self._json({"blocks": [{"kind": "text", "text":
+                                   "Pick at least two governments to compare."}],
+                                   "rules": [], "trace": []})
+            result = T.render_comparison(
+                STORE, ids, form,
+                service_area=payload.get("service_area") or DEFAULT_AREA,
+                indexed=bool(payload.get("indexed")))
+            data = result["data"]
+            blocks = [{"kind": "answer", "text": _compare_headline(result)}]
+            if data.get("svg"):
+                blocks.append({"kind": "chart", "svg": data["svg"],
+                               "table": data.get("table")})
+            blocks.append(B.limits([result]))
+            return self._json({"blocks": [b for b in blocks if b],
+                               "trace": [result["tool"]],
+                               "refused": data.get("refused", False)})
 
         if parsed.path == "/api/ask":
             question = (payload.get("question") or "").strip()

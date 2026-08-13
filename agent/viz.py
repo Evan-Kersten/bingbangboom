@@ -594,12 +594,20 @@ def multi_series(title, subtitle, series, formatter=fmt.money, width=680, height
                         f'<title>{esc(entry["label"])} {year}: {esc(formatter(v))}</title></circle>')
         ends.append((points[-1][1], points[-1][0], colour, entry["label"]))
 
-    # Nudge converging end labels apart rather than letting them overlap.
+    # Nudge converging end labels apart rather than letting them overlap. One
+    # forward pass over labels already sorted by height: each is pushed to at
+    # least a line below the one above it, and never above where it belongs.
+    #
+    # Deliberately not a loop that re-tests the gap. `(a + 15) - a` is not
+    # exactly 15 in binary floating point, so a re-test can find the gap still
+    # short, set the same value again, and spin forever. It hung the whole
+    # request the first time four cities converged.
+    LABEL_GAP = 15
     ends.sort()
     placed = []
     for y, x, colour, name in ends:
-        while placed and abs(y - placed[-1]) < 15:
-            y = placed[-1] + 15
+        if placed:
+            y = max(y, placed[-1] + LABEL_GAP)
         placed.append(y)
         body.append(text_el(x + 12, y + 4, truncate(name, 18), size=11, fill="ink-2"))
 
