@@ -1278,7 +1278,7 @@ def _bind_explore():
     import explore
     for name in ("drill", "compare_to_peer_group", "compare_entities_over_time",
                  "compare_service_area", "per_capita_by_service_area",
-                 "per_capita_over_time"):
+                 "per_capita_over_time", "who_spends_on"):
         TOOLS[name] = getattr(explore, name)
 
 

@@ -249,6 +249,7 @@ def main():
         "per_capita_over_time": {"pid6_list": [portland, baker_county]},
         "render_comparison": {"pid6_list": [portland, baker_county],
                               "form": "entities_over_time"},
+        "who_spends_on": {"function_name": "Fire Protection"},
     }
     for name, tool in T.TOOLS.items():
         args = extra_args.get(name, {"pid6": baker_county})

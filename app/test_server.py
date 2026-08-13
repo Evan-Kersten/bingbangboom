@@ -104,6 +104,40 @@ def main():
     check("and an entity with no boundary is told why, not left blank",
           "no boundary in this data" in answer, answer[:100])
 
+    print("\na reader who cannot name a government can still find one")
+    # Search over 1,529 names only finds what somebody already knew existed,
+    # which excludes the districts that actually do the work.
+    import browse_data
+    doors = browse_data.build(store)
+    check("all 36 counties are offered as a way in", len(doors["counties"]) == 36)
+    check("every government type is offered with its count",
+          len(doors["types"]) == 4 and all(t["count"] > 0 for t in doors["types"]))
+    check("and the named things governments do are offered too",
+          len(doors["functions"]) >= 30,
+          str(len(doors["functions"])))
+    check("each door states how many governments are behind it",
+          all(f["governments"] > 0 for f in doors["functions"]))
+
+    fire = S.answer_function("Fire Protection")
+    text = " ".join(b.get("text", "") for b in fire["blocks"])
+    table = next((b for b in fire["blocks"] if b["kind"] == "table"), None)
+    check("asking who does a thing returns governments", bool(table and table["rows"]))
+    check("including ones a reader could not have named",
+          any(r["type"] == "Special District" for r in table["rows"]),
+          str([r["type"] for r in table["rows"]][:4]))
+    check("the count of everyone doing it is stated, not just the top rows",
+          "327" in text, text[:80])
+    check("the ranking says it ranks by size", "ranking by size" in text)
+    check("a government with no population says so rather than showing a zero",
+          any(r["per resident"] == "no population" for r in table["rows"]))
+    check("and the answer places the service on a map",
+          any(b["kind"] == "map" for b in fire["blocks"]))
+    check("it conforms to §15", fire["violations"] == [], str(fire["violations"]))
+
+    missing = S.answer_function("Nothing Like This")
+    check("an unknown function is refused rather than invented",
+          "No government reports" in missing["blocks"][0]["text"])
+
     print("\nthe drill-down reaches the line item")
     levels = [S.answer_preset(preset, baker) for preset in
               ("spending", "inside", "purchasable")]

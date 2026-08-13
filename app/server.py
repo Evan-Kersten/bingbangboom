@@ -444,6 +444,68 @@ def _section_readout(section, entity=None):
     return None
 
 
+def answer_function(function_name):
+    """Who does this? The answer a name search cannot give.
+
+    Ranked by spending, with the per-resident figure alongside, and the statewide
+    map of the service area it belongs to. Every row is a government a reader can
+    then open or add to a comparison, which is the point: a door that leads to
+    real entities rather than to another empty search box.
+    """
+    import explore
+    result = explore.who_spends_on(STORE, function_name)
+    results = [result]
+    data = result["data"]
+    if not data.get("entities"):
+        return {"blocks": [{"kind": "answer", "text":
+                            f"No government reports spending on {function_name}."}],
+                "question_type": "issue_or_topic", "violations": [], "trace": [result["tool"]]}
+
+    top = data["entities"][0]
+    blocks = [{"kind": "text", "text": (
+        f"{fmt.count(data['total_governments'])} Oregon governments report spending on "
+        f"{function_name}, across {data['counties']} counties. The largest is "
+        f"{top['name']} at {fmt.money(top['spending'])}"
+        + (f", or {fmt.rate(top['per_resident'])} per resident" if top["per_resident"] else "")
+        + f". This is a ranking by size; the per-resident column reorders it. "
+        f"{function_name} sits inside {data['service_area']}.")}]
+
+    blocks.append({"kind": "table", "rows": [
+        {"government": row["name"], "type": row["gov_type"],
+         "county": (row["host_county"] or "").title(),
+         "spending": fmt.money(row["spending"]),
+         "per resident": fmt.rate(row["per_resident"]) if row["per_resident"] else "no population",
+         "vendor addressable": fmt.money(row["addressable"]),
+         "year": row["year"]}
+        for row in data["entities"]]})
+
+    # The service area this function sits in, mapped across the counties, so the
+    # answer places the list rather than only ranking it.
+    area_map = T.render_map(STORE, "county", "service_area_per_resident",
+                            service_area=data["service_area"])
+    results.append(area_map)
+    map_data = area_map["data"]
+    polygons = map_data.get("polygons") or 0
+    coverage = (map_data.get("covered", 0) / polygons) if polygons else None
+    if map_data.get("svg") and (coverage or 0) >= B.MAP_COVERAGE_FLOOR:
+        blocks.append({"kind": "text", "text": (
+            f"County spending on {data['service_area']} per resident. This is county "
+            "government only, and most of the governments in the list above are not "
+            "counties, so the map places the service rather than the list.")})
+        blocks.append({"kind": "map", "svg": map_data["svg"], "coverage": coverage})
+
+    composed = [{"kind": "answer",
+                 "text": " ".join(b["text"] for b in blocks if b["kind"] == "text")}]
+    composed += [b for b in blocks if b["kind"] in ("table", "map")]
+    composed.append(B.limits(results))
+    ordered = B.compose("place_or_cross_entity", composed)
+    return {"blocks": ordered, "question_type": "place_or_cross_entity",
+            "violations": B.validate("place_or_cross_entity",
+                                     [b for b in ordered if b["kind"]
+                                      in B.BLOCK_ORDER["place_or_cross_entity"]]),
+            "trace": [r["tool"] for r in results]}
+
+
 def _gap(points):
     """A gap in percentage points. Below ten, the decimal is the difference
     between two rows; above it, the decimal is noise."""
@@ -813,6 +875,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                                "ambiguous": any(c["code"] == "ambiguous_name"
                                                 for c in result["caveats"])})
 
+        if parsed.path == "/api/browse":
+            import browse_data
+            return self._json(browse_data.build(STORE))
+
         if parsed.path == "/api/service_areas":
             # Ordered by how many governments report them, so the picker opens on
             # the areas a comparison will actually find data in.
@@ -846,6 +912,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if parsed.path == "/api/preset":
             return self._json(answer_preset(payload.get("id"), payload.get("pid6"),
                                             payload.get("county")))
+
+        if parsed.path == "/api/function":
+            name = (payload.get("name") or "").strip()
+            if not name:
+                return self._json({"error": "name required"}, 400)
+            return self._json(answer_function(name))
 
         if parsed.path == "/api/compare":
             # The reader picks the governments and the measure; every label,

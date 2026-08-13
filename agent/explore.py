@@ -767,6 +767,87 @@ def per_capita_over_time(store, pid6_list, indexed=False, reference=True):
                  not_computable("outcome_or_performance")])
 
 
+def who_spends_on(store, function_name, limit=12):
+    """Which governments report spending on one named function.
+
+    The discovery question, and the one a name search cannot answer: somebody
+    who wants fire protection cannot get there from a list of 1,529 names,
+    because the districts that provide it are exactly the ones nobody can name.
+
+    Ranked by spending rather than per resident. Most of the governments doing a
+    given function are special districts with no population in the data, and
+    ranking by a figure two thirds of the list cannot have would quietly drop
+    them. The per-resident figure rides alongside where it exists.
+    """
+    rows = store.rows(
+        "SELECT f.pid6, COALESCE(e.common_name, e.legal_name) AS name, "
+        "       e.gov_type_name AS gov_type, e.host_county, f.service_area, f.year, "
+        "       COALESCE(f.operating_expenditures, 0) "
+        "     + COALESCE(f.capital_expenditures, 0) AS spending, "
+        "       f.total_function_pae AS addressable, w.population "
+        "FROM financial_functions f "
+        "JOIN entities e ON e.pid6 = f.pid6 "
+        "LEFT JOIN workforce_profile w ON w.pid6 = f.pid6 AND w.population > 0 "
+        "WHERE f.function_name = ? AND COALESCE(f.operating_expenditures, 0) "
+        "    + COALESCE(f.capital_expenditures, 0) > 0 "
+        "ORDER BY spending DESC", function_name)
+
+    if not rows:
+        return T.envelope("who_spends_on", caveats=[{
+            "code": "no_such_function", "rule": "§2",
+            "guidance": f"No government reports spending on '{function_name}'."}])
+
+    for row in rows:
+        row["per_resident"] = (row["spending"] / row["population"]
+                               if row["population"] else None)
+
+    types = sorted({r["gov_type"] for r in rows})
+    counties = {(r["host_county"] or "").title() for r in rows if r["host_county"]}
+    service_area = rows[0]["service_area"]
+    years = sorted({r["year"] for r in rows if r["year"]})
+
+    caveats = [
+        caveat("inputs_not_outcomes"),
+        {"code": "ranked_by_size", "rule": "§10",
+         "guidance": "This list is ranked by what each government spends, which ranks "
+                     "by government size. Say so. The per-resident column reorders it "
+                     "and is the fairer comparison where a population exists."},
+        {"code": "absence_is_not_zero", "rule": "§9",
+         "guidance": f"{len(rows)} governments report this function. A government absent "
+                     "from the list is not one that spends nothing: it is one where "
+                     "another body does the work, or where the function is not reported "
+                     "separately."},
+    ]
+    if len(types) > 1:
+        caveats.append({
+            "code": "mixed_entity_types", "rule": "§12",
+            "guidance": f"This list mixes {', '.join(types)}. A city fire department and "
+                        "a rural fire protection district both appear here and are not "
+                        "peers; compare within a type."})
+    if len(years) > 1:
+        caveats.append({
+            "code": "years_differ", "rule": "§8",
+            "guidance": f"These figures span {years[0]} to {years[-1]}, one year per "
+                        "entity. Say so; they are not the same moment."})
+    no_population = sum(1 for r in rows if not r["population"])
+    if no_population:
+        caveats.append({
+            "code": "no_population_denominator", "rule": "§10",
+            "guidance": f"{no_population} of these have no population in the data, so no "
+                        "per-resident figure is shown for them. That is an absence of a "
+                        "denominator, not a small one."})
+
+    return T.envelope(
+        "who_spends_on",
+        data={"function": function_name, "service_area": service_area,
+              "total_governments": len(rows), "entities": rows[:limit],
+              "entity_types": types, "counties": len(counties),
+              "years": years, "shown": min(limit, len(rows))},
+        caveats=caveats,
+        blocked=[not_computable("service_area_yoy"),
+                 not_computable("outcome_or_performance")])
+
+
 def service_area_over_time_refusal(service_area):
     """The one comparison this data cannot support, returned as a result.
 

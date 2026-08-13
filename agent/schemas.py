@@ -221,6 +221,29 @@ SCHEMAS = [
         },
     },
     {
+        "name": "who_spends_on",
+        "description": "Which governments report spending on one named function, ranked "
+                       "by what they spend, with the per-resident figure alongside. This "
+                       "is the question a name lookup cannot answer: somebody who wants "
+                       "fire protection cannot get there from a list of names, because "
+                       "the districts that provide it are the ones nobody can name. "
+                       "Ranked by size rather than per resident on purpose, since most "
+                       "governments doing a given function have no population in the data "
+                       "and ranking on a figure they lack would drop them silently. A "
+                       "government absent from the list is one where another body does "
+                       "the work, not one that spends nothing. " + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "function_name": {"type": "string",
+                                  "description": "An exact function name, such as "
+                                                 "'Fire Protection' or 'Water Supply'."},
+                "limit": {"type": "integer", "description": "Rows to return, default 12."},
+            },
+            "required": ["function_name"],
+        },
+    },
+    {
         "name": "compare_entities_over_time",
         "description": "Several governments on one measure across 2017 to 2023, at entity "
                        "totals. Service-area spending is a single year per entity, so no "

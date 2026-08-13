@@ -233,9 +233,40 @@ aside {
   content: ' · not in the data for this government'; font-size: 11px; color: var(--pf-muted);
 }
 .empty-hint {
-  padding: 26px 20px; font-size: 12.5px; color: var(--pf-muted); line-height: 1.55;
+  padding: 18px 20px 8px; font-size: 12.5px; color: var(--pf-muted); line-height: 1.55;
 }
 .empty-hint b { color: var(--pf-ink-2); font-weight: 600; }
+
+/* Doors that are not the search box. Search over 1,529 names only finds what a
+   reader already knew existed, which excludes the special districts nobody can
+   name and which are two thirds of Oregon's governments. */
+.browse { padding: 0 12px 16px; }
+.browse h3 {
+  font-size: 10px; letter-spacing: .09em; text-transform: uppercase; color: var(--pf-muted);
+  font-weight: 640; padding: 14px 8px 7px; margin: 0;
+}
+.browse .row {
+  width: 100%; text-align: left; font: inherit; font-size: 13px; cursor: pointer;
+  background: none; border: 0; color: var(--pf-ink-2); padding: 6px 10px;
+  border-radius: 6px; display: flex; justify-content: space-between; gap: 8px;
+  align-items: baseline;
+}
+.browse .row:hover { background: var(--pf-track); color: var(--pf-ink); }
+.browse .row .n {
+  font-size: 11px; color: var(--pf-muted);
+  font-variant-numeric: tabular-nums slashed-zero;
+}
+.browse .tags { display: flex; flex-wrap: wrap; gap: 5px; padding: 2px 8px 0; }
+.browse .tag {
+  font: inherit; font-size: 12px; cursor: pointer; color: var(--pf-ink-2);
+  background: var(--pf-track); border: 1px solid var(--edge);
+  padding: 3px 9px; border-radius: 13px; line-height: 1.35;
+}
+.browse .tag:hover { border-color: var(--pf-s1); color: var(--pf-s1); }
+.browse .more {
+  font: inherit; font-size: 12px; cursor: pointer; background: none; border: 0;
+  color: var(--pf-s1); padding: 6px 10px;
+}
 
 /* Region 4: the tray. Capacity is stated three ways, because one cue in a
    sidebar goes unread: a count, an empty slot, and a button that will not fire. */
@@ -438,6 +469,63 @@ tr:last-child td { border-bottom: 0; }
 .dots i:nth-child(3) { animation-delay: .3s; }
 @keyframes pulse { 0%,60%,100% { opacity: .25; } 30% { opacity: 1; } }
 
+/* ---------- browse ----------
+   Three doors, each complete rather than a sample: the 36 counties, the four
+   government types, and the 36 named things governments actually do. Somebody
+   who wants fire protection cannot get there from a list of names, because the
+   districts that provide it are precisely the ones nobody can name. */
+let BROWSE = null, browseAll = { counties: false, functions: false };
+
+async function drawBrowse() {
+  BROWSE ||= await api('/api/browse');
+  const counties = browseAll.counties ? BROWSE.counties : BROWSE.counties.slice(0, 8);
+  const functions = browseAll.functions ? BROWSE.functions : BROWSE.functions.slice(0, 12);
+
+  $('presets').innerHTML = `
+    <div class="empty-hint">Search by name, or start from one of these. Nobody arrives
+    able to name a rural fire district, and districts are <b>two thirds</b> of Oregon's
+    governments.</div>
+    <div class="browse">
+      <h3>What they do</h3>
+      <div class="tags">${functions.map((f) => `
+        <button class="tag" data-fn="${esc(f.name)}"
+                title="${esc(f.governments)} governments · ${esc(f.area)}">${esc(f.name)}</button>`).join('')}
+      </div>
+      ${BROWSE.functions.length > functions.length
+        ? `<button class="more" data-more="functions">Show all ${BROWSE.functions.length}</button>` : ''}
+
+      <h3>Who serves a place</h3>
+      ${counties.map((c) => `
+        <button class="row" data-county="${esc(c.name)}" data-pid6="${esc(c.pid6)}">
+          <span>${esc(c.name)}</span><span class="n">${esc(c.governments)} governments</span>
+        </button>`).join('')}
+      ${BROWSE.counties.length > counties.length
+        ? `<button class="more" data-more="counties">Show all 36 counties</button>` : ''}
+
+      <h3>By type</h3>
+      ${BROWSE.types.map((t) => `
+        <button class="row" data-type="${esc(t.name)}">
+          <span>${esc(t.name)}</span><span class="n">${esc(t.count)}</span>
+        </button>`).join('')}
+    </div>`;
+
+  $('presets').querySelectorAll('[data-fn]').forEach((node) => {
+    node.onclick = () => ask(`Who spends on ${node.dataset.fn}?`,
+                             { fn: node.dataset.fn });
+  });
+  $('presets').querySelectorAll('[data-county]').forEach((node) => {
+    node.onclick = () => ask(`Which governments serve ${node.dataset.county}?`,
+                             { id: 'ecosystem', pid6: node.dataset.pid6 });
+  });
+  $('presets').querySelectorAll('[data-type]').forEach((node) => {
+    node.onclick = () => { $('q').value = node.dataset.type; $('q').focus();
+                           $('q').dispatchEvent(new Event('input', { bubbles: true })); };
+  });
+  $('presets').querySelectorAll('[data-more]').forEach((node) => {
+    node.onclick = () => { browseAll[node.dataset.more] = true; drawBrowse(); };
+  });
+}
+
 /* ---------- comparison tray ----------
    The reader picks the governments and the measure. Every label, number and
    caveat still comes from the tool layer: what is selectable is the question,
@@ -626,6 +714,14 @@ async function staticApi(path, body) {
     }
   }
 
+  if (path === '/api/browse') return readJson('data/browse.json');
+
+  if (path === '/api/function') {
+    try { return await readJson(`data/function/${encodeURIComponent(body.name)}.json`); }
+    catch { return { blocks: [{ kind: 'answer', text:
+      'That function is not in this build.' }], trace: [] }; }
+  }
+
   if (path === '/api/service_areas') {
     try { return await readJson('data/service_areas.json'); } catch { return { areas: [] }; }
   }
@@ -750,17 +846,23 @@ function splitMatch(name, term) {
 
 function drawResults(term) {
   const box = $('results');
-  if (!matches.length) {
+  if (!matches.length && !functionsMatching(term).length && !countiesMatching(term).length) {
     box.innerHTML = '';
     $('facets').hidden = true;
     $('q').setAttribute('aria-expanded', 'false');
+    if (!entity) $('presets').hidden = false;
     return;
   }
   const presetHits = entity ? presetsMatching(term) : [];
   $('facets').hidden = false;
-  $('facets').textContent =
-    `${matches.length} government${matches.length === 1 ? '' : 's'}`
-    + (presetHits.length ? ` · ${presetHits.length} question${presetHits.length === 1 ? '' : 's'}` : '');
+  const facets = [`${matches.length} government${matches.length === 1 ? '' : 's'}`];
+  const fnCount = functionsMatching(term).length;
+  const countyCount = countiesMatching(term).length;
+  if (fnCount) facets.push(`${fnCount} function${fnCount === 1 ? '' : 's'}`);
+  if (countyCount) facets.push(`${countyCount} place${countyCount === 1 ? '' : 's'}`);
+  if (presetHits.length) facets.push(
+    `${presetHits.length} question${presetHits.length === 1 ? '' : 's'}`);
+  $('facets').textContent = facets.join(' · ');
 
   const rows = matches.map((m, i) => {
     const name = m.common_name || m.legal_name;
@@ -791,8 +893,24 @@ function drawResults(term) {
     <button class="preset" data-id="${p.id}" data-label="${esc(p.label)}"
             data-question="1">${esc(p.label)}</button>`).join('');
 
-  box.innerHTML = `<div class="rgroup">Governments</div>${rows}`
+  const fnHits = functionsMatching(term);
+  const countyHits = countiesMatching(term);
+  const doings = fnHits.map((f) => `
+    <button class="preset" data-fn="${esc(f.name)}">${esc(f.name)}
+      <span style="color:var(--pf-muted);font-size:11px">
+        · ${esc(f.governments)} governments</span></button>`).join('');
+  const places = countyHits.map((c) => `
+    <button class="preset" data-county="${esc(c.name)}" data-pid6="${esc(c.pid6)}">
+      Which governments serve ${esc(c.name)}?</button>`).join('');
+
+  box.innerHTML = (doings ? `<div class="rgroup">What they do</div>${doings}` : '')
+    + (places ? `<div class="rgroup">Places</div>${places}` : '')
+    + (rows ? `<div class="rgroup">Governments</div>${rows}` : '')
     + (questions ? `<div class="rgroup">Questions about ${esc(entityName())}</div>${questions}` : '');
+
+  // The browse panel is the door for a reader with nothing typed. While a query
+  // is open it is noise sitting under the answer to that query.
+  if (!entity) $('presets').hidden = Boolean(term);
 
   box.querySelectorAll('.result-row').forEach((node) => {
     const index = Number(node.dataset.i);
@@ -806,6 +924,13 @@ function drawResults(term) {
   box.querySelectorAll('[data-question]').forEach((node) => {
     node.onclick = () => ask(node.dataset.label, { id: node.dataset.id });
   });
+  box.querySelectorAll('[data-fn]').forEach((node) => {
+    node.onclick = () => ask(`Who spends on ${node.dataset.fn}?`, { fn: node.dataset.fn });
+  });
+  box.querySelectorAll('[data-county]').forEach((node) => {
+    node.onclick = () => ask(`Which governments serve ${node.dataset.county}?`,
+                             { id: 'ecosystem', pid6: node.dataset.pid6 });
+  });
   $('q').setAttribute('aria-expanded', 'true');
 }
 
@@ -814,6 +939,23 @@ function presetsMatching(term) {
   const needle = term.toLowerCase();
   return (PRESETS_CACHE || []).filter(
     (p) => p.available && p.label.toLowerCase().includes(needle));
+}
+
+/* A reader looking for fire protection is not looking for a name. Matching the
+   things governments do, and the places they serve, is what turns the search box
+   into something other than a lookup for people who already know the answer. */
+function functionsMatching(term) {
+  if (!term || term.length < 2 || !BROWSE) return [];
+  const needle = term.toLowerCase();
+  return BROWSE.functions.filter(
+    (f) => f.name.toLowerCase().includes(needle) || f.area.toLowerCase().includes(needle))
+    .slice(0, 6);
+}
+
+function countiesMatching(term) {
+  if (!term || term.length < 2 || !BROWSE) return [];
+  const needle = term.toLowerCase();
+  return BROWSE.counties.filter((c) => c.name.toLowerCase().includes(needle)).slice(0, 5);
 }
 
 function setActive(index, scroll) {
@@ -906,10 +1048,7 @@ let PRESETS_CACHE = null;
 async function loadPresets() {
   if (!entity) {
     PRESETS_CACHE = null;
-    $('presets').innerHTML = `<div class="empty-hint">
-      Search for a city, county, school district or special district to begin.
-      <br><br>Then follow one budget down: <b>where the money goes</b>, into the
-      <b>functions</b> inside one service area, to <b>what of it is purchasable</b>.</div>`;
+    await drawBrowse();
     return;
   }
   const { presets } = await api('/api/presets?pid6=' + entity.pid6);
@@ -925,6 +1064,63 @@ async function loadPresets() {
     }).join('')}`).join('');
   [...$('presets').querySelectorAll('.preset')].forEach((node) => {
     node.onclick = () => ask(node.dataset.label, { id: node.dataset.id });
+  });
+}
+
+/* ---------- browse ----------
+   Three doors, each complete rather than a sample: the 36 counties, the four
+   government types, and the 36 named things governments actually do. Somebody
+   who wants fire protection cannot get there from a list of names, because the
+   districts that provide it are precisely the ones nobody can name. */
+let BROWSE = null, browseAll = { counties: false, functions: false };
+
+async function drawBrowse() {
+  BROWSE ||= await api('/api/browse');
+  const counties = browseAll.counties ? BROWSE.counties : BROWSE.counties.slice(0, 8);
+  const functions = browseAll.functions ? BROWSE.functions : BROWSE.functions.slice(0, 12);
+
+  $('presets').innerHTML = `
+    <div class="empty-hint">Search by name, or start from one of these. Nobody arrives
+    able to name a rural fire district, and districts are <b>two thirds</b> of Oregon's
+    governments.</div>
+    <div class="browse">
+      <h3>What they do</h3>
+      <div class="tags">${functions.map((f) => `
+        <button class="tag" data-fn="${esc(f.name)}"
+                title="${esc(f.governments)} governments · ${esc(f.area)}">${esc(f.name)}</button>`).join('')}
+      </div>
+      ${BROWSE.functions.length > functions.length
+        ? `<button class="more" data-more="functions">Show all ${BROWSE.functions.length}</button>` : ''}
+
+      <h3>Who serves a place</h3>
+      ${counties.map((c) => `
+        <button class="row" data-county="${esc(c.name)}" data-pid6="${esc(c.pid6)}">
+          <span>${esc(c.name)}</span><span class="n">${esc(c.governments)} governments</span>
+        </button>`).join('')}
+      ${BROWSE.counties.length > counties.length
+        ? `<button class="more" data-more="counties">Show all 36 counties</button>` : ''}
+
+      <h3>By type</h3>
+      ${BROWSE.types.map((t) => `
+        <button class="row" data-type="${esc(t.name)}">
+          <span>${esc(t.name)}</span><span class="n">${esc(t.count)}</span>
+        </button>`).join('')}
+    </div>`;
+
+  $('presets').querySelectorAll('[data-fn]').forEach((node) => {
+    node.onclick = () => ask(`Who spends on ${node.dataset.fn}?`,
+                             { fn: node.dataset.fn });
+  });
+  $('presets').querySelectorAll('[data-county]').forEach((node) => {
+    node.onclick = () => ask(`Which governments serve ${node.dataset.county}?`,
+                             { id: 'ecosystem', pid6: node.dataset.pid6 });
+  });
+  $('presets').querySelectorAll('[data-type]').forEach((node) => {
+    node.onclick = () => { $('q').value = node.dataset.type; $('q').focus();
+                           $('q').dispatchEvent(new Event('input', { bubbles: true })); };
+  });
+  $('presets').querySelectorAll('[data-more]').forEach((node) => {
+    node.onclick = () => { browseAll[node.dataset.more] = true; drawBrowse(); };
   });
 }
 
@@ -1016,9 +1212,12 @@ async function ask(label, payload) {
 
   const result = payload.compare
     ? await api('/api/compare', payload.compare)
-    : payload.id
-      ? await api('/api/preset', { id: payload.id, pid6: entity?.pid6 })
-      : await api('/api/ask', { question: label });
+    : payload.fn
+      ? await api('/api/function', { name: payload.fn })
+      : payload.id
+        ? await api('/api/preset', { id: payload.id, pid6: entity?.pid6,
+                                     county: payload.county })
+        : await api('/api/ask', { question: label });
 
   turn.querySelector('.a').innerHTML = render(result);
   turn.querySelectorAll('.chip').forEach((chip) => {

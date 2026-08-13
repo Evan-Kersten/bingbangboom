@@ -63,6 +63,16 @@ def export(out_dir):
     import comparison_data
     write(os.path.join(data_dir, "comparison.json"), comparison_data.build(store))
 
+    # The doors that are not the search box, and one answer per named function
+    # behind them. Thirty-six small files against a search that only finds what
+    # a reader could already name.
+    import browse_data
+    browse = browse_data.build(store)
+    write(os.path.join(data_dir, "browse.json"), browse)
+    for function in browse["functions"]:
+        write(os.path.join(data_dir, "function", f"{function['name']}.json"),
+              S.answer_function(function["name"]))
+
     write(os.path.join(data_dir, "service_areas.json"), {
         "areas": [r["service_area"] for r in store.rows(
             "SELECT service_area, COUNT(*) AS n FROM spending_by_service_area "
