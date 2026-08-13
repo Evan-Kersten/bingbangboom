@@ -63,6 +63,32 @@ def count(value):
     return f"{value:,}"
 
 
+# §15.3: an uncertainty in a footnote is not read. These marks ride the figure.
+MARKS = {
+    "match_confidence": ("\u2020", "rests on a match below the high-confidence threshold"),
+    "partial_breakdown": ("\u2021", "a share of a partial breakdown"),
+    "basis_dependent": ("\u00a7", "a different basis would reorder this"),
+}
+
+
+def mark(value_text, kinds):
+    """Append uncertainty marks to a formatted figure.
+
+    Order is fixed so the same qualification always reads the same way, and an
+    unmarked figure means the data supports it without qualification. Marking
+    everything would carry no information, so callers pass only what applies.
+    """
+    if not value_text or not kinds:
+        return value_text
+    glyphs = "".join(MARKS[k][0] for k in MARKS if k in kinds)
+    return f"{value_text}{glyphs}" if glyphs else value_text
+
+
+def mark_legend(kinds):
+    """The one short line that sits beneath a marked block."""
+    return [f"{MARKS[k][0]} {MARKS[k][1]}" for k in MARKS if k in kinds]
+
+
 def check_style(text):
     """Return §4 style violations in generated prose.
 

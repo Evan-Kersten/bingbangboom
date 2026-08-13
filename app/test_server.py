@@ -43,23 +43,33 @@ def main():
     for preset_id, label, _, _, _ in S.PRESETS:
         result = S.answer_preset(preset_id, baker)
         check(f"{preset_id} returns blocks", bool(result["blocks"]), label)
+        check(f"{preset_id} conforms to §15", result["violations"] == [],
+              str(result["violations"]))
 
     print("\npresets carry their rules and their trace")
     result = S.answer_preset("driver", sumpter)
-    codes = {r["code"] for r in result["rules"]}
+    limits = next((b for b in result["blocks"] if b["kind"] == "limits"), {"rules": []})
+    codes = {r["code"] for r in limits["rules"]}
     check("the debt cap reaches the interface", "debt_capped" in codes)
     check("the prior-year artifact reaches the interface", "prior_year_missing" in codes)
     check("a never-rule is marked as one",
-          any(r["kind"] == "never" for r in result["rules"]))
+          any(r["kind"] == "never" for r in limits["rules"]))
     check("the tool trace is reported", "get_financial_position" in result["trace"])
     check("a chart is returned", any(b["kind"] == "chart" for b in result["blocks"]))
-    check("the headline reads the real score",
+    check("the answer reads the real score",
           any("60 of 100" in b.get("text", "") for b in result["blocks"]),
-          str(result["blocks"][0]))
+          str(result["blocks"][1]))
+    check("the response conforms to §15", result["violations"] == [],
+          str(result["violations"]))
+    check("it opens with an interpretation block",
+          result["blocks"][0]["kind"] == "interpretation")
+    check("and closes by offering only answerable follow-ups",
+          result["blocks"][-1]["kind"] == "next")
 
     print("\nrefusals survive into the interface")
     result = S.answer_preset("peers", new_bridge)
-    codes = {r["code"] for r in result["rules"]}
+    limits = next((b for b in result["blocks"] if b["kind"] == "limits"), {"rules": []})
+    codes = {r["code"] for r in limits["rules"]}
     check("a degenerate peer median still refuses here",
           "peer_median_degenerate" in codes)
     check("and the refusal is drawn rather than dropped",
@@ -71,7 +81,11 @@ def main():
     text = " ".join(b.get("text", "") for b in result["blocks"])
     check("it reports the count", "governments are filed under" in text)
     check("it names the cross-boundary set", "filed under a neighbouring county" in text)
-    check("and includes a map", any(b["kind"] == "chart" for b in result["blocks"]))
+    check("and includes a map block, not a chart",
+          any(b["kind"] == "map" for b in result["blocks"]))
+    check("the map declares its coverage so §15 can judge it",
+          any(b["kind"] == "map" and b.get("coverage") is not None
+              for b in result["blocks"]))
 
     print("\nreports render into the thread")
     result = S.answer_preset("report", baker)

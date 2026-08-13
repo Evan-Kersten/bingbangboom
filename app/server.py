@@ -31,6 +31,7 @@ import urllib.parse
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(HERE), "agent"))
 
+import blocks as B            # noqa: E402
 import format as fmt          # noqa: E402
 import reports as R           # noqa: E402
 import tools as T             # noqa: E402
@@ -42,6 +43,22 @@ STORE = T.Store()
 # only offered when the block it needs is present, which is what the prompt
 # already asks for and what stops the interface promising an answer the data
 # cannot give.
+# preset id -> §5 question type, which §15.2 turns into a block order
+QUESTION_TYPE = {
+    "profile": "factual_lookup",
+    "finance": "financial_interpretation",
+    "driver": "financial_interpretation",
+    "spending": "financial_interpretation",
+    "workforce": "financial_interpretation",
+    "trend": "financial_interpretation",
+    "peers": "financial_interpretation",
+    "salient": "what_stands_out",
+    "governance": "governance",
+    "ecosystem": "place_or_cross_entity",
+    "limits": "factual_lookup",
+    "report": "place_or_cross_entity",
+}
+
 PRESETS = [
     # (id, label, group, required availability key, handler)
     ("profile", "What kind of government is this?", "Orientation", None, "profile"),
@@ -197,8 +214,12 @@ def answer_preset(preset_id, pid6=None, county=None):
             county_map = T.render_map(STORE, "place", "fiscal_stability",
                                       county=(data["county"] or "").split()[0])
             results.append(county_map)
-            if county_map["data"].get("svg"):
-                blocks.append({"kind": "chart", "svg": county_map["data"]["svg"]})
+            map_data = county_map["data"]
+            if map_data.get("svg"):
+                polygons = map_data.get("polygons") or 0
+                blocks.append({
+                    "kind": "map", "svg": map_data["svg"],
+                    "coverage": (map_data.get("covered", 0) / polygons) if polygons else None})
     elif preset_id == "limits":
         result = T.get_entity_profile(STORE, pid6) if pid6 else T.envelope("scope")
         results.append(result)
@@ -224,24 +245,54 @@ def answer_preset(preset_id, pid6=None, county=None):
         return {"blocks": [{"kind": "text", "text": f"No preset '{preset_id}'."}],
                 "rules": [], "trace": []}
 
-    rules, seen = [], set()
+    # ---- assemble into the §15 vocabulary --------------------------------
+    question_type = QUESTION_TYPE.get(preset_id, "factual_lookup")
+    flags = T._flags(STORE, pid6) if pid6 else {}
+
+    # §15.1: one answer block. Several readouts join rather than stacking as
+    # separate answers, because §15.2 places exactly one.
+    sentences = [b["text"] for b in blocks if b["kind"] == "text"]
+    if not sentences:
+        sentences = ["The data has nothing to show for that here. That is an "
+                     "absence of data, not a report of zero."]
+
+    vintages = {}
     for result in results:
-        for rule in result.get("caveats", []):
-            if rule["code"] not in seen:
-                seen.add(rule["code"])
-                rules.append({**rule, "kind": "must"})
-        for rule in result.get("not_computable", []):
-            if rule["code"] not in seen:
-                seen.add(rule["code"])
-                rules.append({"code": rule["code"], "rule": rule["rule"],
-                              "guidance": rule["reason"], "kind": "never"})
+        vintages.update(result.get("vintage") or {})
 
-    if not blocks:
-        blocks = [{"kind": "text",
-                   "text": "The data has nothing to show for that here. "
-                           "That is an absence of data, not a report of zero."}]
+    composed = [
+        B.interpretation(STORE, entity, vintages),
+        {"kind": "answer", "text": " ".join(sentences)},
+    ]
 
-    return {"blocks": blocks, "rules": rules,
+    # §15.1: a figure block where the answer is a quantity, marked per §15.3.
+    marks = B.marks_for(flags)
+    for result in results:
+        data = result.get("data") or {}
+        if result["tool"] == "get_financial_position" and data.get("score") is not None:
+            composed.append(B.figure(
+                "Fiscal stability", f"{data['score']:.0f} of 100",
+                year=(result.get("vintage") or {}).get("finance")))
+        elif result["tool"] == "get_spending_breakdown" and data.get("service_areas"):
+            top = data["service_areas"][0]
+            composed.append(B.figure(
+                f"Largest reported area, {top['service_area']}",
+                fmt.money(top["total"]), marks=marks,
+                year=(result.get("vintage") or {}).get("finance")))
+
+    composed += [b for b in blocks if b["kind"] in ("chart", "map", "table", "report", "list")]
+    composed.append(B.limits(results))
+    # Never offer back the question just asked.
+    asked = {label for pid, label, _, _, _ in PRESETS if pid == preset_id}
+    composed.append(B.next_questions(STORE, pid6, asked=asked))
+
+    ordered = B.compose(question_type, composed)
+    violations = B.validate(question_type, [b for b in ordered
+                                            if b["kind"] in B.BLOCK_ORDER[question_type]])
+
+    return {"blocks": ordered,
+            "question_type": question_type,
+            "violations": violations,
             "trace": [r["tool"] for r in results]}
 
 
