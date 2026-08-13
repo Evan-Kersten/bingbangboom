@@ -479,7 +479,11 @@ async function staticApi(path, body) {
   }
 
   if (path === '/api/preset') {
+    // A statewide map is the same answer whoever is selected, so it is stored
+    // once rather than beside every government.
+    const SHARED = ['map_area'];
     try {
+      if (SHARED.includes(body.id)) return await readJson(`data/shared/${body.id}.json`);
       return await readJson(`data/${body.pid6}/${body.id}.json`);
     } catch {
       return { blocks: [{ kind: 'answer', text:

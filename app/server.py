@@ -107,6 +107,12 @@ PRESETS = [
 # it a defensible default rather than a favourite.
 DEFAULT_AREA = "Public Safety"
 
+# Presets whose answer does not depend on the selected government. A statewide
+# map is about Oregon, not about whichever government happens to be selected, so
+# it is rendered once rather than once per entity. That one change is half the
+# weight of the static build.
+ENTITY_INDEPENDENT = {"map_area"}
+
 COMPARISON_FORMS = ("per_capita_by_service_area", "per_capita_over_time",
                     "service_area_across_entities", "entities_over_time")
 
@@ -281,6 +287,8 @@ def _gap(points):
 
 def answer_preset(preset_id, pid6=None, county=None):
     """Run a preset. Returns blocks the UI renders in order."""
+    if preset_id in ENTITY_INDEPENDENT:
+        pid6 = None
     entity = T._entity(STORE, pid6) if pid6 else None
     blocks, results = [], []
 

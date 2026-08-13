@@ -78,6 +78,9 @@ def export(out_dir):
             # Do not render an answer the interface will not offer.
             if not preset["available"]:
                 continue
+            # Rendered once into data/shared, below.
+            if preset["id"] in S.ENTITY_INDEPENDENT:
+                continue
             answer = S.answer_preset(preset["id"], pid6)
             total += write(os.path.join(data_dir, pid6, f"{preset['id']}.json"), answer)
             written += 1
@@ -110,6 +113,11 @@ def export(out_dir):
 
         if index % 250 == 0:
             print(f"  {index}/{len(entities)} entities, {total/1e6:.0f} MB so far")
+
+    for preset_id in sorted(S.ENTITY_INDEPENDENT):
+        total += write(os.path.join(data_dir, "shared", f"{preset_id}.json"),
+                       S.answer_preset(preset_id))
+        written += 1
 
     # The interface itself, with a flag telling it to read files rather than
     # call an API. One source file, two modes, so they cannot drift.
