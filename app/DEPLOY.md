@@ -58,6 +58,20 @@ beyond that command and the key.
 A reasonable arrangement is both: Pages for the public, browsable interface,
 and a small private instance with the key for the free-text version.
 
+## Why the site only appears after a merge
+
+GitHub protects the `github-pages` environment so that only the default branch
+can publish to it. A deployment from a feature branch is rejected about two
+seconds in, which looks like a broken workflow but is the rule working.
+
+So the workflow splits: the build, the full test suite and a real render run on
+every branch, which is what makes a pull request meaningful, and publishing
+happens only from `main`. Merge the pull request and the site goes up.
+
+If you would rather publish from a branch, **Settings** → **Environments** →
+**github-pages** → **Deployment branches** and add it. Restricting it to the
+default branch is the safer arrangement, so the workflow assumes that.
+
 ## Rebuilding after the data changes
 
 Push. That is the whole procedure. To rebuild without pushing, open the
