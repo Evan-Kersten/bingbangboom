@@ -176,6 +176,49 @@ SCHEMAS = [
         },
     },
     {
+        "name": "compare_normalized",
+        "description": "Compare several entities on a stated basis. Absolute spending ranks "
+                       "by entity size and answers nothing on its own, so prefer "
+                       "share_of_spending or per_resident and say which you used. The basis "
+                       "is never silently downgraded: an entity for which it cannot be "
+                       "computed is excluded and named, rather than mixed into the same "
+                       "table on a different basis. " + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pid6_list": {"type": "array", "items": {"type": "string"}},
+                "basis": {"type": "string",
+                          "enum": ["share_of_spending", "per_resident", "absolute"]},
+                "service_area": {"type": "string",
+                                 "description": "Optional service area to compare within."},
+            },
+            "required": ["pid6_list"],
+        },
+    },
+    {
+        "name": "compose_report",
+        "description": "Plan a multi-section report. Returns sections in the order the "
+                       "prompt requires, each with a heading, what you must write there, a "
+                       "word budget, the figures, any chart, and the rules bound to that "
+                       "section. Write each section against its own budget and rules. "
+                       "Sections with nothing to say are already dropped, so do not pad "
+                       "them back in. Kinds: entity, place, comparison.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "kind": {"type": "string", "enum": ["entity", "place", "comparison"]},
+                "pid6": {"type": "string", "description": "For kind=entity."},
+                "county_name": {"type": "string", "description": "For kind=place."},
+                "pid6_list": {"type": "array", "items": {"type": "string"},
+                              "description": "For kind=comparison."},
+                "basis": {"type": "string",
+                          "enum": ["share_of_spending", "per_resident", "absolute"]},
+                "service_area": {"type": "string"},
+            },
+            "required": ["kind"],
+        },
+    },
+    {
         "name": "run_sql",
         "description": "Read-only SQL escape hatch for questions no other tool covers. "
                        "Prefer a typed tool wherever one applies: rows returned here arrive "

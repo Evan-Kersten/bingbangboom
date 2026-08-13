@@ -553,6 +553,21 @@ def list_ecosystem(store, county_pid6=None, county_name=None):
     for member in members:
         by_type.setdefault(member["gov_type_name"], []).append(member)
 
+    # §9 ranks measured fact above inference from names. Where a service extent
+    # has been measured, it outranks host-county grouping, which files a district
+    # under the county holding most of its assessed value and so misses every
+    # district that serves this county from a neighbouring filing.
+    try:
+        also_serving = store.rows(
+            "SELECT e.pid6, e.legal_name, e.common_name, e.gov_type_name, "
+            "s.filed_county, s.basis FROM service_extent s "
+            "JOIN entities e ON e.pid6 = s.pid6 "
+            "WHERE s.serves_county = ? AND s.filed_county != s.serves_county "
+            "ORDER BY e.gov_type_name, e.common_name",
+            (county["host_county"] or "").upper())
+    except sqlite3.OperationalError:
+        also_serving = []   # the dissolve pilot has not been run
+
     caveats = [
         caveat("ecosystem_basis_host_county"),
         caveat("ecosystem_no_summing"),
@@ -571,12 +586,22 @@ def list_ecosystem(store, county_pid6=None, county_name=None):
                         "the data. A map of this ecosystem is necessarily partial; a list "
                         "is complete."})
 
+    if also_serving:
+        caveats.append({
+            "code": "served_from_another_county", "rule": "§9",
+            "guidance": f"{len(also_serving)} further governments operate in this county but "
+                        "are filed under a neighbouring one, so they are absent from a "
+                        "host-county list. They are included here on measured service "
+                        "extent, which outranks inference from filing. Name them when the "
+                        "question is who serves this place."})
+
     return envelope(
         "list_ecosystem", entity=county,
         data={"county": county["common_name"] or county["legal_name"],
               "total": len(members),
               "by_type": {k: len(v) for k, v in by_type.items()},
-              "entities": members, "mappable": mappable},
+              "entities": members, "mappable": mappable,
+              "also_serving_filed_elsewhere": also_serving},
         caveats=caveats,
         blocked=[not_computable("property_tax_summed")])
 
@@ -952,3 +977,22 @@ def render_map(store, layer="county", metric="fiscal_stability", county=None):
 
 TOOLS["render_chart"] = render_chart
 TOOLS["render_map"] = render_map
+
+
+def compose_report(store, kind="entity", pid6=None, county_name=None,
+                   pid6_list=None, basis="absolute", service_area=None):
+    """Plan a multi-section report. Sections come back in §5 precedence order."""
+    import reports
+    return reports.compose_report(store, kind=kind, pid6=pid6, county_name=county_name,
+                                  pid6_list=pid6_list, basis=basis,
+                                  service_area=service_area)
+
+
+def compare_normalized(store, pid6_list, service_area=None, basis="absolute"):
+    """Cross-entity comparison on a stated basis (§10)."""
+    import reports
+    return reports.compare_normalized(store, pid6_list, service_area, basis)
+
+
+TOOLS["compose_report"] = compose_report
+TOOLS["compare_normalized"] = compare_normalized

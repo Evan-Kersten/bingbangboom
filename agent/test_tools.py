@@ -238,6 +238,8 @@ def main():
         "run_sql": {"sql": "SELECT 1 AS n"},
         "render_chart": {"pid6": baker_county, "form": "spending_composition"},
         "render_map": {"layer": "county"},
+        "compare_normalized": {"pid6_list": [portland, baker_county]},
+        "compose_report": {"kind": "entity", "pid6": baker_county},
     }
     for name, tool in T.TOOLS.items():
         args = extra_args.get(name, {"pid6": baker_county})
