@@ -110,10 +110,19 @@ def export(out_dir):
     shutil.copyfile(os.path.join(HERE, "comparison.js"),
                     os.path.join(out_dir, "comparison.js"))
 
+    # A build stamp on every asset the page fetches. GitHub Pages caches HTML,
+    # and a stale index.html paired with a fresh data directory is the worst
+    # kind of broken: it asks for files the new build no longer writes and falls
+    # into its own "not available" branch, which reads as a dead feature rather
+    # than as a cache. Stamping the URLs means an old page can only ever load
+    # the data it was built against.
+    stamp = str(int(time.time()))
     with open(os.path.join(HERE, "index.html")) as fh:
         html = fh.read()
     html = html.replace("<script>\nconst $ =",
-                        "<script>\nwindow.PF_STATIC = true;\nconst $ =", 1)
+                        f"<script>\nwindow.PF_STATIC = true;\n"
+                        f"window.PF_BUILD = '{stamp}';\nconst $ =", 1)
+    html = html.replace('src="comparison.js"', f'src="comparison.js?v={stamp}"', 1)
     with open(os.path.join(out_dir, "index.html"), "w") as fh:
         fh.write(html)
 

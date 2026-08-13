@@ -85,6 +85,25 @@ def main():
     check("and closes by offering only answerable follow-ups",
           result["blocks"][-1]["kind"] == "next")
 
+    print("\na government is placed on a map, not only described")
+    # Maps used to appear in two place-scoped presets only, both in the last
+    # group, so a reader exploring one government never saw one.
+    for name, expect_map in (("COUNTY OF BAKER", True), ("CITY OF PORTLAND", True),
+                             ("NEW BRIDGE WATER SUPPLY DISTRICT", False)):
+        row = store.row("SELECT pid6 FROM entities WHERE legal_name=?", name)
+        result = S.answer_preset("scale", row["pid6"])
+        has_map = any(b["kind"] == "map" for b in result["blocks"])
+        check(f"{name.title()}: map {'drawn' if expect_map else 'withheld'}",
+              has_map is expect_map)
+        check(f"{name.title()}: still conforms to §15", result["violations"] == [],
+              str(result["violations"]))
+    answer = " ".join(b.get("text", "") for b in
+                      S.answer_preset("scale", store.row(
+                          "SELECT pid6 FROM entities WHERE legal_name="
+                          "'NEW BRIDGE WATER SUPPLY DISTRICT'")["pid6"])["blocks"])
+    check("and an entity with no boundary is told why, not left blank",
+          "no boundary in this data" in answer, answer[:100])
+
     print("\nthe drill-down reaches the line item")
     levels = [S.answer_preset(preset, baker) for preset in
               ("spending", "inside", "purchasable")]

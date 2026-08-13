@@ -124,12 +124,19 @@ LEGEND_BAND = 74
 
 
 def choropleth(layer, values, title, subtitle, formatter=fmt.percent,
-               width=680, height=460, build=BUILD, note=None, only=None):
+               width=680, height=460, build=BUILD, note=None, only=None,
+               highlight=None):
     """`values` maps a layer geo_id to a number. Anything absent draws as no data.
 
     `only` restricts the drawing to a set of geo_ids, which is how a place map
     becomes readable: 378 Oregon cities at state scale are dots, and a reader
     comparing dot areas is comparing city land area, which means nothing here.
+
+    `highlight` outlines one boundary. A choropleth of a peer group answers "how
+    do these compare"; outlining the one being read about also answers "which of
+    these is mine", which is the question a reader actually arrived with. The
+    outline is a stroke rather than a different fill, because changing the fill
+    would take the entity off the value ramp and hide its own figure.
 
     Returns the SVG and the accounting: how many polygons carried a value, which
     is the number that keeps a partial map honest.
@@ -152,6 +159,7 @@ def choropleth(layer, values, title, subtitle, formatter=fmt.percent,
     body = [f'<g transform="translate(0,{offset + 4})">']
 
     covered = 0
+    highlighted = None
     for feature in features:
         geo_id = feature["properties"].get(key)
         name = feature["properties"].get("NAME", geo_id)
@@ -170,6 +178,22 @@ def choropleth(layer, values, title, subtitle, formatter=fmt.percent,
         # doing the work, not a border drawn to outline the mark.
         body.append(f'<path d="{path}" fill="{fill}" stroke="{viz.token("surface")}" '
                     f'stroke-width="0.6"><title>{viz.esc(name)}: {viz.esc(label)}</title></path>')
+        if highlight and geo_id == highlight:
+            highlighted = path
+
+    # Drawn last, inside the same transform, so a neighbour's fill cannot
+    # overpaint the outline of the boundary the reader came here about.
+    #
+    # Two strokes, not one. A single dark outline disappears against the top bin
+    # and a single light one disappears against the bottom, and the entity a
+    # reader is looking for is as likely to be at one end as the other. The pale
+    # casing underneath makes the dark line read on every step of the ramp, in
+    # both themes.
+    if highlighted:
+        body.append(f'<path d="{highlighted}" fill="none" stroke="{viz.token("surface")}" '
+                    f'stroke-width="4" stroke-linejoin="round" pointer-events="none"/>')
+        body.append(f'<path d="{highlighted}" fill="none" stroke="{viz.token("ink")}" '
+                    f'stroke-width="1.8" stroke-linejoin="round" pointer-events="none"/>')
     body.append("</g>")
 
     # Legend. Discrete bins, so the swatches are an ordinal ramp; the no-data

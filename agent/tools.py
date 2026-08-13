@@ -1110,8 +1110,21 @@ SERVICE_AREA_MAP_METRICS = {
 }
 
 
+def entity_layer(store, pid6):
+    """Which boundary layer a government can be drawn on, and its geo_id.
+
+    Counties and places join exactly, school districts by name at 156 of 223,
+    and special districts have no boundaries at all. Returns None where the
+    entity cannot be drawn, so the caller offers a list rather than a map.
+    """
+    row = store.row(
+        "SELECT g.layer, g.geo_id, e.gov_type_name, e.host_county_pid6 "
+        "FROM geo_entity g JOIN entities e ON e.pid6 = g.pid6 WHERE g.pid6 = ?", pid6)
+    return dict(row) if row else None
+
+
 def render_map(store, layer="county", metric="spending_per_resident", county=None,
-               service_area=None):
+               service_area=None, highlight_pid6=None):
     """Choropleth over a boundary layer.
 
     Memoized on its arguments. The store is read-only, so a map drawn twice with
@@ -1126,7 +1139,7 @@ def render_map(store, layer="county", metric="spending_per_resident", county=Non
     cache = getattr(store, "_map_cache", None)
     if cache is None:
         cache = store._map_cache = {}
-    signature = (layer, metric, county, service_area)
+    signature = (layer, metric, county, service_area, highlight_pid6)
     if signature in cache:
         return cache[signature]
 
@@ -1219,11 +1232,23 @@ def render_map(store, layer="county", metric="spending_per_resident", county=Non
             "guidance": "The denominator is a single population estimate per entity, not a "
                         "series. This is a level at one moment and carries no rate of change."})
 
+    highlight = None
+    if highlight_pid6:
+        found = store.row(
+            "SELECT geo_id FROM geo_entity WHERE pid6 = ? AND layer = ?",
+            highlight_pid6, layer)
+        highlight = found["geo_id"] if found else None
+        if not highlight:
+            caveats.append({
+                "code": "highlight_unavailable", "rule": "§9",
+                "guidance": "This government has no boundary on this layer, so it is not "
+                            "outlined on the map. Say where it sits in words instead."})
+
     result = maps.choropleth(
         layer, values,
         f"{label} by {layer.replace('_', ' ')}",
         extent_note or "Oregon, one government type only",
-        formatter=formatter, only=only)
+        formatter=formatter, only=only, highlight=highlight)
 
     listed = sorted((r for r in rows if r["value"] is not None
                      and (only is None or r["geo_id"] in only)),
@@ -1232,7 +1257,8 @@ def render_map(store, layer="county", metric="spending_per_resident", county=Non
     cache[signature] = envelope(
         "render_map",
         data={"layer": layer, "metric": metric, "county": county,
-              "service_area": service_area, "svg": result["svg"],
+              "service_area": service_area, "highlighted": bool(highlight),
+              "svg": result["svg"],
               "covered": result["covered"], "polygons": result["polygons"],
               "table": [{"name": r["common_name"] or r["legal_name"],
                          "value": formatter(r["value"])}

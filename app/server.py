@@ -277,6 +277,10 @@ def _compare_headline(result):
     return line
 
 
+def _named(entity):
+    return entity["common_name"] or entity["legal_name"]
+
+
 def _with_magnitude(match):
     """Attach the one figure that tells two same-named governments apart.
 
@@ -492,6 +496,35 @@ def answer_preset(preset_id, pid6=None, county=None):
     elif preset_id == "scale":
         add(explore.compare_to_peer_group(STORE, pid6, "expenditure_per_capita"),
             "peer_range")
+        # The peer strip says where this government sits in its distribution;
+        # the map says where it sits in Oregon, on the same measure. A reader
+        # arrives knowing which government is theirs and wanting both.
+        placed = T.entity_layer(STORE, pid6)
+        if placed:
+            scoped = (entity["host_county"] if placed["layer"] == "place" else None)
+            area_map = T.render_map(
+                STORE, placed["layer"], "spending_per_resident",
+                county=scoped, highlight_pid6=pid6)
+            results.append(area_map)
+            data = area_map["data"]
+            polygons = data.get("polygons") or 0
+            coverage = (data.get("covered", 0) / polygons) if polygons else None
+            # §15.1: a map is offered only where the picture is not mostly
+            # absence. Below the floor the list is the honest form.
+            if data.get("svg") and (coverage or 0) >= B.MAP_COVERAGE_FLOOR:
+                blocks.append({"kind": "text", "text": (
+                    f"The same measure across {'this county' if scoped else 'Oregon'}, "
+                    f"with {_named(entity)} outlined. "
+                    + ("Cities render as dots at state scale, so this is scoped to "
+                       f"{(scoped or '').title()} County."
+                       if scoped else
+                       "This is one government type only; the others spend here too."))})
+                blocks.append({"kind": "map", "svg": data["svg"], "coverage": coverage})
+        else:
+            blocks.append({"kind": "text", "text": (
+                f"{_named(entity)} has no boundary in this data, so it cannot be put "
+                "on a map. Special districts, which are most of Oregon's governments, "
+                "have none at all.")})
     elif preset_id == "spending":
         add(T.get_spending_breakdown(STORE, pid6), "spending_composition")
     elif preset_id == "unusual_areas":

@@ -33,8 +33,11 @@ TABLE_OVER_CHART = 7
 BLOCK_ORDER = {
     "factual_lookup": ["interpretation", "answer", "figure", "limits", "next"],
     "governance": ["interpretation", "answer", "table", "limits", "next"],
+    # A map earns a place in a financial answer where the question is "is this
+    # a lot", because a peer distribution says where a government sits among its
+    # peers and a map says where it sits in the state, on the same measure.
     "financial_interpretation": ["interpretation", "answer", "figure", "chart",
-                                 "limits", "next"],
+                                 "map", "limits", "next"],
     # A "what stands out" answer takes a table where the finding is a ranking of
     # divergences: the lead goes in the answer and the ranking is what the reader
     # checks it against. A cross-entity answer takes a chart, because several

@@ -455,7 +455,7 @@ Sections 3 and 14 govern what an answer says. This section governs what it is ma
 |---|---|
 | Factual lookup | Interpretation · Answer · Figure · Limits · Next |
 | Governance and structure | Interpretation · Answer · Table · Limits · Next |
-| Financial interpretation | Interpretation · Answer · Figure · Chart · Limits · Next |
+| Financial interpretation | Interpretation · Answer · Figure · Chart · Map (only where the entity has a boundary and the layer is mostly covered) · Limits · Next |
 | What stands out | Interpretation · Answer · Figure · Chart (only if a finding has shape) · Table · Limits · Next |
 | Place or cross-entity | Interpretation · Answer · Figure · Chart · Table · Map · Limits · Next |
 | Issue or topic | Interpretation · Answer (naming the gap first) · Table · Limits · Next |

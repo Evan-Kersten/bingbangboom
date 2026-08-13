@@ -61,7 +61,11 @@ def main():
           set(signature) == {"store", "pid6", "form"}, str(set(signature)))
     map_signature = set(inspect.signature(T.render_map).parameters)
     check("render_map takes no title either",
-          map_signature == {"store", "layer", "metric", "county", "service_area"},
+          map_signature == {"store", "layer", "metric", "county", "service_area",
+                            "highlight_pid6"},
+          str(map_signature))
+    check("and every map parameter names data, never wording",
+          not (map_signature & {"title", "subtitle", "caption", "note", "label"}),
           str(map_signature))
 
     print("\nSVG is well formed")
@@ -245,6 +249,25 @@ def main():
     gapped = T.render_map(store, "school_district", "total_spending")
     check("a map with gaps names the no-data class and counts them",
           "no data (" in gapped["data"]["svg"])
+
+    outlined = T.render_map(store, "county", "spending_per_resident",
+                            highlight_pid6=store.row(
+                                "SELECT pid6 FROM entities WHERE legal_name="
+                                "'COUNTY OF MULTNOMAH'")["pid6"])
+    check("a government can be outlined on its own layer",
+          outlined["data"]["highlighted"] is True)
+    check("and the outline is a stroke, so the entity keeps its place on the ramp",
+          'stroke-width="1.8"' in outlined["data"]["svg"]
+          and outlined["data"]["svg"].count('stroke-width="1.8"') == 1)
+    check("and it is cased, so it reads against the darkest bin and the lightest",
+          outlined["data"]["svg"].count('stroke-width="4"') == 1)
+    absent = T.render_map(store, "county", "spending_per_resident",
+                          highlight_pid6=store.row(
+                              "SELECT pid6 FROM entities WHERE legal_name="
+                              "'CITY OF PORTLAND'")["pid6"])
+    check("an entity absent from the layer is not outlined, and the map says so",
+          absent["data"]["highlighted"] is False
+          and "highlight_unavailable" in codes(absent))
 
     area_map = T.render_map(store, "county", "service_area_per_resident",
                             service_area="Public Safety")
