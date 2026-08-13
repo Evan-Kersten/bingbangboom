@@ -69,11 +69,15 @@ ABBREVIATIONS = {
     "san": "sanitary", "sd": "school district", "esd": "education service district",
     "rfpd": "rural fire protection district", "hosp": "hospital",
     "mem": "memorial", "twp": "township", "jr": "junior", "reg": "regional",
+    "pud": "peoples utility district", "peoples": "peoples", "people": "peoples",
 }
 
 
 def expand(text):
-    words = re.split(r"[^a-z0-9]+", (text or "").lower())
+    # A trailing parenthetical is a nickname, not part of the legal name:
+    # "... District of Oregon (TriMet)" is one government, not two.
+    text = re.sub(r"\([^)]*\)", " ", (text or ""))
+    words = re.split(r"[^a-z0-9]+", text.lower())
     return " ".join(ABBREVIATIONS.get(w, w) for w in words if w)
 
 
