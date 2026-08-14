@@ -102,16 +102,34 @@ SCHEMAS = [
     },
     {
         "name": "list_ecosystem",
-        "description": "Which governments serve a place. Use this whenever the question "
-                       "names a place rather than a single government, or concerns a "
-                       "function commonly split across entities such as housing, health, "
-                       "transit, water or emergency services. " + ENVELOPE_NOTE,
+        "description": "Every government filed under a county, which is a wider and looser "
+                       "set than the ones serving any particular town in it. Use this for a "
+                       "question about a county, or about a function commonly split across "
+                       "entities such as housing, health, transit, water or emergency "
+                       "services. When the question names a town, prefer "
+                       "governments_serving. " + ENVELOPE_NOTE,
         "input_schema": {
             "type": "object",
             "properties": {
                 "county_pid6": {"type": "string"},
                 "county_name": {"type": "string"},
             },
+        },
+    },
+    {
+        "name": "governments_serving",
+        "description": "The governments established to serve one town, each row saying what "
+                       "established it: a precinct record, an overlap with the government's "
+                       "own boundary, or the register. Use this whenever the question is "
+                       "about a place rather than a named government — who serves me, what "
+                       "am I paying for, which districts cover this town. Returns the "
+                       "established stack and never the whole stack: most special districts "
+                       "have no boundary in this data, so the count is a floor. Say "
+                       "established, never all. " + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {"pid6": PID},
+            "required": ["pid6"],
         },
     },
     {

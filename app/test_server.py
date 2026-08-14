@@ -305,6 +305,52 @@ def main():
     check("and places it after the fiscal ones, not among them",
           ids.index("community") > ids.index("spending"), str(ids))
 
+    print("\nthe front door starts from a place, not from a name")
+    portland_city = pid("CITY OF PORTLAND")
+    serving = S.answer_preset("serving", portland_city)
+    text = " ".join(b.get("text", "") for b in serving["blocks"])
+    check("the answer counts the stack", "governments established to serve" in text,
+          text[:160])
+    check("it conforms to §15", serving["violations"] == [], str(serving["violations"]))
+    rows = next(b for b in serving["blocks"] if b["kind"] == "table")["rows"]
+    check("the city is listed among the governments serving it",
+          rows[0]["government"] == "Portland", str(rows[:1]))
+    check("and every row carries the evidence behind it",
+          all(r["established by"] for r in rows))
+    check("the reader is shown where the place is",
+          any(b["kind"] == "map" for b in serving["blocks"]))
+    limits = next(b for b in serving["blocks"] if b["kind"] == "limits")
+    check("the stack is never presented as the whole stack",
+          "serving_stack_incomplete" in {r["code"] for r in limits["rules"]},
+          str([r["code"] for r in limits["rules"]]))
+
+    # §9 again, at the interface: a town with no established stack must not be
+    # offered the question. The manifest column is computed rather than stored,
+    # which is exactly the kind of key that goes missing from one caller.
+    with_stack = S.availability(portland_city)
+    without = S.availability(new_bridge)
+    check("a town with a stack is offered the question", with_stack["has_serving"])
+    check("a district with none is not", not without["has_serving"])
+    offered = {p["id"] for p in S.preset_shell()}
+    check("the question list the page is sent covers every preset",
+          offered == {p[0] for p in S.PRESETS}, str(offered ^ {p[0] for p in S.PRESETS}))
+
+    print("\nthe survey maps a population and refuses the grain it cannot carry")
+    conditions = S.answer_preset("map_community")
+    text = " ".join(b.get("text", "") for b in conditions["blocks"])
+    check("it conforms to §15", conditions["violations"] == [],
+          str(conditions["violations"]))
+    check("two county maps are drawn",
+          sum(1 for b in conditions["blocks"] if b["kind"] == "map") == 2)
+    check("the map is not offered as a government's record",
+          "not governments" in text, text[:200])
+    check("and the finer grain is refused in the survey's own terms",
+          "refused" in text.lower() and "margin of error" in text, text[-260:])
+    limits = next(b for b in conditions["blocks"] if b["kind"] == "limits")
+    check("a condition is never read as an outcome",
+          "conditions_are_not_outcomes" in {r["code"] for r in limits["rules"]},
+          str([r["code"] for r in limits["rules"]]))
+
     print("\nfive years of data reaches the comparison and the report")
     keizer = pid("CITY OF KEIZER")
     portland = pid("CITY OF PORTLAND")

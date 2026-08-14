@@ -266,7 +266,24 @@ aside {
 .browse .row:hover { background: var(--pf-track); color: var(--pf-ink); }
 .browse .row .n {
   font-size: 11px; color: var(--pf-muted);
-  font-variant-numeric: tabular-nums slashed-zero;
+  font-variant-numeric: tabular-nums slashed-zero; flex: 0 0 auto;
+}
+/* Oregon has a Fairview in two counties and four towns called some form of
+   Union. The county rides quietly beside the name so the right row can be
+   picked without opening it first. */
+.browse .row i {
+  font-style: normal; font-size: 11px; color: var(--pf-muted); margin-left: 7px;
+}
+.browse .filter {
+  width: calc(100% - 16px); margin: 0 8px 4px; padding: 6px 10px; font: inherit;
+  font-size: 13px; border: 1px solid var(--pf-axis); border-radius: 7px;
+  background: var(--pf-surface); color: var(--pf-ink);
+}
+.browse .filter:focus {
+  outline: 2px solid var(--pf-s1); outline-offset: -1px; border-color: transparent;
+}
+.browse .none {
+  font-size: 12px; color: var(--pf-muted); padding: 4px 10px; margin: 0; line-height: 1.5;
 }
 .browse .tags { display: flex; flex-wrap: wrap; gap: 5px; padding: 2px 8px 0; }
 .browse .tag {
@@ -481,63 +498,6 @@ tr:last-child td { border-bottom: 0; }
 .dots i:nth-child(3) { animation-delay: .3s; }
 @keyframes pulse { 0%,60%,100% { opacity: .25; } 30% { opacity: 1; } }
 
-/* ---------- browse ----------
-   Three doors, each complete rather than a sample: the 36 counties, the four
-   government types, and the 36 named things governments actually do. Somebody
-   who wants fire protection cannot get there from a list of names, because the
-   districts that provide it are precisely the ones nobody can name. */
-let BROWSE = null, browseAll = { counties: false, functions: false };
-
-async function drawBrowse() {
-  BROWSE ||= await api('/api/browse');
-  const counties = browseAll.counties ? BROWSE.counties : BROWSE.counties.slice(0, 8);
-  const functions = browseAll.functions ? BROWSE.functions : BROWSE.functions.slice(0, 12);
-
-  $('presets').innerHTML = `
-    <div class="empty-hint">Search by name, or start from one of these. Nobody arrives
-    able to name a rural fire district, and districts are <b>two thirds</b> of Oregon's
-    governments.</div>
-    <div class="browse">
-      <h3>What they do</h3>
-      <div class="tags">${functions.map((f) => `
-        <button class="tag" data-fn="${esc(f.name)}"
-                title="${esc(f.governments)} governments · ${esc(f.area)}">${esc(f.name)}</button>`).join('')}
-      </div>
-      ${BROWSE.functions.length > functions.length
-        ? `<button class="more" data-more="functions">Show all ${BROWSE.functions.length}</button>` : ''}
-
-      <h3>Who serves a place</h3>
-      ${counties.map((c) => `
-        <button class="row" data-county="${esc(c.name)}" data-pid6="${esc(c.pid6)}">
-          <span>${esc(c.name)}</span><span class="n">${esc(c.governments)} governments</span>
-        </button>`).join('')}
-      ${BROWSE.counties.length > counties.length
-        ? `<button class="more" data-more="counties">Show all 36 counties</button>` : ''}
-
-      <h3>By type</h3>
-      ${BROWSE.types.map((t) => `
-        <button class="row" data-type="${esc(t.name)}">
-          <span>${esc(t.name)}</span><span class="n">${esc(t.count)}</span>
-        </button>`).join('')}
-    </div>`;
-
-  $('presets').querySelectorAll('[data-fn]').forEach((node) => {
-    node.onclick = () => ask(`Who spends on ${node.dataset.fn}?`,
-                             { fn: node.dataset.fn });
-  });
-  $('presets').querySelectorAll('[data-county]').forEach((node) => {
-    node.onclick = () => ask(`Which governments serve ${node.dataset.county}?`,
-                             { id: 'ecosystem', pid6: node.dataset.pid6 });
-  });
-  $('presets').querySelectorAll('[data-type]').forEach((node) => {
-    node.onclick = () => { $('q').value = node.dataset.type; $('q').focus();
-                           $('q').dispatchEvent(new Event('input', { bubbles: true })); };
-  });
-  $('presets').querySelectorAll('[data-more]').forEach((node) => {
-    node.onclick = () => { browseAll[node.dataset.more] = true; drawBrowse(); };
-  });
-}
-
 /* ---------- comparison tray ----------
    The reader picks the governments and the measure. Every label, number and
    caveat still comes from the tool layer: what is selectable is the question,
@@ -633,10 +593,15 @@ async function drawBrowse() {
       <div class="inner" id="inner">
         <div class="welcome">
           <h2>Follow the money to the <em>line item</em>.</h2>
-          <p>Search any of Oregon's 1,529 local governments, then go from a whole budget
+          <p>Start from where you live and see the governments with a claim on that
+          address, or search any of Oregon's 1,529 by name. Then go from a whole budget
           down to what is actually purchasable inside one function &mdash; with every
           figure placed against its peers.</p>
           <div class="capabilities">
+            <div class="capability"><b>Start from a place</b>
+              <span>A typical Oregon address sits inside about ten governments and most
+              people can name two. Pick your town and the rest are listed, each saying
+              what established it &mdash; a precinct record, a boundary, the register.</span></div>
             <div class="capability"><b>Three levels deep</b>
               <span>Service area, then the functions inside it, then how one function's
               total splits into operating, capital, personnel and the vendor-addressable
@@ -712,14 +677,16 @@ async function staticApi(path, body) {
 
   if (path.startsWith('/api/presets')) {
     const pid6 = path.split('pid6=')[1];
-    if (!pid6) return { entity: null, presets: STATIC_PRESET_SHELL };
+    if (!pid6) return { entity: null, presets: MODE.presets || [] };
     return readJson(`data/${pid6}/presets.json`);
   }
 
   if (path === '/api/preset') {
     // A statewide map is the same answer whoever is selected, so it is stored
-    // once rather than beside every government.
-    const SHARED = ['map_area'];
+    // once rather than beside every government. Which questions those are comes
+    // from the build rather than from a list kept here, because a list kept here
+    // is a list that goes stale the next time one is added.
+    const SHARED = MODE.shared || [];
     try {
       if (SHARED.includes(body.id)) return await readJson(`data/shared/${body.id}.json`);
       return await readJson(`data/${body.pid6}/${body.id}.json`);
@@ -774,31 +741,16 @@ async function staticApi(path, body) {
   return {};
 }
 
-/* Before an entity is chosen there is nothing to gate on, so the shell is
-   rendered disabled and the real availability arrives with the entity. */
-const STATIC_PRESET_SHELL = [
-  ['revenue_mix', 'Whose money is this — your tax bill, or the state\'s?', 'Where it comes from'],
-  ['scale', 'Is this a lot to spend for a place this size?', 'Where it comes from'],
-  ['debt', 'What does it owe, and against how much a year?', 'Where it comes from'],
-  ['workforce', 'Who does it employ, and how thinly are they spread?', 'Who does the work'],
-  ['governance', 'Who runs it, and do you elect them?', 'Who does the work'],
-  ['salient', 'What stands out about this government?', 'Who does the work'],
-  ['spending', 'Where does the money actually go?', 'Follow the money'],
-  ['unusual_areas', 'Which service areas is it unusual on?', 'Follow the money'],
-  ['inside', 'Take me inside its largest service area', 'Follow the money'],
-  ['purchasable', 'What in its biggest function is actually purchasable?', 'Follow the money'],
-  ['vs_peers_area', 'How does its public safety spending compare, head for head?', 'Against other governments'],
-  ['vs_peers_time', 'Has its spending outgrown its peers?', 'Against other governments'],
-  ['trend', 'How have revenue and spending moved?', 'Against other governments'],
-  ['ecosystem', 'Which other governments serve this place?', 'Place'],
-  ['map_area', 'Map public safety spending across Oregon', 'Place'],
-  ['profile', 'What kind of government is this?', 'Reports'],
-  ['report', 'Give me the full report', 'Reports'],
-  ['limits', 'What can this data not tell me?', 'Reports'],
-].map(([id, label, group]) => ({ id, label, group, available: false }));
+/* Everything the build tells the page about itself: the question list, which
+   answers are stored once rather than per government, and the palette. Held in
+   one place because the page used to keep its own copy of the question list for
+   static mode, and a copy of a list is a list that goes stale — the community
+   question shipped and was never offered by the exported interface. */
+let MODE = {};
 
 (async function init() {
   const info = await api('/api/mode');
+  MODE = info;
   $('mode').textContent = info.mode;
   $('mode').classList.toggle('full', info.mode === 'full');
   $('q').placeholder = `Search ${info.entities.toLocaleString()} governments`;
@@ -1094,18 +1046,44 @@ async function loadPresets() {
    government types, and the 36 named things governments actually do. Somebody
    who wants fire protection cannot get there from a list of names, because the
    districts that provide it are precisely the ones nobody can name. */
-let BROWSE = null, browseAll = { counties: false, functions: false };
+let BROWSE = null, placeFilter = '';
+let browseAll = { counties: false, functions: false, places: false };
 
 async function drawBrowse() {
   BROWSE ||= await api('/api/browse');
   const counties = browseAll.counties ? BROWSE.counties : BROWSE.counties.slice(0, 8);
   const functions = browseAll.functions ? BROWSE.functions : BROWSE.functions.slice(0, 12);
 
+  /* The town list has its own filter rather than sharing the search box above.
+     Typing "Bend" here means the town and everything with a claim on it; typing
+     it up there means the city government alone. Conflating the two is what
+     made a search box over 1,529 names the only way in. */
+  const term = placeFilter.trim().toLowerCase();
+  const hits = (BROWSE.places || []).filter(
+    (p) => !term || p.name.toLowerCase().includes(term) ||
+                    p.county.toLowerCase().includes(term));
+  const places = (browseAll.places || term) ? hits.slice(0, 60) : hits.slice(0, 8);
+
   $('presets').innerHTML = `
-    <div class="empty-hint">Search by name, or start from one of these. Nobody arrives
-    able to name a rural fire district, and districts are <b>two thirds</b> of Oregon's
-    governments.</div>
+    <div class="empty-hint">Nobody arrives able to name a rural fire district, and
+    districts are <b>two thirds</b> of Oregon's governments. So start from the one
+    thing you do know &mdash; a typical address sits inside about <b>ten</b> of them.</div>
     <div class="browse">
+      <h3>Where you live</h3>
+      <input class="filter" id="place-filter" type="search" placeholder="Your town"
+             autocomplete="off" spellcheck="false" aria-label="Filter towns">
+      ${places.map((p) => `
+        <button class="row" data-place="${esc(p.pid6)}" data-name="${esc(p.name)}">
+          <span>${esc(p.name)}<i>${esc(p.county)}</i></span>
+          <span class="n">${esc(p.governments)} governments</span>
+        </button>`).join('')}
+      ${hits.length > places.length
+        ? `<button class="more" data-more="places">Show all ${hits.length} towns</button>`
+        : (term && !hits.length
+            ? `<p class="none">No town by that name has a stack established. The
+               boundary files reach ${(BROWSE.places || []).length} of Oregon's towns.</p>`
+            : '')}
+
       <h3>What they do</h3>
       <div class="tags">${functions.map((f) => `
         <button class="tag" data-fn="${esc(f.name)}"
@@ -1114,7 +1092,7 @@ async function drawBrowse() {
       ${BROWSE.functions.length > functions.length
         ? `<button class="more" data-more="functions">Show all ${BROWSE.functions.length}</button>` : ''}
 
-      <h3>Who serves a place</h3>
+      <h3>What is filed under a county</h3>
       ${counties.map((c) => `
         <button class="row" data-county="${esc(c.name)}" data-pid6="${esc(c.pid6)}">
           <span>${esc(c.name)}</span><span class="n">${esc(c.governments)} governments</span>
@@ -1127,14 +1105,45 @@ async function drawBrowse() {
         <button class="row" data-type="${esc(t.name)}">
           <span>${esc(t.name)}</span><span class="n">${esc(t.count)}</span>
         </button>`).join('')}
+
+      <h3>Across Oregon</h3>
+      ${(MODE.presets || []).filter((p) => (MODE.shared || []).includes(p.id)).map((p) => `
+        <button class="row" data-shared="${esc(p.id)}" data-label="${esc(p.label)}">
+          <span>${esc(p.label)}</span>
+        </button>`).join('')}
     </div>`;
 
+  /* Redrawn on every keystroke, so the value is restored and the caret put back
+     at the end rather than losing the field the moment the second letter lands. */
+  const filter = $('place-filter');
+  if (filter) {
+    filter.value = placeFilter;
+    filter.oninput = () => { placeFilter = filter.value; drawBrowse();
+                             $('place-filter').focus(); };
+    if (placeFilter) filter.setSelectionRange(placeFilter.length, placeFilter.length);
+  }
+  /* Picking a town both answers the question and selects the town, so the pane
+     turns into that government's questions. A door that answers once and leaves
+     the reader back at the doors is a dead end: the stack is the beginning of
+     the session, not the end of it. */
+  $('presets').querySelectorAll('[data-place]').forEach((node) => {
+    node.onclick = async () => {
+      await ask(`Which governments serve ${node.dataset.name}?`,
+                { id: 'serving', pid6: node.dataset.place });
+      const match = (ENTITIES || []).find((e) => e.pid6 === node.dataset.place)
+        || await api('/api/presets?pid6=' + node.dataset.place).then((r) => r.entity);
+      if (match) choose(match);
+    };
+  });
+  $('presets').querySelectorAll('[data-shared]').forEach((node) => {
+    node.onclick = () => ask(node.dataset.label, { id: node.dataset.shared });
+  });
   $('presets').querySelectorAll('[data-fn]').forEach((node) => {
     node.onclick = () => ask(`Who spends on ${node.dataset.fn}?`,
                              { fn: node.dataset.fn });
   });
   $('presets').querySelectorAll('[data-county]').forEach((node) => {
-    node.onclick = () => ask(`Which governments serve ${node.dataset.county}?`,
+    node.onclick = () => ask(`What is filed under ${node.dataset.county}?`,
                              { id: 'ecosystem', pid6: node.dataset.pid6 });
   });
   $('presets').querySelectorAll('[data-type]').forEach((node) => {
@@ -1236,8 +1245,14 @@ async function ask(label, payload) {
     ? await api('/api/compare', payload.compare)
     : payload.fn
       ? await api('/api/function', { name: payload.fn })
+      /* A door names its own subject. The browse panel asks about a town or a
+         county nobody has selected yet, and reading the selection instead sent
+         an undefined pid6 — which is why picking a county out of the browse
+         panel came back "that government is not in the data". The selection is
+         the fallback, not the authority. */
       : payload.id
-        ? await api('/api/preset', { id: payload.id, pid6: entity?.pid6,
+        ? await api('/api/preset', { id: payload.id,
+                                     pid6: payload.pid6 || entity?.pid6,
                                      county: payload.county })
         : await api('/api/ask', { question: label });
 

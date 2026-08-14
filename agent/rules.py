@@ -111,6 +111,19 @@ CAVEATS = {
         "9",
         "An entity showing no spending in a category is usually evidence that another entity "
         "holds that responsibility, not evidence of neglect."),
+    "serving_stack_incomplete": (
+        "9",
+        "This is the governments established to serve the place, not all of them. Special "
+        "districts are two thirds of Oregon's governments and almost none of them have a "
+        "boundary in this data, so a short list is a limit of the boundary files and not a "
+        "small stack. Say established, never say all, and never let a reader read the list "
+        "as their whole tax bill."),
+    "serving_basis_differs": (
+        "9",
+        "The rows here do not rest on one kind of evidence. A precinct assignment records "
+        "which governments a polygon sits in; a boundary overlap infers it from the "
+        "government's own outline; the county comes from the register. Name the basis "
+        "beside the row rather than presenting the list as uniformly established."),
 
     # ---- section 10: conditions -------------------------------------------
     "dp03_geography_differs": (

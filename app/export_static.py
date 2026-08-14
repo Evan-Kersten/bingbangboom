@@ -77,6 +77,8 @@ def export(out_dir):
     write(os.path.join(data_dir, "mode.json"), {
         "mode": "static",
         "entities": len(entities),
+        "presets": S.preset_shell(),
+        "shared": sorted(S.ENTITY_INDEPENDENT),
         "css": viz.css(".pf-viz") + R.REPORT_CSS,
         "built": time.strftime("%Y-%m-%d"),
     })
@@ -84,8 +86,7 @@ def export(out_dir):
     total = written = 0
     for index, entity in enumerate(entities, 1):
         pid6 = entity["pid6"]
-        availability = store.row("SELECT * FROM data_availability WHERE pid6=?", pid6)
-        available = dict(availability) if availability else {}
+        available = S.availability(pid6)
 
         presets = [{"id": pid, "label": label, "group": group,
                     "available": (needs is None or bool(available.get(needs)))}

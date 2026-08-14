@@ -516,6 +516,44 @@ def main():
     check("ecosystem returns multiple government types",
           len(result["data"]["by_type"]) >= 3, str(result["data"]["by_type"]))
 
+    print("\ngovernments_serving (§9)")
+    result = T.governments_serving(store, portland)
+    names = [r["name"] for r in result["data"]["serving"]]
+    check("the stack names governments beyond the city itself",
+          len(names) > 3, str(len(names)))
+    check("the city is in its own stack",
+          result["data"]["serving"][0]["basis"] == "self", str(names[:1]))
+    check("and it leads, because a reader is inside the stack rather than beside it",
+          result["data"]["serving"][0]["gov_type_name"] == "Municipal")
+    check("every row says what established it",
+          all(r["basis_label"] for r in result["data"]["serving"]))
+    check("a stack is never presented as complete",
+          "serving_stack_incomplete" in codes(result))
+    check("mixed evidence is disclosed as mixed",
+          "serving_basis_differs" in codes(result))
+    check("summing across the stack is blocked",
+          "property_tax_summed" in blocked_codes(result))
+    # Portland is inside Multnomah, the only county with a precinct file. Its
+    # count is close to true, so the shortfall caveat must stay off — a warning
+    # that fires everywhere warns about nothing.
+    check("a county with a precinct file is not warned about a short stack",
+          "stack_understated" not in codes(result))
+    check("Multnomah rows rest on the precinct record",
+          result["data"]["by_basis"].get("precinct_exact", 0) >= 5,
+          str(result["data"]["by_basis"]))
+
+    outside = store.row(
+        "SELECT s.place_pid6 FROM serves_place s JOIN entities e ON e.pid6=s.place_pid6 "
+        "WHERE e.host_county != 'MULTNOMAH' LIMIT 1")
+    result = T.governments_serving(store, outside["place_pid6"])
+    check("a town with no precinct file is told the stack is understated",
+          "stack_understated" in codes(result))
+
+    result = T.governments_serving(store, baker_county)
+    check("a county is not asked which governments serve it",
+          "not_a_place" in codes(result))
+    check("and that refusal returns no stack", not result["data"].get("serving"))
+
     print("\nget_offices (§7)")
     result = T.get_offices(store, baker_county)
     check("offices disclose that holders are absent",

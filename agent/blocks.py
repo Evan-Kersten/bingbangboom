@@ -69,7 +69,11 @@ NEXT_QUESTIONS = [
     ("has_financial_trends", "Has its spending outgrown its peers?"),
     ("has_financial_trends", "What does it owe, and against how much a year?"),
     ("has_offices", "Who runs it, and do you elect them?"),
-    (None, "Which governments serve this place?"),
+    # Keyed to has_serving, which is computed rather than a manifest column: a
+    # town with no established stack must not be offered one, and offering it
+    # everywhere was how the label and the preset drifted apart the first time.
+    ("has_serving", "Which governments serve you here?"),
+    (None, "What else is filed under this county?"),
     (None, "What can this data not tell me?"),
 ]
 
@@ -132,10 +136,8 @@ def limits(results):
 
 def next_questions(store, pid6, asked=None, limit=3):
     """§15.1: never offer a question whose block is absent for this entity."""
-    available = {}
-    if pid6:
-        row = store.row("SELECT * FROM data_availability WHERE pid6=?", pid6)
-        available = dict(row) if row else {}
+    import tools
+    available = tools.availability(store, pid6) if pid6 else {}
     asked = set(asked or [])
     offered = [q for needs, q in NEXT_QUESTIONS
                if q not in asked and (needs is None or available.get(needs))]

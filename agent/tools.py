@@ -607,6 +607,186 @@ def list_ecosystem(store, county_pid6=None, county_name=None):
         blocked=[not_computable("property_tax_summed")])
 
 
+# ------------------------------------------------------- serving a place
+
+# What each basis in serves_place is actually worth, strongest first. These are
+# not three ways of saying the same thing and the interface must not flatten
+# them: one is a record, one is an inference from an outline, one is a filing.
+#
+# The order matters twice over. It sorts the list, and it decides which row wins
+# when a government arrives on more than one basis.
+SERVING_BASIS = [
+    ("self", "the place itself",
+     "The town is a government, and for most residents it is the one they can name. "
+     "It is listed with the rest because leaving it out makes the stack look like "
+     "things happening to a place rather than including the place."),
+    ("precinct_exact", "recorded per precinct",
+     "The precinct file lists, for each polygon, which districts that polygon sits "
+     "in. This is a record of the assignment, not an inference from it."),
+    ("boundary_overlap", "the place falls inside its boundary",
+     "The place sits inside the government's own outline. That establishes overlap, "
+     "which for a school district is the same thing as service and for a district "
+     "with an odd shape may not be."),
+    ("register", "from the register",
+     "The register names the county each government is filed under, and for a city "
+     "inside a county that filing is the relationship."),
+]
+SERVING_ORDER = {basis: i for i, (basis, _, _) in enumerate(SERVING_BASIS)}
+SERVING_MEANING = {basis: (short, long) for basis, short, long in SERVING_BASIS}
+
+# Reading order, which is not evidence order. A reader scans this list by what
+# kind of thing each government is — my town, my county, my schools, the rest —
+# and sorting by how well established each row is instead put a community
+# college ahead of Portland Public Schools because one sat in the precinct file
+# and the other only in a boundary. The basis stays on every row; it just does
+# not decide where the row goes.
+SERVING_TYPE_ORDER = ["Municipal", "County", "School District",
+                      "Special District", "State"]
+
+# What a resident's stack really looks like, against what this data can show.
+# The median address in Multnomah sits inside ten governments; the median place
+# in this table resolves to two. The gap is the whole caveat, so it is stated as
+# a number rather than as a hedge.
+TYPICAL_STACK = 10
+
+
+def availability(store, pid6):
+    """Which blocks this government has the data for.
+
+    The ETL manifest answers most of it. has_serving is computed here instead
+    because serving is a relationship between two governments rather than a
+    property of one, so it has no column in a per-entity table — and a town with
+    no established stack must not be offered a stack.
+
+    One definition, called by the follow-up chooser, the preset list and the
+    static export alike. Three copies of this dict is how an interface ends up
+    offering an answer the files behind it do not contain.
+    """
+    row = store.row("SELECT * FROM data_availability WHERE pid6=?", pid6) if pid6 else None
+    available = dict(row) if row else {}
+    try:
+        served = store.row(
+            "SELECT COUNT(*) AS n FROM serves_place WHERE place_pid6=?", pid6)
+        available["has_serving"] = bool(served and served["n"])
+    except sqlite3.OperationalError:
+        available["has_serving"] = False   # serving ETL not run against this build
+    return available
+
+
+def governments_serving(store, pid6):
+    """Which governments serve one place — the question a resident arrives with.
+
+    Nobody has a government; they have a stack of them, and they can usually name
+    two. A search box over 1,529 names asks the reader to already know the answer.
+    This asks instead for the one thing they certainly know, which is where they
+    live, and hands back the governments established to serve it.
+
+    Established, not all. Every row says what it rests on, and the tool says how
+    far short of a real stack the list falls, because a reader shown four
+    governments will otherwise take four to be the number.
+    """
+    place = _entity(store, pid6)
+    if not place:
+        return envelope("governments_serving", caveats=[{
+            "code": "not_found", "rule": "§14",
+            "guidance": "That government is not in the data."}])
+
+    try:
+        rows = store.rows(
+            "SELECT s.pid6, s.basis, s.relation, e.legal_name, e.common_name, "
+            "       e.gov_type_name, a.has_spending_breakdown "
+            "FROM serves_place s JOIN entities e ON e.pid6 = s.pid6 "
+            "LEFT JOIN data_availability a ON a.pid6 = s.pid6 "
+            "WHERE s.place_pid6 = ?", pid6)
+    except sqlite3.OperationalError:
+        rows = []   # the serving ETL has not been run against this build
+
+    if not rows:
+        # A place with no stack and a government that is not a place fail
+        # differently, and telling them apart is the difference between "we
+        # have not worked this out yet" and "that question does not apply".
+        if place["gov_type_name"] != "Municipal":
+            return envelope("governments_serving", entity=place, caveats=[{
+                "code": "not_a_place", "rule": "§9",
+                "guidance": "This asks which governments serve a town, so it is asked of "
+                            "a town. A district or a county is one of the answers, not "
+                            "the question."}])
+        return envelope("governments_serving", entity=place, caveats=[{
+            "code": "no_stack_established", "rule": "§9",
+            "guidance": "No government has been established to serve this place beyond "
+                        "itself. That is a gap in the boundary files, which cover school "
+                        "districts and 19 special districts out of more than a thousand — "
+                        "not a town that governs itself alone."}])
+
+    # One row per government, keeping the strongest basis it arrived on. A
+    # district that both sits in the precinct file and overlaps the outline is
+    # recorded, and saying so twice would read as two governments.
+    best = {}
+    for row in rows:
+        current = best.get(row["pid6"])
+        if current is None or SERVING_ORDER.get(row["basis"], 9) < SERVING_ORDER.get(
+                current["basis"], 9):
+            best[row["pid6"]] = dict(row)
+
+    # The town is one of the governments serving the town. It is not in the
+    # table — a row saying a place serves itself would be noise there — but it
+    # belongs in the answer, and putting it first is what makes the list read as
+    # a stack the reader is inside rather than a list of outside bodies.
+    best[pid6] = {"pid6": pid6, "basis": "self", "relation": "itself",
+                  "legal_name": place["legal_name"],
+                  "common_name": place["common_name"],
+                  "gov_type_name": place["gov_type_name"],
+                  "has_spending_breakdown": None}
+
+    serving = sorted(best.values(), key=lambda r: (
+        r["basis"] != "self",
+        SERVING_TYPE_ORDER.index(r["gov_type_name"])
+        if r["gov_type_name"] in SERVING_TYPE_ORDER else len(SERVING_TYPE_ORDER),
+        (r["common_name"] or r["legal_name"] or "")))
+    for row in serving:
+        row["name"] = row["common_name"] or row["legal_name"]
+        row["basis_label"] = SERVING_MEANING.get(row["basis"], (row["basis"], ""))[0]
+
+    by_basis = {}
+    for row in serving:
+        by_basis[row["basis"]] = by_basis.get(row["basis"], 0) + 1
+
+    caveats = [caveat("serving_stack_incomplete")]
+    # Self is not evidence, so it does not count towards the bases disagreeing.
+    # Otherwise every place in Oregon would carry a caveat about mixed evidence
+    # on the strength of being itself.
+    if len([b for b in by_basis if b != "self"]) > 1:
+        caveats.append(caveat("serving_basis_differs"))
+    caveats.append(caveat("ecosystem_no_summing"))
+    caveats.append(caveat("absence_means_another_entity"))
+
+    # Multnomah is the only county with a precinct file, so it is the only place
+    # where the count approaches the truth. Everywhere else the shortfall is
+    # large enough that leaving it implied would mislead.
+    shortfall = TYPICAL_STACK - len(serving)
+    if "precinct_exact" not in by_basis and shortfall > 0:
+        caveats.append({
+            "code": "stack_understated", "rule": "§9",
+            "guidance": f"{len(serving)} governments are established here, against the "
+                        f"roughly {TYPICAL_STACK} a typical Oregon address sits inside. The "
+                        "missing ones are special districts — fire, water, transit, soil and "
+                        "water — which have no boundary in this data outside Multnomah "
+                        "County. Do not present this as the whole stack."})
+
+    return envelope(
+        "governments_serving", entity=place,
+        data={"place": place["common_name"] or place["legal_name"],
+              "county": place["host_county"],
+              "serving": serving,
+              "total": len(serving),
+              "by_basis": by_basis,
+              "typical_stack": TYPICAL_STACK,
+              "basis_meaning": {b: long for b, _, long in SERVING_BASIS
+                                if b in by_basis}},
+        caveats=caveats,
+        blocked=[not_computable("property_tax_summed")])
+
+
 # ---------------------------------------------------------------- offices
 
 # The OCD id already carries the fact that matters most about an elected seat
@@ -854,6 +1034,7 @@ TOOLS = {
     "compare_entities": compare_entities,
     "find_salient": find_salient,
     "list_ecosystem": list_ecosystem,
+    "governments_serving": governments_serving,
     "get_offices": get_offices,
     "map_topic_to_categories": map_topic_to_categories,
     "run_sql": run_sql,

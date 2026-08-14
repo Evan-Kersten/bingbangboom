@@ -61,8 +61,10 @@ QUESTION_TYPE = {
     "trend": "financial_interpretation",
     "salient": "what_stands_out",
     "governance": "governance",
+    "serving": "place_or_cross_entity",
     "ecosystem": "place_or_cross_entity",
     "map_area": "place_or_cross_entity",
+    "map_community": "place_or_cross_entity",
     "limits": "factual_lookup",
     "report": "place_or_cross_entity",
 }
@@ -116,8 +118,15 @@ PRESETS = [
     ("trend", "How have revenue and spending moved?", "Against other governments",
      "has_financial_trends", "trend"),
 
-    ("ecosystem", "Which other governments serve this place?", "Place", None, "ecosystem"),
+    # The first question a resident actually has, and the reason it leads the
+    # group: everything above assumes you already knew which government to ask
+    # about. This one starts from the only thing anybody knows for certain,
+    # which is where they live.
+    ("serving", "Which governments serve you here?", "Place", "has_serving", "serving"),
+    ("ecosystem", "What else is filed under this county?", "Place", None, "ecosystem"),
     ("map_area", "Map public safety spending across Oregon", "Place", None, "map_area"),
+    ("map_community", "Map how Oregon is doing, county by county", "Place", None,
+     "map_community"),
 
     ("profile", "What kind of government is this?", "Reports", None, "profile"),
     ("report", "Give me the full report", "Reports", None, "report"),
@@ -133,11 +142,28 @@ DEFAULT_AREA = "Public Safety"
 # map is about Oregon, not about whichever government happens to be selected, so
 # it is rendered once rather than once per entity. That one change is half the
 # weight of the static build.
-ENTITY_INDEPENDENT = {"map_area"}
+ENTITY_INDEPENDENT = {"map_area", "map_community"}
 
 COMPARISON_FORMS = ("per_capita_by_service_area", "per_capita_over_time",
                     "service_area_across_entities", "entities_over_time",
                     "five_year_panel", "five_year_change")
+
+
+def availability(pid6):
+    """Which presets this government has the data for. Defined in the tool layer
+    so the follow-up chooser and the static export agree with this list."""
+    return T.availability(STORE, pid6)
+
+
+def preset_shell():
+    """The question list before a government is chosen, all of it disabled.
+
+    Sent rather than hard-coded in the page. The browser used to carry its own
+    copy of this list for static mode, which drifted from PRESETS the moment a
+    question was added — the community question shipped and was never offered.
+    """
+    return [{"id": pid, "label": label, "group": group, "available": False}
+            for pid, label, group, _, _ in PRESETS]
 
 
 def peer_set(pid6, count=3):
@@ -262,6 +288,8 @@ def _headline(entity, result):
     if tool == "list_ecosystem":
         return (f"{data['total']} governments are filed under {data['county']}, "
                 f"of which {data['mappable']} have boundaries.")
+    if tool == "governments_serving" and data.get("serving"):
+        return _serving_line(data)
     if tool == "get_entity_profile":
         population = data.get("population")
         # "population 48,601" for a school district is a count of students. The
@@ -436,6 +464,36 @@ TRANSFER_NOTABLE = 25.0
 # Past this much of a budget landing in "Other Revenue", the split between money
 # raised here and money sent here is not knowable from these lines.
 UNCLASSIFIED_DOMINANT = 40.0
+
+
+def _serving_line(data):
+    """The stack, counted and named, with the shortfall in the same breath.
+
+    The count and the caveat travel together on purpose. A reader told "four
+    governments serve Bay City" and only later told the boundary files are thin
+    has already filed the four away as the number.
+    """
+    # "1 municipal" is the register's word for it, not a reader's. The type
+    # names are filing categories and this sentence is the one place in the
+    # interface where the reader is being addressed about their own address.
+    said = {"Municipal": "city", "County": "county", "School District": "school district",
+            "Special District": "special district", "State": "state government"}
+    kinds = {}
+    for row in data["serving"]:
+        kinds[row["gov_type_name"]] = kinds.get(row["gov_type_name"], 0) + 1
+    listed = ", ".join(fmt.plural(n, said.get(kind, kind.lower()))
+                       for kind, n in kinds.items())
+    line = (f"{fmt.plural(data['total'], 'government')} established to serve "
+            f"{data['place']}: {listed}.")
+    if data["by_basis"].get("precinct_exact"):
+        line += (f" {data['by_basis']['precinct_exact']} of them come from the precinct "
+                 "file, which records the assignment rather than inferring it.")
+    else:
+        line += (f" A typical Oregon address sits inside about {data['typical_stack']} "
+                 "governments. The ones missing here are special districts — fire, "
+                 "water, transit — which have no boundary in this data outside "
+                 "Multnomah County.")
+    return line
 
 
 def _community_line(data):
@@ -1258,6 +1316,60 @@ def answer_preset(preset_id, pid6=None, county=None):
                             if r["filled_by"] == "Appointment"
                             else (r["partisan"] or "not recorded"))}
                 for r in result["data"]["roles"]]})
+    elif preset_id == "serving":
+        result = T.TOOLS["governments_serving"](STORE, pid6)
+        add(result)
+        data = result["data"]
+        if data.get("serving"):
+            blocks.append({"kind": "table", "rows": [
+                {"government": row["name"],
+                 "type": row["gov_type_name"],
+                 "established by": row["basis_label"]}
+                for row in data["serving"]]})
+            # The locator is the picture of the question. A reader who asked
+            # where they live gets to see where that is before they are handed
+            # a list of bodies with claims on it.
+            located = T.render_locator_map(STORE, pid6)
+            results.append(located)
+            if located["data"].get("svg"):
+                blocks.append({"kind": "map", "svg": located["data"]["svg"],
+                               "coverage": None})
+    elif preset_id == "map_community":
+        import community as C
+        # Two grains in one answer, because the second is the argument for the
+        # first. Poverty maps at county level and refuses at place level, and a
+        # reader shown only the county map would reasonably ask why it is not
+        # finer. The refusal answers that in the survey's own terms.
+        blocks.append({"kind": "text", "text": (
+            "How Oregon's counties are doing, from the American Community Survey. "
+            "This describes populations, not governments: no county on this map is "
+            "being credited or blamed for where it sits, and this is deliberately "
+            "not drawn on the same axis as a spending map.")})
+        for code in ("DP03_0128P", "DP03_0062"):
+            drawn = T.TOOLS["render_community_map"](
+                STORE, code=code, vintage=C.VINTAGES[0], geo_level="county")
+            results.append(drawn)
+            data = drawn["data"]
+            if data.get("svg"):
+                polygons = data.get("polygons") or 0
+                blocks.append({"kind": "text", "text": (
+                    f"{data['name']}, {data['vintage'] - 4} to {data['vintage']}. "
+                    f"{data['shown']} counties shown"
+                    + (f", {data['withheld']} withheld because the margin of error is "
+                       "wider than the survey can place on a scale."
+                       if data["withheld"] else ", all with usable margins."))})
+                blocks.append({"kind": "map", "svg": data["svg"],
+                               "coverage": (data.get("covered", 0) / polygons)
+                               if polygons else None})
+        # The same indicator one grain finer, which the tool refuses. Shown
+        # rather than hidden: a limit a reader can see is a limit they can trust.
+        finer = T.TOOLS["render_community_map"](
+            STORE, code="DP03_0128P", vintage=C.VINTAGES[0], geo_level="place")
+        results.append(finer)
+        thin = next((c for c in finer["caveats"] if c["code"] == "too_thin_to_map"), None)
+        if thin:
+            blocks.append({"kind": "text", "text": (
+                "The same measure town by town is refused. " + thin["guidance"])})
     elif preset_id == "ecosystem":
         name = county or (entity["host_county"] if entity else None)
         result = T.list_ecosystem(STORE, county_name=name)
@@ -1414,6 +1526,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json({"mode": MODE,
                                "entities": STORE.row(
                                    "SELECT COUNT(*) AS n FROM entities")["n"],
+                               "presets": preset_shell(),
+                               "shared": sorted(ENTITY_INDEPENDENT),
                                "css": viz.css(".pf-viz") + R.REPORT_CSS})
 
         if parsed.path == "/api/search":
@@ -1439,11 +1553,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
         if parsed.path == "/api/presets":
             pid6 = (query.get("pid6") or [None])[0]
-            available = {}
-            if pid6:
-                row = STORE.row("SELECT * FROM data_availability WHERE pid6=?", pid6)
-                available = dict(row) if row else {}
-            entity = T._entity(STORE, pid6) if pid6 else None
+            available = availability(pid6) if pid6 else {}
+            # Carrying the magnitude means a government reached through a door
+            # rather than through the search box arrives with the same labelled
+            # figure beside its name — students for a district, residents for a
+            # city — instead of a bare type and county.
+            entity = _with_magnitude(T._entity(STORE, pid6)) if pid6 else None
             return self._json({
                 "entity": entity,
                 "presets": [
