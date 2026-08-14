@@ -76,6 +76,18 @@ TOKENS = {
     "bin-3": ("#2E9E63", "#2E9E63"),
     "bin-4": ("#1B7A4C", "#5CC493"),
     "bin-5": ("#125635", "#8FD9B4"),
+    # A second ordinal ramp, for what a survey says about a population rather
+    # than what a government spends. §4 forbids reading a condition as a
+    # government's record, and the caveats say so — but a poverty map drawn in
+    # the same greens as a spending map, one scroll apart, invites exactly the
+    # reading the sentence underneath is refusing. Different hue, same number of
+    # steps, same lightness progression: comparable within itself and obviously
+    # not the other thing.
+    "survey-1": ("#C9CEE8", "#232A4B"),
+    "survey-2": ("#A3ABD8", "#333C69"),
+    "survey-3": ("#7C87C4", "#4C5790"),
+    "survey-4": ("#5A64A8", "#7C87C4"),
+    "survey-5": ("#3C447E", "#A3ABD8"),
 }
 
 FONT = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"

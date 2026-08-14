@@ -241,6 +241,25 @@ def main():
           "map_is_partial" in codes(result))
     check("no data has a fill distinct from every bin",
           viz.TOKENS["nodata"][0] not in [viz.TOKENS[b][0] for b in maps.BINS])
+
+    # §4: a survey estimate and a spending figure must not be readable as one
+    # picture. The caveat says so; this is the drawing saying so too.
+    check("the survey ramp shares no colour with the spending ramp",
+          not ({viz.TOKENS[b][0] for b in maps.SURVEY_BINS}
+               & {viz.TOKENS[b][0] for b in maps.BINS}))
+    check("and has the same number of steps, so it is read as ordinal",
+          len(maps.SURVEY_BINS) == len(maps.BINS))
+    survey = T.TOOLS["render_community_map"](store, code="DP03_0128P",
+                                             geo_level="county")
+    spending = data["svg"]
+    check("a community map is drawn on the survey ramp",
+          viz.TOKENS["survey-5"][0] in survey["data"]["svg"] or
+          "survey-5" in survey["data"]["svg"])
+    check("and carries no colour from the spending ramp",
+          not any(viz.TOKENS[b][0] in survey["data"]["svg"] for b in maps.BINS),
+          "a spending bin colour appears in a survey map")
+    check("while the spending map keeps its own",
+          any(viz.TOKENS[b][0] in spending for b in maps.BINS))
     check("a fully covered map does not advertise a no-data class",
           "no data" not in data["svg"])
     check("and the legend carries the values, not just 'lower' and 'higher'",

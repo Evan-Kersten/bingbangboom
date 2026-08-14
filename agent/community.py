@@ -412,7 +412,7 @@ def render_community_map(store, code="DP03_0128P", vintage=VINTAGES[0],
     drawn = maps.choropleth(
         geo_level, values, f"{name}, {scope}",
         f"American Community Survey {vintage} release, covering {vintage - 4} to {vintage}",
-        formatter=formatter, only=only, note=note)
+        formatter=formatter, only=only, note=note, bins=maps.SURVEY_BINS)
 
     caveats = [
         {"code": "conditions_are_not_outcomes", "rule": "§4",

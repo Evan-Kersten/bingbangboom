@@ -32,6 +32,13 @@ LAYERS = {
 
 BINS = ["bin-1", "bin-2", "bin-3", "bin-4", "bin-5"]
 
+# The ramp a survey estimate is drawn on. Same number of steps and the same
+# lightness progression as BINS, in a different hue, because §4 forbids reading
+# a condition as a government's record and a picture drawn in the spending
+# palette makes that reading anyway. The refusal has to be visible, not only
+# written underneath.
+SURVEY_BINS = ["survey-1", "survey-2", "survey-3", "survey-4", "survey-5"]
+
 
 # Boundary files are read-only and parse to tens of megabytes of coordinates.
 # Re-reading one per call is what made a whole-corpus export re-parse Oregon's
@@ -128,7 +135,7 @@ LEGEND_BAND = 74
 
 def choropleth(layer, values, title, subtitle, formatter=fmt.percent,
                width=680, height=460, build=BUILD, note=None, only=None,
-               highlight=None):
+               highlight=None, bins=BINS):
     """`values` maps a layer geo_id to a number. Anything absent draws as no data.
 
     `only` restricts the drawing to a set of geo_ids, which is how a place map
@@ -172,7 +179,7 @@ def choropleth(layer, values, title, subtitle, formatter=fmt.percent,
             label = "no data"
         else:
             covered += 1
-            fill = viz.token(BINS[bin_index(value, breaks)])
+            fill = viz.token(bins[bin_index(value, breaks)])
             label = formatter(value)
         path = _path(feature["geometry"], project)
         if not path:
@@ -207,7 +214,7 @@ def choropleth(layer, values, title, subtitle, formatter=fmt.percent,
     x = 0
     for index in range(len(breaks) + 1):
         body.append(f'<rect x="{x}" y="{legend_y}" width="{swatch}" height="10" '
-                    f'fill="{viz.token(BINS[index])}"/>')
+                    f'fill="{viz.token(bins[index])}"/>')
         x += swatch + 2
     ramp_right = x - 2
     # The bin edges, not "lower" and "higher". A reader looking at a shade wants
