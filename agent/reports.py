@@ -19,15 +19,18 @@ with nothing to say is dropped rather than padded.
 import format as fmt
 import tools as T
 import viz
-from rules import caveat, not_computable
+from rules import caveat, denominator, not_computable, per_unit_label
 
 # §10: absolute spending ranks by entity size and answers nothing. Each basis
 # produces a different and defensible ordering, so the basis is stated, never
 # implied.
 BASES = {
     "absolute": ("total spending", "Ranks by entity size. Say so, or normalize."),
-    "per_resident": ("spending per resident",
-                     "Requires a population for every entity in the set."),
+    # The label is completed from the set: residents for a city or county,
+    # students for a school district. A set spanning both is refused, so by the
+    # time this is rendered there is exactly one unit to name.
+    "per_resident": ("spending {per_unit}",
+                     "Requires a denominator for every entity in the set."),
     "share_of_spending": ("share of this entity's own spending",
                           "Comparable across sizes, but says nothing about scale."),
 }
@@ -39,11 +42,16 @@ def normalize(store, pid6, metric_value, basis):
         return metric_value, "dollars"
 
     if basis == "per_resident":
-        profile = store.row("SELECT population FROM workforce_profile WHERE pid6=?", pid6)
+        profile = store.row(
+            "SELECT w.population, e.gov_type_name FROM workforce_profile w "
+            "JOIN entities e ON e.pid6 = w.pid6 WHERE w.pid6 = ?", pid6)
         population = (profile or {}).get("population")
         if not population:
             return None, "no population on record"
-        return metric_value / population, "dollars per resident"
+        # The denominator is enrollment for a school district, so the unit that
+        # comes back names itself rather than assuming residents.
+        unit = per_unit_label((profile or {}).get("gov_type_name")) or "per unit"
+        return metric_value / population, f"dollars {unit}"
 
     if basis == "share_of_spending":
         total = store.row(
@@ -83,6 +91,22 @@ def compare_normalized(store, pid6_list, service_area=None, basis="share_of_spen
     missing = [p for p, e in zip(pid6_list, entities) if not e]
     types = {e["gov_type_name"] for e in found}
 
+    # A school district's population field is enrollment, so per_resident over a
+    # set spanning types would rank dollars-per-student against dollars-per-
+    # resident in one column. That is the silent basis change §10 forbids, and it
+    # is worse here than elsewhere because the column would look sound.
+    units = {denominator(e["gov_type_name"]) for e in found
+             if denominator(e["gov_type_name"])}
+    if basis == "per_resident" and len(units) > 1:
+        return T.envelope("compare_normalized", caveats=[{
+            "code": "mixed_denominators", "rule": "§10",
+            "guidance": "This set mixes governments measured per "
+                        + " and per ".join(sorted(u.rstrip("s") for u in units))
+                        + ". Those are different measures, not one measure across "
+                          "different governments, so they cannot share a column. "
+                          "Compare on absolute or share_of_spending, or split the set "
+                          "by type."}])
+
     rows, uncomputable = [], []
     for entity in found:
         if service_area:
@@ -114,6 +138,8 @@ def compare_normalized(store, pid6_list, service_area=None, basis="share_of_spen
     rows.sort(key=lambda r: r["value"], reverse=True)
 
     label, basis_note = BASES[basis]
+    label = label.format(
+        per_unit=(f"per {sorted(units)[0].rstrip('s')}" if units else "per resident"))
     caveats = [
         {"code": "comparison_basis", "rule": "§10",
          "guidance": f"This comparison is on {label}. {basis_note} State the basis in the "
@@ -221,7 +247,9 @@ def entity_report(store, pid6):
         chart = T.render_chart(store, pid6, "peer_range")
         sections.append(_section(
             "scale", "How big this budget is for its type",
-            "Give the figure per resident, then where it sits among peers: the median, "
+            "Give the figure on its own denominator, which is residents for a city or "
+            "county and students for a school district, then where it sits among peers: "
+            "the median, "
             "the middle half, and which quarter this entity falls in. State the peer "
             "group and its count. A median without its pool is not a benchmark.",
             100, data=scale["data"], chart=chart["data"]["svg"],

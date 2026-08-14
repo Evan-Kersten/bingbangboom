@@ -132,6 +132,10 @@ def main():
     multnomah = pid("COUNTY OF MULTNOMAH")
     baker_county = pid("COUNTY OF BAKER")
     new_bridge = pid("NEW BRIDGE WATER SUPPLY DISTRICT")
+    school = store.row("SELECT pid6 FROM entities WHERE gov_type_name='School District' "
+                       "AND legal_name LIKE '%PORTLAND%' LIMIT 1")["pid6"]
+    salem_schools = pid("SALEM KEIZER SCH DIST 24J")
+    beaverton_schools = pid("BEAVERTON SCH DIST 48J")
 
     # The sets are chosen to hit the branches that differ: the pair the reader
     # actually picked, a mixed-type set, a set carrying an entity with no
@@ -144,6 +148,12 @@ def main():
         "one with no population": [portland, medford, new_bridge],
         "over the four-line cap": [portland, eugene, salem, bend, medford],
         "nothing to compare": [new_bridge],
+        # A school district's population is enrollment, so this set spans two
+        # denominators and both implementations must refuse it the same way.
+        "mixed denominators": [portland, school],
+        # And a set entirely of school districts, which is not refused but must
+        # be labelled per student everywhere the city set says per resident.
+        "school districts only": [school, salem_schools, beaverton_schools],
     }
 
     requests = []
@@ -164,6 +174,12 @@ def main():
     requests.append({"label": "another area", "form": "per_capita_by_service_area",
                      "pid6_list": [portland, eugene, salem],
                      "service_area": "Culture & Recreation"})
+    # School districts report Education, not public safety, so the per-student
+    # bars only exist here. This is the request that proves the column heading
+    # follows the denominator rather than saying resident regardless.
+    requests.append({"label": "per student", "form": "per_capita_by_service_area",
+                     "pid6_list": [school, salem_schools, beaverton_schools],
+                     "service_area": "Education"})
 
     try:
         js_results = run_in_node(payload_path, requests)

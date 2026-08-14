@@ -47,6 +47,7 @@ def main():
     portland = pid("CITY OF PORTLAND")
     salem = pid("CITY OF SALEM")
     new_bridge = pid("NEW BRIDGE WATER SUPPLY DISTRICT")
+    schools = pid("PORTLAND SCH DIST 1J")
 
     print("\nsection order follows §5 precedence")
     for kind, kwargs in (("entity", {"pid6": baker}),
@@ -123,6 +124,29 @@ def main():
     check("and the exclusion is declared", "entities_excluded" in codes(result))
     check("the basis is never silently downgraded for the rest",
           result["data"]["basis"] == "per_resident")
+    check("and the basis names the unit rather than assuming residents",
+          result["data"]["basis_label"] == "spending per resident",
+          result["data"]["basis_label"])
+
+    # A school district's population field is enrollment, so this set would rank
+    # dollars per student against dollars per resident in one column.
+    result = R.compare_normalized(store, [portland, schools], basis="per_resident")
+    check("a city and a school district cannot share a per-unit column",
+          "mixed_denominators" in codes(result))
+    guidance = " ".join(c["guidance"] for c in result["caveats"])
+    check("and the refusal names both units",
+          "per resident" in guidance and "per student" in guidance, guidance)
+
+    result = R.compare_normalized(store, [schools, portland], basis="absolute")
+    check("but total dollars still compares them", bool(result["data"]["entities"]))
+
+    result = R.compare_normalized(store, [schools], basis="per_resident")
+    check("a school district on its own is measured per student",
+          result["data"]["basis_label"] == "spending per student",
+          result["data"]["basis_label"])
+    check("and every row carries that unit",
+          all(r["unit"] == "dollars per student" for r in result["data"]["entities"]),
+          str([r["unit"] for r in result["data"]["entities"]]))
 
     result = R.compare_normalized(store, [portland, baker], basis="absolute")
     check("mixing a city and a county is flagged", "mixed_entity_types" in codes(result))

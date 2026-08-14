@@ -406,6 +406,25 @@
     return row ? { pid6, name: row[0], govType: row[1], population: row[2] } : null;
   }
 
+  // A school district's population is its enrollment, so dividing by it gives
+  // spending per student. That cannot share an axis with spending per resident.
+  function unitFor(govType) {
+    const pair = DATA.denominators[govType];
+    return pair ? pair[1] : 'residents';
+  }
+
+  function mixedDenominators(found) {
+    const units = Array.from(new Set(found.map((e) => unitFor(e.govType)).filter(Boolean)));
+    return units.length > 1 ? units.sort() : null;
+  }
+
+  // The singular noun a per-capita figure on this set is per. One unit by the
+  // time this is called, because a mixed set is refused before it is drawn.
+  function unitOf(found) {
+    const units = Array.from(new Set(found.map((e) => unitFor(e.govType)).filter(Boolean)));
+    return units.length ? units.sort()[0].replace(/s$/, '') : 'resident';
+  }
+
   function areaRow(pid6, serviceArea) {
     const rows = DATA.areas[pid6] || [];
     for (let i = 0; i < rows.length; i += 1) {
@@ -424,6 +443,19 @@
     const found = pid6List.map(entity).filter(Boolean);
     const missing = pid6List.filter((p) => !DATA.entities[p]);
     const types = Array.from(new Set(found.map((e) => e.govType))).sort();
+
+    const mixed = mixedDenominators(found);
+    if (mixed) {
+      return { serviceArea, entities: [], peers: {}, excludedNoPopulation: [],
+        absent: [], missing, years: [], entityTypes: types, mixedDenominators: mixed,
+        unit: 'resident',
+        caveats: [{ code: 'mixed_denominators', rule: '§10',
+          guidance: 'This set mixes governments measured per '
+            + mixed.map((u) => u.replace(/s$/, '')).join(' and per ')
+            + '. Those are different measures, not one measure across different '
+            + 'governments, so they cannot share an axis. Compare in total dollars, '
+            + 'or split the set by type.' }] };
+    }
 
     const rows = [];
     const noPopulation = [];
@@ -460,8 +492,9 @@
         guidance: 'This data measures what governments spend and who they employ. It '
           + 'contains no performance measures, service levels or results.' },
       { code: 'per_resident_basis', rule: '§10',
-        guidance: 'Every figure here is spending divided by the entity’s population. '
-          + 'Say the basis in the answer; a per-resident figure compared against an '
+        guidance: 'Every figure here is spending divided by the entity’s '
+          + (found.length ? unitFor(found[0].govType) : 'population')
+          + '. Say the basis in the answer; a per-unit figure compared against an '
           + 'absolute one is not a comparison.' },
       { code: 'population_is_one_estimate', rule: '§8',
         guidance: 'Population is a single estimate per entity rather than a series, so '
@@ -503,7 +536,8 @@
     }
 
     return { serviceArea, entities: rows, peers, excludedNoPopulation: noPopulation,
-      absent, missing, years: sortedYears, entityTypes: types, caveats };
+      absent, missing, years: sortedYears, entityTypes: types,
+      unit: unitOf(found), caveats };
   }
 
   // Written out rather than derived from the per-resident form: it compares
@@ -585,6 +619,18 @@
     const found = pid6List.map(entity).filter(Boolean);
     const missing = pid6List.filter((p) => !DATA.entities[p]);
     const types = Array.from(new Set(found.map((e) => e.govType))).sort();
+
+    const mixed = perResident ? mixedDenominators(found) : null;
+    if (mixed) {
+      return { series: [], baseline: null, indexed: Boolean(o.indexed), measure,
+        excludedNoPopulation: [], excludedThin: [], missing, entityTypes: types,
+        mixedDenominators: mixed, unit: 'resident',
+        caveats: [{ code: 'mixed_denominators', rule: '§10',
+          guidance: 'This set mixes governments measured per '
+            + mixed.map((u) => u.replace(/s$/, '')).join(' and per ')
+            + '. Those are different measures and cannot share an axis. Compare '
+            + 'entity totals, or split the set by type.' }] };
+    }
 
     const series = [];
     const noPopulation = [];
@@ -675,13 +721,20 @@
 
     return { series, baseline, indexed: Boolean(o.indexed), measure,
       excludedNoPopulation: noPopulation, excludedThin: thin, missing,
-      entityTypes: types, caveats };
+      entityTypes: types, unit: unitOf(found), caveats };
   }
 
   // -------------------------------------------------------------- headline
 
   function headline(form, detail) {
     if (form === 'per_capita_by_service_area' || form === 'service_area_across_entities') {
+      if (detail.mixedDenominators) {
+        return 'This set mixes governments measured per '
+          + detail.mixedDenominators.map((u) => u.replace(/s$/, '')).join(' and per ')
+          + ". A school district's population is its enrollment, so those are "
+          + 'different measures and cannot be ranked against each other. Compare in '
+          + 'total dollars, or split the set by type.';
+      }
       const rows = detail.entities;
       if (!rows.length) {
         return 'None of these governments reports spending in that area. That usually '
@@ -690,7 +743,7 @@
       }
       const perResident = form === 'per_capita_by_service_area';
       const formatter = perResident ? rate : money;
-      const basis = perResident ? 'per resident'
+      const basis = perResident ? 'per ' + (detail.unit || 'resident')
         : 'in total dollars, which ranks by population';
       const top = rows[0];
       const bottom = rows[rows.length - 1];
@@ -711,10 +764,17 @@
       return line;
     }
 
+    if (detail.mixedDenominators) {
+      return 'This set mixes governments measured per '
+        + detail.mixedDenominators.map((u) => u.replace(/s$/, '')).join(' and per ')
+        + ', which are different measures and cannot share an axis. Compare entity '
+        + 'totals, or split the set by type.';
+    }
     const series = detail.series;
     if (series.length < 2) {
+      const unit = detail.unit || 'resident';
       return 'Fewer than two of these governments can be drawn over time. An entity needs '
-        + 'two or more years, and a per-resident line needs a population.';
+        + 'two or more years, and a per-' + unit + ' line needs a ' + unit + ' count.';
     }
     const growth = series
       .filter((s) => s.points.length && s.points[0][1])
@@ -766,16 +826,23 @@
     if (form === 'per_capita_by_service_area') {
       detail = perCapitaByServiceArea(request.pid6_list, serviceArea);
       const rows = detail.entities;
-      if (!rows.length) {
-        svg = refusal('Spending on ' + serviceArea + ' per resident',
-          'None of these entities can be put on a per-resident basis for this area: '
-          + 'either they report nothing here, or they have no population in the data. '
-          + 'Neither is a report of zero spending.');
+      if (detail.mixedDenominators) {
+        const units = detail.mixedDenominators.map((u) => u.replace(/s$/, '')).join(' and per ');
+        svg = refusal('Spending on ' + serviceArea + ', per unit',
+          'Not drawn. This set mixes governments measured per ' + units + '. A school '
+          + "district's population is its enrollment, so dividing by it gives "
+          + 'spending per student, and that cannot share an axis with spending per '
+          + 'resident. Compare in total dollars, or split the set by type.');
+      } else if (!rows.length) {
+        svg = refusal('Spending on ' + serviceArea + ' per ' + detail.unit,
+          'None of these entities can be put on a per-' + detail.unit + ' basis for this '
+          + 'area: either they report nothing here, or they have no population in the '
+          + 'data. Neither is a report of zero spending.');
       } else {
         const singleType = Array.from(new Set(rows.map((r) => r.govType))).length === 1;
         const span = detail.years.length === 1 ? String(detail.years[0])
           : detail.years[0] + ' to ' + detail.years[detail.years.length - 1] + ', one year each';
-        svg = horizontalBars(serviceArea + ': spending per resident',
+        svg = horizontalBars(serviceArea + ': spending per ' + detail.unit,
           rows.length + ' governments, ' + span,
           rows.map((r) => ({ label: r.label, value: r.value,
             peerMedian: singleType ? r.peerMedian : null,
@@ -784,12 +851,16 @@
             note: singleType && rows.some((r) => r.peerMedian)
               ? 'Tick marks the median for this government type.'
               : 'Mixed government types, so no single peer median applies.' });
-        table = rows.map((r) => ({
-          government: r.label, type: r.govType, 'per resident': rate(r.value),
-          total: money(r.total), population: count(r.population),
-          'share of its own budget': percent(r.share),
-          'vs type median': r.ratio ? r.ratio.toFixed(2) + '×' : 'not comparable',
-          year: r.year }));
+        table = rows.map((r) => {
+          const row = { government: r.label, type: r.govType };
+          row['per ' + detail.unit] = rate(r.value);
+          row.total = money(r.total);
+          row[detail.unit + 's'] = count(r.population);
+          row['share of its own budget'] = percent(r.share);
+          row['vs type median'] = r.ratio ? r.ratio.toFixed(2) + '×' : 'not comparable';
+          row.year = r.year;
+          return row;
+        });
       }
     } else if (form === 'service_area_across_entities') {
       detail = serviceAreaAbsolute(request.pid6_list, serviceArea);
@@ -819,18 +890,26 @@
       detail = overTime(request.pid6_list,
         { perResident, indexed, measure: request.measure || 'expenditure' });
       const series = detail.series;
-      if (series.length < 2) {
-        svg = refusal(perResident ? 'Spending per resident over time' : 'Spending over time',
+      if (detail.mixedDenominators) {
+        const units = detail.mixedDenominators.map((u) => u.replace(/s$/, '')).join(' and per ');
+        svg = refusal('Spending per unit over time',
+          'Not drawn. This set mixes governments measured per ' + units + ', which are '
+          + 'different measures and cannot share an axis. Compare entity totals, or '
+          + 'split the set by type.');
+      } else if (series.length < 2) {
+        svg = refusal(perResident ? 'Spending per ' + detail.unit + ' over time'
+          : 'Spending over time',
           'Fewer than two entities can be drawn: an entity needs two or more years'
-          + (perResident ? ', and a per-resident line needs a population' : '')
+          + (perResident ? ', and a per-' + detail.unit + ' line needs a ' + detail.unit
+            + ' count' : '')
           + '. One year is a point, not a trend.');
       } else {
         const drawn = series.slice(0, DATA.layout.maxSeries);
         const years = Array.from(new Set([].concat.apply([],
           drawn.map((s) => s.points.map((p) => p[0]))))).sort();
         let note = perResident
-          ? 'Population is one estimate per entity and is held constant, so what moves here '
-            + 'is spending.'
+          ? 'The ' + detail.unit + ' count is one estimate per entity and is held constant, '
+            + 'so what moves here is spending.'
           : 'Entity totals. No line here is a service area.';
         if (series.length > DATA.layout.maxSeries) {
           note += ' Four lines drawn: '
@@ -839,11 +918,12 @@
         }
         const formatter = indexed ? index : (perResident ? rate : money);
         svg = multiSeries(
-          indexed ? 'Spending per resident, indexed'
-            : (perResident ? 'Spending per resident' : 'Total spending over time'),
+          indexed ? 'Spending per ' + detail.unit + ', indexed'
+            : (perResident ? 'Spending per ' + detail.unit : 'Total spending over time'),
           indexed ? years[0] + ' = 100, ' + drawn.length + ' governments compared'
             : years[0] + ' to ' + years[years.length - 1]
-              + (perResident ? ', entity totals divided by population' : ', entity totals'),
+              + (perResident ? ', entity totals divided by ' + detail.unit + 's'
+                : ', entity totals'),
           drawn,
           { formatter, note, reference: detail.baseline,
             baseline: indexed ? 100 : null });

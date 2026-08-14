@@ -238,6 +238,40 @@ TOPIC_CONCORDANCE = {
 }
 
 # §11 attention thresholds. Triggers for attention, not verdicts.
+# The payload calls one field "population" for every government type, and it is
+# not the same quantity in each. Portland School District 1J reports 48,601
+# against a city of 641,162, with 7,608 staff: 157 employees per thousand, which
+# is an ordinary ratio of staff to *students* and an absurd one to residents. So
+# the field is enrollment for a school district and residents for a general
+# purpose government, and a per-capita figure means something different in each.
+#
+# Naming it matters twice. A figure labelled "per resident" on a school district
+# is simply wrong. And a comparison that puts a district beside a city divides by
+# two different denominators under one heading, which is the silent basis change
+# §10 forbids.
+DENOMINATOR = {
+    "County": ("resident", "residents"),
+    "Municipal": ("resident", "residents"),
+    "State": ("resident", "residents"),
+    "School District": ("student", "students"),
+    # Special districts serve an extent, not a countable membership, and the
+    # payload gives them no denominator at all.
+    "Special District": (None, None),
+}
+
+
+def denominator(gov_type, plural=True):
+    """The unit a per-capita figure on this government type is per."""
+    singular, many = DENOMINATOR.get(gov_type, ("resident", "residents"))
+    return (many if plural else singular)
+
+
+def per_unit_label(gov_type):
+    """'per resident', 'per student', or None where there is no denominator."""
+    singular = DENOMINATOR.get(gov_type, ("resident", "residents"))[0]
+    return f"per {singular}" if singular else None
+
+
 THRESHOLDS = {
     "peer_ratio_mention": 1.5,
     "peer_ratio_lead": 2.0,

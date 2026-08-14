@@ -27,6 +27,7 @@ place.
 """
 
 import viz
+from rules import DENOMINATOR
 
 
 def _explore():
@@ -108,6 +109,10 @@ def build(store):
         "areaShareStats": share_stats,
         "baselines": baselines,
         "serviceAreas": service_areas,
+        # The payload calls one field population for every type and it is not the
+        # same quantity in each: for a school district it is enrollment. The
+        # browser needs the same rule the server uses, not its own copy of it.
+        "denominators": {k: list(v) for k, v in DENOMINATOR.items()},
         "tokens": viz.TOKENS,
         "layout": {
             "font": viz.FONT,

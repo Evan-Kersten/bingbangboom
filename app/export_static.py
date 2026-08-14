@@ -47,12 +47,9 @@ def export(out_dir):
     # The magnitude rides along because it is what tells two same-named
     # governments apart in a result row, and the browser filters this list
     # itself rather than calling a search endpoint.
-    entities = store.rows(
-        "SELECT e.pid6, e.legal_name, e.common_name, e.gov_type_name, e.host_county, "
-        "w.population, o.total_expenditure FROM entities e "
-        "LEFT JOIN workforce_profile w ON w.pid6 = e.pid6 "
-        "LEFT JOIN operating_vs_capital o ON o.pid6 = e.pid6 "
-        "ORDER BY e.gov_type_name, e.common_name")
+    entities = [S._with_magnitude(row) for row in store.rows(
+        "SELECT e.pid6, e.legal_name, e.common_name, e.gov_type_name, e.host_county "
+        "FROM entities e ORDER BY e.gov_type_name, e.common_name")]
 
     # The search index is small enough to filter in the browser, which is both
     # simpler than a search endpoint and faster than one.

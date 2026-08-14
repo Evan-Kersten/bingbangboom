@@ -24,23 +24,32 @@ quietly substituted with something adjacent.
 
 import format as fmt
 import tools as T
-from rules import caveat, not_computable
+from rules import caveat, denominator, not_computable, per_unit_label
 
 # §11: a ratio this far from the median is worth naming.
 NOTABLE_RATIO_HIGH = 1.5
 NOTABLE_RATIO_LOW = 0.5
 
+# Two of these are per-capita, and "capita" is not the same unit for every
+# government type, so their labels are built from the type rather than fixed.
 METRIC_LABELS = {
     "total_expenditure": ("Total spending", fmt.money),
     "total_revenue": ("Total revenue", fmt.money),
-    "expenditure_per_capita": ("Spending per resident", fmt.rate),
+    "expenditure_per_capita": ("Spending {per_unit}", fmt.rate),
     "capital_share": ("Capital share of spending", fmt.percent),
-    "employees_per_1000": ("Employees per 1,000 residents", fmt.rate),
+    "employees_per_1000": ("Employees per 1,000 {units}", fmt.rate),
     "average_wage": ("Average annual wage", fmt.rate),
     "personnel_share": ("Personnel share of operating", fmt.percent),
     "service_area_share": ("Share of spending", fmt.percent),
     "service_area_total": ("Spending", fmt.money),
 }
+
+
+def metric_label(metric, gov_type):
+    """The label for a metric, with the denominator named where it has one."""
+    template, formatter = METRIC_LABELS.get(metric, (metric, fmt.money))
+    return template.format(per_unit=per_unit_label(gov_type) or "per unit",
+                           units=denominator(gov_type) or "units"), formatter
 
 
 def peer_stats(store, gov_type, metric, service_area=None):
@@ -95,7 +104,7 @@ def compare_to_peer_group(store, pid6, metric, service_area=None):
 
     stats = peer_stats(store, entity["gov_type_name"], metric, service_area)
     value = entity_metric(store, pid6, metric, service_area)
-    label, formatter = METRIC_LABELS.get(metric, (metric, fmt.money))
+    label, formatter = metric_label(metric, entity["gov_type_name"])
 
     if not stats or value is None:
         return T.envelope("compare_to_peer_group", entity=entity, caveats=[{
@@ -144,7 +153,9 @@ def compare_to_peer_group(store, pid6, metric, service_area=None):
               "quartile": quartile,
               "peers": {k: stats[k] for k in
                         ("n", "low", "p25", "median", "p75", "high", "degenerate")},
-              "peer_group": f"Oregon {entity['gov_type_name']}"},
+              "peer_group": f"Oregon {entity['gov_type_name']}",
+              "per_unit": per_unit_label(entity["gov_type_name"]),
+              "unit": denominator(entity["gov_type_name"])},
         caveats=caveats,
         blocked=[not_computable("service_area_yoy")])
 
@@ -553,6 +564,31 @@ def per_capita_by_service_area(store, pid6_list, service_area):
     missing = [p for p, e in zip(pid6_list, entities) if not e]
     types = {e["gov_type_name"] for e in found}
 
+    # A school district's population field is enrollment, so dividing by it gives
+    # spending per student. Ranking that against spending per resident puts two
+    # different measures in one column under one heading, which is the silent
+    # basis change §10 forbids. Refused, with what can be drawn instead.
+    units = {denominator(e["gov_type_name"]) for e in found
+             if denominator(e["gov_type_name"])}
+    if len(units) > 1:
+        return T.envelope(
+            "per_capita_by_service_area",
+            data={"service_area": service_area, "basis": "per_resident",
+                  "entities": [], "peers": {}, "excluded_no_population": [],
+                  "absent": [], "missing": missing, "years": [],
+                  "entity_types": sorted(types), "count": 0,
+                  "mixed_denominators": sorted(units),
+                  "alternatives": ["the same service area in total dollars",
+                                   "either group on its own denominator"]},
+            caveats=[{
+                "code": "mixed_denominators", "rule": "§10",
+                "guidance": "This set mixes governments measured per "
+                            + " and per ".join(sorted(u.rstrip("s") for u in units))
+                            + ". Those are different measures, not one measure across "
+                              "different governments, so they cannot share an axis. "
+                              "Compare in total dollars, or split the set by type."}],
+            blocked=[not_computable("service_area_yoy")])
+
     rows, no_population, absent, years = [], [], [], set()
     for entity in found:
         name = entity["common_name"] or entity["legal_name"]
@@ -594,9 +630,10 @@ def per_capita_by_service_area(store, pid6_list, service_area):
     caveats = [
         caveat("inputs_not_outcomes"),
         {"code": "per_resident_basis", "rule": "§10",
-         "guidance": "Every figure here is spending divided by the entity's population. "
-                     "Say the basis in the answer; a per-resident figure compared against "
-                     "an absolute one is not a comparison."},
+         "guidance": "Every figure here is spending divided by the entity's "
+                     + (sorted(units)[0] if units else "population")
+                     + ". Say the basis in the answer; a per-unit figure compared "
+                       "against an absolute one is not a comparison."},
         {"code": "population_is_one_estimate", "rule": "§8",
          "guidance": "Population is a single estimate per entity rather than a series, so "
                      "these are levels at one moment and no rate of change can be read "
@@ -639,6 +676,7 @@ def per_capita_by_service_area(store, pid6_list, service_area):
     return T.envelope(
         "per_capita_by_service_area",
         data={"service_area": service_area, "basis": "per_resident",
+              "unit": (sorted(units)[0].rstrip("s") if units else "resident"),
               "entities": rows, "peers": peers, "excluded_no_population": no_population,
               "absent": absent, "missing": missing, "years": sorted(years),
               "entity_types": sorted(types), "count": len(rows)},
@@ -663,6 +701,26 @@ def per_capita_over_time(store, pid6_list, indexed=False, reference=True):
     found = [e for e in entities if e]
     missing = [p for p, e in zip(pid6_list, entities) if not e]
     types = {e["gov_type_name"] for e in found}
+
+    units = {denominator(e["gov_type_name"]) for e in found
+             if denominator(e["gov_type_name"])}
+    if len(units) > 1:
+        return T.envelope(
+            "per_capita_over_time",
+            data={"basis": "per_resident", "indexed": bool(indexed),
+                  "series": [], "baseline": None, "excluded_no_population": [],
+                  "excluded_thin": [], "missing": missing,
+                  "entity_types": sorted(types), "count": 0,
+                  "mixed_denominators": sorted(units),
+                  "alternatives": ["entity totals over time",
+                                   "either group on its own denominator"]},
+            caveats=[{
+                "code": "mixed_denominators", "rule": "§10",
+                "guidance": "This set mixes governments measured per "
+                            + " and per ".join(sorted(u.rstrip("s") for u in units))
+                            + ". Those are different measures and cannot share an axis. "
+                              "Compare entity totals, or split the set by type."}],
+            blocked=[not_computable("service_area_yoy")])
 
     series, no_population, thin = [], [], []
     for entity in found:
@@ -759,6 +817,7 @@ def per_capita_over_time(store, pid6_list, indexed=False, reference=True):
     return T.envelope(
         "per_capita_over_time",
         data={"basis": "indexed_per_resident" if indexed else "per_resident",
+              "unit": (sorted(units)[0].rstrip("s") if units else "resident"),
               "indexed": bool(indexed), "series": series, "baseline": baseline,
               "excluded_no_population": no_population, "excluded_thin": thin,
               "missing": missing, "entity_types": sorted(types), "count": len(series)},
@@ -797,9 +856,14 @@ def who_spends_on(store, function_name, limit=12):
             "code": "no_such_function", "rule": "§2",
             "guidance": f"No government reports spending on '{function_name}'."}])
 
+    # The unit rides on the row rather than on the column, because this list is
+    # mixed by design: a school district and a fire district appear in the same
+    # ranking and their population fields count different things. One column
+    # heading over both would be the silent basis change §10 forbids.
     for row in rows:
-        row["per_resident"] = (row["spending"] / row["population"]
-                               if row["population"] else None)
+        row["per_unit"] = (row["spending"] / row["population"]
+                           if row["population"] else None)
+        row["unit"] = denominator(row["gov_type"], plural=False)
 
     types = sorted({r["gov_type"] for r in rows})
     counties = {(r["host_county"] or "").title() for r in rows if r["host_county"]}
@@ -810,8 +874,11 @@ def who_spends_on(store, function_name, limit=12):
         caveat("inputs_not_outcomes"),
         {"code": "ranked_by_size", "rule": "§10",
          "guidance": "This list is ranked by what each government spends, which ranks "
-                     "by government size. Say so. The per-resident column reorders it "
-                     "and is the fairer comparison where a population exists."},
+                     "by government size. Say so. The per-unit column reorders it and "
+                     "is the fairer comparison where a denominator exists, but that "
+                     "denominator is residents for a city or county and students for a "
+                     "school district, so each figure carries its own unit and the "
+                     "column is not one ranking."},
         {"code": "absence_is_not_zero", "rule": "§9",
          "guidance": f"{len(rows)} governments report this function. A government absent "
                      "from the list is not one that spends nothing: it is one where "
@@ -833,8 +900,8 @@ def who_spends_on(store, function_name, limit=12):
     if no_population:
         caveats.append({
             "code": "no_population_denominator", "rule": "§10",
-            "guidance": f"{no_population} of these have no population in the data, so no "
-                        "per-resident figure is shown for them. That is an absence of a "
+            "guidance": f"{no_population} of these have no denominator in the data, so no "
+                        "per-unit figure is shown for them. That is an absence of a "
                         "denominator, not a small one."})
 
     return T.envelope(

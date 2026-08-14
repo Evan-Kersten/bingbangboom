@@ -128,8 +128,16 @@ def main():
     check("the count of everyone doing it is stated, not just the top rows",
           "327" in text, text[:80])
     check("the ranking says it ranks by size", "ranking by size" in text)
-    check("a government with no population says so rather than showing a zero",
-          any(r["per resident"] == "no population" for r in table["rows"]))
+    check("a government with no denominator says so rather than showing a zero",
+          any(r["per resident or student"] == "no denominator" for r in table["rows"]))
+    # The list is mixed by design, so the unit rides on each figure. A city's row
+    # says per resident and a school district's says per student, and neither
+    # sits under a heading that claims the other.
+    check("and every figure in that column carries the unit it is per",
+          all(r["per resident or student"] == "no denominator"
+              or r["per resident or student"].endswith((" per resident", " per student"))
+              for r in table["rows"]),
+          str([r["per resident or student"] for r in table["rows"]][:4]))
     check("and the answer places the service on a map",
           any(b["kind"] == "map" for b in fire["blocks"]))
     check("it conforms to §15", fire["violations"] == [], str(fire["violations"]))
@@ -137,6 +145,70 @@ def main():
     missing = S.answer_function("Nothing Like This")
     check("an unknown function is refused rather than invented",
           "No government reports" in missing["blocks"][0]["text"])
+
+    print("\na per-capita figure names the unit it is per")
+    # The payload calls one field population for every type, and it is enrollment
+    # for a school district: Portland School District 1J reports 48,601 against a
+    # city of 641,162, with 7,608 staff. Labelling that "per resident" is wrong.
+    import rules
+    check("a city is measured per resident", rules.per_unit_label("Municipal") == "per resident")
+    check("a school district is measured per student",
+          rules.per_unit_label("School District") == "per student")
+    check("a special district has no denominator at all",
+          rules.per_unit_label("Special District") is None)
+
+    college = store.row("SELECT pid6 FROM entities WHERE gov_type_name='School District' "
+                        "AND legal_name LIKE '%PORTLAND%' LIMIT 1")["pid6"]
+    district_answer = " ".join(b.get("text", "") for b in
+                               S.answer_preset("scale", college)["blocks"])
+    check("and the answer for one says student, not resident",
+          "per student" in district_answer and "per resident" not in district_answer,
+          district_answer[:110])
+
+    print("\na search row says what its number counts")
+    rows = [S._with_magnitude(store.row(
+        "SELECT pid6, legal_name, common_name, gov_type_name, host_county "
+        "FROM entities WHERE legal_name=?", name))
+        for name in ("CITY OF PORTLAND", "COUNTY OF BAKER")]
+    check("cities and counties count residents",
+          all("residents" in r["magnitude"] for r in rows), str([r["magnitude"] for r in rows]))
+    school_row = S._with_magnitude(store.row(
+        "SELECT pid6, legal_name, common_name, gov_type_name, host_county "
+        "FROM entities WHERE pid6=?", college))
+    check("a school district counts students", "students" in school_row["magnitude"],
+          school_row["magnitude"])
+    district = S._with_magnitude(store.row(
+        "SELECT pid6, legal_name, common_name, gov_type_name, host_county FROM entities "
+        "WHERE gov_type_name='Special District' AND pid6 IN "
+        "(SELECT pid6 FROM operating_vs_capital WHERE total_expenditure > 0) LIMIT 1"))
+    check("and a special district shows its budget instead",
+          "budget" in district["magnitude"], district["magnitude"])
+    # §9: a district that filed nothing has filed nothing. A blank cell in that
+    # column would read as a budget of zero.
+    silent = S._with_magnitude(store.row(
+        "SELECT pid6, legal_name, common_name, gov_type_name, host_county FROM entities "
+        "WHERE gov_type_name='Special District' AND pid6 NOT IN "
+        "(SELECT pid6 FROM operating_vs_capital WHERE total_expenditure > 0) LIMIT 1"))
+    check("a district that filed nothing says so rather than going blank",
+          silent["magnitude"] == "no budget filed", silent["magnitude"])
+    # The figure and the noun travel apart so the interface can set them apart.
+    check("every row hands over its figure and its unit separately",
+          all(r["magnitude"] == f"{r['magnitude_figure']} {r['magnitude_unit']}".strip()
+              for r in rows + [school_row, district, silent]))
+
+    print("\ntwo denominators cannot share an axis")
+    import explore
+    mixed = explore.per_capita_by_service_area(
+        store, [pid("CITY OF PORTLAND"), college], S.DEFAULT_AREA)
+    check("a city and a school district are refused, not ranked together",
+          "mixed_denominators" in {c["code"] for c in mixed["caveats"]})
+    check("and the refusal offers what can be drawn instead",
+          len(mixed["data"]["alternatives"]) == 2)
+    drawn = S.T.render_comparison(store, [pid("CITY OF PORTLAND"), college],
+                                  "per_capita_by_service_area",
+                                  service_area=S.DEFAULT_AREA)
+    check("the chart draws the reason rather than an empty frame",
+          "per student" in drawn["data"]["svg"])
 
     print("\nthe drill-down reaches the line item")
     levels = [S.answer_preset(preset, baker) for preset in
@@ -162,8 +234,13 @@ def main():
     portland = pid("CITY OF PORTLAND")
     group, basis = S.peer_set(portland)
     check("a peer set is drawn from one government type", len(group) >= 2)
+    # "closest in residents", not "closest in population": the peer set for a
+    # school district is closest in enrollment, and the sentence has to say which.
     check("and its basis is stated for the answer to repeat",
-          bool(basis) and "population" in basis, str(basis))
+          bool(basis) and "residents" in basis, str(basis))
+    school_group, school_basis = S.peer_set(college)
+    check("a school district's peers are nearest in students, and say so",
+          bool(school_basis) and "students" in school_basis, str(school_basis))
     comparison = S.T.render_comparison(store, group, "per_capita_by_service_area",
                                        service_area=S.DEFAULT_AREA)
     headline = S._compare_headline(comparison)

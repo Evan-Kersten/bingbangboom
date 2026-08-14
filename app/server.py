@@ -32,6 +32,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(HERE), "agent"))
 
 import blocks as B            # noqa: E402
+import rules                  # noqa: E402
 import format as fmt          # noqa: E402
 import reports as R           # noqa: E402
 import tools as T             # noqa: E402
@@ -82,9 +83,11 @@ PRESETS = [
     ("purchasable", "What in its biggest function is actually purchasable?",
      "Follow the money", "has_financial_functions", "purchasable"),
 
-    ("vs_peers_area", "How does its public safety spending compare per resident?",
+    # The denominator is left out of these two labels on purpose: it is residents
+    # for a city and students for a school district, and the answer states which.
+    ("vs_peers_area", "How does its public safety spending compare, head for head?",
      "Against other governments", "has_spending_breakdown", "vs_peers_area"),
-    ("vs_peers_time", "Has spending per resident outgrown its peers?",
+    ("vs_peers_time", "Has its spending outgrown its peers?",
      "Against other governments", "has_financial_trends", "vs_peers_time"),
     ("trend", "How have revenue and spending moved?", "Against other governments",
      "has_financial_trends", "trend"),
@@ -135,8 +138,9 @@ def peer_set(pid6, count=3):
         "WHERE e.gov_type_name = ? AND e.pid6 != ? AND w.population > 0 "
         "ORDER BY ABS(w.population - ?) LIMIT ?",
         anchor["gov_type_name"], pid6, anchor["population"], count)
+    unit = rules.denominator(anchor["gov_type_name"]) or "population"
     basis = (f"the {count} Oregon {anchor['gov_type_name']} entities closest in "
-             f"population")
+             f"{unit}")
     return [pid6] + [n["pid6"] for n in neighbours], basis
 
 
@@ -213,8 +217,11 @@ def _headline(entity, result):
                 f"of which {data['mappable']} have boundaries.")
     if tool == "get_entity_profile":
         population = data.get("population")
+        # "population 48,601" for a school district is a count of students. The
+        # field has one name for every type; the sentence must not.
+        unit = rules.denominator(entity["gov_type_name"])
         return (f"{entity['gov_type_name']}"
-                + (f", population {fmt.count(population)}" if population else "")
+                + (f", {fmt.count(population)} {unit or 'people'}" if population else "")
                 + f", host county {(entity['host_county'] or '').title()}.")
     return None
 
@@ -230,13 +237,20 @@ def _compare_headline(result):
     form = data["form"]
 
     if form in ("per_capita_by_service_area", "service_area_across_entities"):
+        if detail.get("mixed_denominators"):
+            units = " and per ".join(u.rstrip("s") for u in detail["mixed_denominators"])
+            return (f"This set mixes governments measured per {units}. A school "
+                    "district's population is its enrollment, so those are different "
+                    "measures and cannot be ranked against each other. Compare in total "
+                    "dollars, or split the set by type.")
         rows = detail.get("entities") or []
         if not rows:
             return ("None of these governments reports spending in that area. That "
                     "usually means another government holds the responsibility, not "
                     "that the service is unfunded.")
         formatter = fmt.rate if form == "per_capita_by_service_area" else fmt.money
-        basis = ("per resident" if form == "per_capita_by_service_area"
+        basis = (f"per {detail.get('unit') or 'resident'}"
+                 if form == "per_capita_by_service_area"
                  else "in total dollars, which ranks by population")
         top, bottom = rows[0], rows[-1]
         line = (f"On {detail['service_area']} {basis}, {top['label']} is highest at "
@@ -254,10 +268,16 @@ def _compare_headline(result):
                      f"put on this basis: {', '.join(excluded)}.")
         return line
 
+    if detail.get("mixed_denominators"):
+        units = " and per ".join(u.rstrip("s") for u in detail["mixed_denominators"])
+        return (f"This set mixes governments measured per {units}, which are different "
+                "measures and cannot share an axis. Compare entity totals, or split the "
+                "set by type.")
     series = detail.get("series") or []
     if len(series) < 2:
+        unit = detail.get("unit") or "resident"
         return ("Fewer than two of these governments can be drawn over time. An entity "
-                "needs two or more years, and a per-resident line needs a population.")
+                f"needs two or more years, and a per-{unit} line needs a {unit} count.")
     growth = sorted(
         ((s["label"], s["points"][-1][1] / s["points"][0][1])
          for s in series if s["points"][0][1]), key=lambda pair: pair[1], reverse=True)
@@ -282,21 +302,42 @@ def _named(entity):
 
 
 def _with_magnitude(match):
-    """Attach the one figure that tells two same-named governments apart.
+    """Attach the one figure that tells two same-named governments apart, named.
 
     Oregon has several Springfields and a great many Washingtons, and a row
-    reading only "Municipal · Marion" does not distinguish them. Population where
-    there is one, total spending otherwise, because a school district serves an
-    enrollment rather than a resident count.
+    reading only "Municipal · Marion" does not distinguish them.
+
+    The figure is labelled rather than left to be inferred, because the payload's
+    population field is not the same quantity for every type: a school district
+    reports its enrollment there, so 48,601 for Portland School District 1J is
+    students and 641,162 for the City of Portland is residents. Showing both as a
+    bare count invites a reader to compare them, and they are not comparable. A
+    special district has no denominator at all, so it carries its budget instead.
     """
     row = STORE.row(
         "SELECT w.population, o.total_expenditure FROM entities e "
         "LEFT JOIN workforce_profile w ON w.pid6 = e.pid6 "
         "LEFT JOIN operating_vs_capital o ON o.pid6 = e.pid6 WHERE e.pid6 = ?",
         match["pid6"]) or {}
-    return {**match,
-            "population": row.get("population"),
-            "total_expenditure": row.get("total_expenditure")}
+    unit = rules.denominator(match["gov_type_name"])
+    population = row.get("population")
+    spending = row.get("total_expenditure")
+
+    if unit and population:
+        figure, noun, kind = fmt.count(population), unit, unit
+    elif spending:
+        figure, noun, kind = fmt.money(spending), "budget", "budget"
+    else:
+        # §9. A row with nothing here has filed nothing, which is not a budget of
+        # zero, and a blank cell would read as one.
+        figure, noun, kind = "no budget filed", "", "absent"
+
+    return {**match, "population": population, "total_expenditure": spending,
+            "magnitude": f"{figure} {noun}".strip(), "magnitude_kind": kind,
+            # Split so the interface can set the figure and its unit differently:
+            # the number is what a reader scans, the noun is what stops them
+            # comparing 48,601 students against 641,162 residents.
+            "magnitude_figure": figure, "magnitude_unit": noun}
 
 
 def _section_readout(section, entity=None):
@@ -338,7 +379,10 @@ def _section_readout(section, entity=None):
                      (entity or {}).get("gov_type_name"), "a government")
         parts = [f"{name} is {plain}"]
         if population:
-            parts.append(f"serving {fmt.count(population)} residents")
+            # A school district's population field is enrollment, so the noun
+            # follows the type rather than defaulting to residents.
+            unit = rules.denominator((entity or {}).get("gov_type_name"))
+            parts.append(f"serving {fmt.count(population)} {unit or 'people'}")
         if employees:
             parts.append(f"with {fmt.count(employees)} employees on the payroll")
         return ", ".join(parts) + "."
@@ -346,12 +390,14 @@ def _section_readout(section, entity=None):
     if section_id == "scale":
         peers = data.get("peers") or {}
         if not peers:
-            return "No peer distribution covers this government for spending per resident."
+            basis = rules.per_unit_label((entity or {}).get("gov_type_name")) or "per unit"
+            return f"No peer distribution covers this government for spending {basis}."
         where = {"top quarter": "the top quarter", "bottom quarter": "the bottom quarter",
                  "middle half": "the middle half"}.get(data.get("quartile"), "the range")
-        return (f"{name} spends {data['formatted']} per resident, which places it in "
-                f"{where} of {fmt.count(peers['n'])} {data['peer_group']} entities. The "
-                f"median is {fmt.rate(peers['median'])} and the middle half runs "
+        return (f"{name} spends {data['formatted']} {data.get('per_unit', 'per unit')}, "
+                f"which places it in {where} of {fmt.count(peers['n'])} "
+                f"{data['peer_group']} entities. The median is "
+                f"{fmt.rate(peers['median'])} and the middle half runs "
                 f"{fmt.rate(peers['p25'])} to {fmt.rate(peers['p75'])}.")
 
     if section_id == "spending":
@@ -388,7 +434,8 @@ def _section_readout(section, entity=None):
                     "contracted out or another entity performs it.")
         line = f"{fmt.count(employees)} employees"
         if data.get("employees_per_1000"):
-            line += f", {fmt.rate(data['employees_per_1000'])} per 1,000 residents"
+            unit = rules.denominator((entity or {}).get("gov_type_name")) or "people"
+            line += f", {fmt.rate(data['employees_per_1000'])} per 1,000 {unit}"
         if data.get("average_annual_wage"):
             line += f", at an average wage of {fmt.rate(data['average_annual_wage'])}"
         areas = data.get("by_service_area") or []
@@ -466,15 +513,21 @@ def answer_function(function_name):
         f"{fmt.count(data['total_governments'])} Oregon governments report spending on "
         f"{function_name}, across {data['counties']} counties. The largest is "
         f"{top['name']} at {fmt.money(top['spending'])}"
-        + (f", or {fmt.rate(top['per_resident'])} per resident" if top["per_resident"] else "")
-        + f". This is a ranking by size; the per-resident column reorders it. "
+        + (f", or {fmt.rate(top['per_unit'])} per {top['unit']}"
+           if top["per_unit"] and top["unit"] else "")
+        + f". This is a ranking by size; the per-unit column reorders it. "
         f"{function_name} sits inside {data['service_area']}.")}]
 
+    # The per-unit figure carries its unit in the cell, not in the heading: this
+    # list mixes cities counted in residents with school districts counted in
+    # students, and one heading over both would be a basis change nobody stated.
     blocks.append({"kind": "table", "rows": [
         {"government": row["name"], "type": row["gov_type"],
          "county": (row["host_county"] or "").title(),
          "spending": fmt.money(row["spending"]),
-         "per resident": fmt.rate(row["per_resident"]) if row["per_resident"] else "no population",
+         "per resident or student": (
+             f"{fmt.rate(row['per_unit'])} per {row['unit']}"
+             if row["per_unit"] and row["unit"] else "no denominator"),
          "vendor addressable": fmt.money(row["addressable"]),
          "year": row["year"]}
         for row in data["entities"]]})
@@ -645,18 +698,20 @@ def answer_preset(preset_id, pid6=None, county=None):
                             "zero spending."}]))
     elif preset_id == "vs_peers_area":
         group, basis = peer_set(pid6)
+        per_unit = rules.per_unit_label(
+            (entity or {}).get("gov_type_name")) or "per unit"
         if len(group) < 2:
             blocks.append({"kind": "text", "text": (
-                "This entity has no population in the data, so a per-resident "
-                "comparison cannot be built for it. Special districts and school "
-                "districts serve areas that are not a resident count.")})
+                "This entity has no denominator in the data, so a head-for-head "
+                "comparison cannot be built for it. Special districts serve an "
+                "extent, not a countable membership.")})
             results.append(T.envelope("per_capita_by_service_area", caveats=[{
                 "code": "no_population_denominator", "rule": "§10",
-                "guidance": "No population, so no per-resident basis."}]))
+                "guidance": "No denominator, so no per-unit basis."}]))
         else:
             blocks.append({"kind": "text", "text": (
-                f"Compared against {basis}, on spending per resident rather than "
-                "total dollars: totals rank these by population, which the reader "
+                f"Compared against {basis}, on spending {per_unit} rather than "
+                "total dollars: totals rank these by size, which the reader "
                 "already knows.")})
             add_comparison(T.render_comparison(
                 STORE, group, "per_capita_by_service_area", service_area=DEFAULT_AREA))
@@ -664,11 +719,11 @@ def answer_preset(preset_id, pid6=None, county=None):
         group, basis = peer_set(pid6)
         if len(group) < 2:
             blocks.append({"kind": "text", "text": (
-                "This entity has no population in the data, so it cannot be put on "
-                "a per-resident axis.")})
+                "This entity has no denominator in the data, so it cannot be put "
+                "on a per-unit axis.")})
             results.append(T.envelope("per_capita_over_time", caveats=[{
                 "code": "no_population_denominator", "rule": "§10",
-                "guidance": "No population, so no per-resident basis."}]))
+                "guidance": "No denominator, so no per-unit basis."}]))
         else:
             blocks.append({"kind": "text", "text": (
                 f"Every line starts at 100 in the first year, against {basis}, with "

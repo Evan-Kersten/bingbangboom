@@ -189,8 +189,11 @@ SCHEMAS = [
                        "comparison absolute dollars cannot make: a large city outspends a "
                        "small county on public safety by a margin that is purely population, "
                        "and per resident the ranking is a different one. Entities with no "
-                       "population in the data are excluded and named rather than shown on "
-                       "another basis. " + ENVELOPE_NOTE,
+                       "denominator in the data are excluded and named rather than shown on "
+                       "another basis. The denominator is residents for a city, county or "
+                       "the state and students for a school district, since the population "
+                       "field holds enrollment there: a set spanning both is refused rather "
+                       "than ranked, and the unit is returned so the answer can name it. " + ENVELOPE_NOTE,
         "input_schema": {
             "type": "object",
             "properties": {
@@ -202,7 +205,8 @@ SCHEMAS = [
     },
     {
         "name": "per_capita_over_time",
-        "description": "Spending per resident across years for several governments, with a "
+        "description": "Spending per resident, or per student for school districts, across "
+                       "years for several governments, with a "
                        "dashed peer-median baseline over entities reporting in every year. "
                        "Set indexed to start every line at 100 and compare growth rather "
                        "than level. Two limits travel with the result and must be stated: "
@@ -223,7 +227,9 @@ SCHEMAS = [
     {
         "name": "who_spends_on",
         "description": "Which governments report spending on one named function, ranked "
-                       "by what they spend, with the per-resident figure alongside. This "
+                       "by what they spend, with a per-unit figure alongside. That figure carries its "
+                       "own unit on every row, because the list mixes cities counted in "
+                       "residents with school districts counted in students. This "
                        "is the question a name lookup cannot answer: somebody who wants "
                        "fire protection cannot get there from a list of names, because "
                        "the districts that provide it are the ones nobody can name. "
@@ -301,7 +307,8 @@ SCHEMAS = [
     {
         "name": "render_comparison",
         "description": "Draw several governments on one axis. Forms: "
-                       "per_capita_by_service_area (bars, spending per resident within one "
+                       "per_capita_by_service_area (bars, spending per resident, or per student for "
+                       "school districts, within one "
                        "service area, with the type median ticked); per_capita_over_time "
                        "(lines, 2017 to 2023, with a dashed peer-median baseline, and set "
                        "indexed for growth rather than level); entities_over_time (lines, "
@@ -356,7 +363,9 @@ SCHEMAS = [
                        "share_of_spending or per_resident and say which you used. The basis "
                        "is never silently downgraded: an entity for which it cannot be "
                        "computed is excluded and named, rather than mixed into the same "
-                       "table on a different basis. " + ENVELOPE_NOTE,
+                       "table on a different basis. On per_resident a set spanning a school "
+                       "district and a city is refused outright, because the population "
+                       "field is enrollment for one and residents for the other. " + ENVELOPE_NOTE,
         "input_schema": {
             "type": "object",
             "properties": {

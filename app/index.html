@@ -167,7 +167,19 @@ aside {
   font-size: 11.5px; color: var(--pf-muted); display: flex; gap: 6px;
   white-space: nowrap; overflow: hidden;
 }
-.result .mag { margin-left: auto; font-variant-numeric: tabular-nums slashed-zero; }
+/* The type and county give way first. The figure and its unit are the two
+   things that make a row mean something, so they never truncate: a clipped
+   "student" reading as a resident count is the defect this labelling exists
+   to prevent. */
+.result .meta > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.result .mag {
+  margin-left: auto; flex: 0 0 auto;
+  font-variant-numeric: tabular-nums slashed-zero;
+}
+/* The unit sits back from the figure without leaving the row: quiet enough
+   not to compete with the number, present enough that nobody reads a
+   student count as a resident count. */
+.result .mag i { font-style: normal; opacity: 0.66; margin-left: 3px; }
 /* Two highlight languages that never collide: the pointer tints, the keyboard
    also draws a rail. Whichever device owns the position is legible at a glance. */
 .result:hover { background: var(--pf-track); }
@@ -603,8 +615,8 @@ async function drawBrowse() {
       highlighted.</p>
       <div id="tray-controls" hidden>
         <select id="cmp-form" aria-label="What to compare">
-          <option value="per_capita_by_service_area">Spending per resident, by service area</option>
-          <option value="per_capita_over_time">Spending per resident, indexed over time</option>
+          <option value="per_capita_by_service_area">Spending per resident or student, by service area</option>
+          <option value="per_capita_over_time">Spending per resident or student, indexed over time</option>
           <option value="service_area_across_entities">Total spending on a service area</option>
           <option value="entities_over_time">Total spending over time</option>
         </select>
@@ -632,8 +644,9 @@ async function drawBrowse() {
               over the whole set. Where most of a peer group reports nothing, the
               comparison is refused rather than faked.</span></div>
             <div class="capability"><b>Side by side</b>
-              <span>Put up to four governments on one axis, per resident, within a
-              service area or across seven years.</span></div>
+              <span>Put up to four governments on one axis &mdash; per resident, or per
+              student for school districts &mdash; within a service area or across
+              seven years.</span></div>
           </div>
           <p id="welcome-mode"></p>
         </div>
@@ -768,8 +781,8 @@ const STATIC_PRESET_SHELL = [
   ['unusual_areas', 'Which service areas is it unusual on?', 'Follow the money'],
   ['inside', 'Take me inside its largest service area', 'Follow the money'],
   ['purchasable', 'What in its biggest function is actually purchasable?', 'Follow the money'],
-  ['vs_peers_area', 'How does its public safety spending compare per resident?', 'Against other governments'],
-  ['vs_peers_time', 'Has spending per resident outgrown its peers?', 'Against other governments'],
+  ['vs_peers_area', 'How does its public safety spending compare, head for head?', 'Against other governments'],
+  ['vs_peers_time', 'Has its spending outgrown its peers?', 'Against other governments'],
   ['trend', 'How have revenue and spending moved?', 'Against other governments'],
   ['workforce', 'How is the workforce distributed?', 'Workforce'],
   ['salient', 'What stands out about this government?', 'Workforce'],
@@ -822,18 +835,16 @@ function colourFor(pid6) {
   return at < 0 ? null : `var(--pf-${SERIES[at]})`;
 }
 
+/* Labelled on the server, because the payload's population field is enrollment
+   for a school district and residents for a city, and a bare count invites a
+   reader to compare two numbers that are not the same quantity. The figure and
+   its unit are set apart so the number stays scannable and the noun stays
+   unmissable: 48,601 students never reads as 641,162 residents. */
 function magnitude(match) {
-  if (match.population) return `${match.population.toLocaleString('en-US')} residents`;
-  if (match.total_expenditure) return moneyShort(match.total_expenditure);
-  return '';
-}
-
-function moneyShort(value) {
-  const size = Math.abs(value);
-  if (size >= 1e9) return `$${(size / 1e9).toFixed(1)}B`;
-  if (size >= 1e6) return `$${Math.round(size / 1e6)}M`;
-  if (size >= 1e3) return `$${Math.round(size / 1e3)}K`;
-  return `$${Math.round(size)}`;
+  const figure = match.magnitude_figure || match.magnitude || '';
+  if (!figure) return '';
+  const unit = match.magnitude_unit || '';
+  return esc(figure) + (unit ? ` <i>${esc(unit)}</i>` : '');
 }
 
 /* A reader already knows the characters they typed. Emphasising the rest is
@@ -876,7 +887,7 @@ function drawResults(term) {
         <span class="nm">${splitMatch(name, term)}</span>
         <span class="meta">
           <span>${esc(m.gov_type_name)}${m.host_county ? ' · ' + esc(title(m.host_county)) : ''}</span>
-          <span class="mag">${esc(magnitude(m))}</span>
+          <span class="mag">${magnitude(m)}</span>
         </span>
       </button>
       <button class="add ${inTray ? 'in' : ''} ${!inTray && full ? 'full' : ''}"

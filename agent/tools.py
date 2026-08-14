@@ -958,10 +958,19 @@ def render_comparison(store, pid6_list, form="entities_over_time",
         source = explore.per_capita_by_service_area(store, pid6_list, service_area)
         data = source["data"]
         rows = data.get("entities") or []
-        if not rows:
+        unit = data.get("unit") or "resident"
+        if data.get("mixed_denominators"):
+            units = " and per ".join(u.rstrip("s") for u in data["mixed_denominators"])
             svg = viz.refusal(
-                f"Spending on {service_area} per resident",
-                "None of these entities can be put on a per-resident basis for this "
+                f"Spending on {service_area}, per unit",
+                f"Not drawn. This set mixes governments measured per {units}. A school "
+                "district's population is its enrollment, so dividing by it gives "
+                "spending per student, and that cannot share an axis with spending per "
+                "resident. Compare in total dollars, or split the set by type.")
+        elif not rows:
+            svg = viz.refusal(
+                f"Spending on {service_area} per {unit}",
+                f"None of these entities can be put on a per-{unit} basis for this "
                 "area: either they report nothing here, or they have no population in "
                 "the data. Neither is a report of zero spending.")
         else:
@@ -970,7 +979,7 @@ def render_comparison(store, pid6_list, form="entities_over_time",
                     else f"{min(years)} to {max(years)}, one year each")
             single_type = len({r["gov_type"] for r in rows}) == 1
             svg = viz.horizontal_bars(
-                f"{service_area}: spending per resident",
+                f"{service_area}: spending per {unit}",
                 f"{len(rows)} governments, {span}",
                 [{"label": r["label"], "value": r["value"],
                   "peer_median": r["peer_median"] if single_type else None,
@@ -981,9 +990,9 @@ def render_comparison(store, pid6_list, form="entities_over_time",
                       if single_type and any(r["peer_median"] for r in rows) else
                       "Mixed government types, so no single peer median applies."))
             table = [{"government": r["label"], "type": r["gov_type"],
-                      "per resident": fmt.rate(r["value"]),
+                      f"per {unit}": fmt.rate(r["value"]),
                       "total": fmt.money(r["total"]),
-                      "population": fmt.count(r["population"]),
+                      f"{unit}s": fmt.count(r["population"]),
                       "share of its own budget": fmt.percent(r["share"]),
                       "vs type median": (f"{r['ratio']:.2f}×" if r["ratio"]
                                          else "not comparable"),
@@ -994,25 +1003,33 @@ def render_comparison(store, pid6_list, form="entities_over_time",
         data = source["data"]
         series = data.get("series") or []
         baseline = data.get("baseline")
-        if len(series) < 2:
+        unit = data.get("unit") or "resident"
+        if data.get("mixed_denominators"):
+            units = " and per ".join(u.rstrip("s") for u in data["mixed_denominators"])
             svg = viz.refusal(
-                "Spending per resident over time",
-                "Fewer than two entities can be drawn: an entity needs both a population "
-                "in the data and two or more years of spending. One year is a point, "
-                "not a trend.")
+                "Spending per unit over time",
+                f"Not drawn. This set mixes governments measured per {units}, which are "
+                "different measures and cannot share an axis. Compare entity totals, or "
+                "split the set by type.")
+        elif len(series) < 2:
+            svg = viz.refusal(
+                f"Spending per {unit} over time",
+                f"Fewer than two entities can be drawn: an entity needs both a {unit} "
+                "count in the data and two or more years of spending. One year is a "
+                "point, not a trend.")
         else:
             drawn = series[:4]
             years = sorted({p[0] for s in drawn for p in s["points"]})
-            note = ("Population is one estimate per entity and is held constant, so what "
-                    "moves here is spending.")
+            note = (f"The {unit} count is one estimate per entity and is held constant, "
+                    "so what moves here is spending.")
             if len(series) > 4:
                 note += " Four lines drawn: " + ", ".join(s["label"] for s in series[4:]) \
                     + " also requested."
             svg = viz.multi_series(
-                ("Spending per resident, indexed" if indexed
-                 else "Spending per resident"),
+                (f"Spending per {unit}, indexed" if indexed
+                 else f"Spending per {unit}"),
                 (f"{years[0]} = 100, {len(drawn)} governments compared" if indexed
-                 else f"{years[0]} to {years[-1]}, entity totals divided by population"),
+                 else f"{years[0]} to {years[-1]}, entity totals divided by {unit}s"),
                 drawn,
                 formatter=(lambda v: f"{v:,.0f}") if indexed else fmt.rate,
                 note=note, reference=baseline,
