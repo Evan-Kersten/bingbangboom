@@ -76,64 +76,79 @@ QUESTION_TYPE = {
 PRESETS = [
     # (id, label, group, required availability key, handler)
     #
-    # Ordered by what a reader standing outside the building would want to know
-    # first, not by how the data is filed. The first group is money that came
-    # from them and people they might meet; the abstractions come after.
+    # Grouped by the job somebody has, not by how the data is filed. The old
+    # groups named the tables underneath — where money comes from, who does the
+    # work, follow the money — which reads as a schema tour. These name the four
+    # things a person preparing for a meeting is actually trying to establish:
+    # who has to be in the room, what they are able to do, what the people there
+    # are living with, and what nobody should claim from this data.
+    #
+    # "Who is at the table" leads because Appendix A says to keep the serving
+    # question prominent, and because every question below it assumes you
+    # already knew which government to ask about.
     #
     # Labels name the stake rather than the table. "How is the workforce
-    # distributed?" is a column heading. "How many teachers, officers or
-    # firefighters, and how thinly spread?" is a question somebody has.
-    ("revenue_mix", "Whose money is this — your tax bill, or the state's?",
-     "Where it comes from", "has_revenue_sources", "revenue_mix"),
-    ("scale", "Is this a lot to spend for a place this size?", "Where it comes from",
-     "has_operating_vs_capital", "scale"),
-    ("debt", "What does it owe, and against how much a year?", "Where it comes from",
-     "has_financial_trends", "debt"),
-
-    ("community", "What is this place like for the people who live here?",
-     "Where it comes from", "has_dp03", "community"),
-
-    ("workforce", "Who does it employ, and how thinly are they spread?",
-     "Who does the work", "has_workforce", "workforce"),
-    ("governance", "Who runs it, and do you elect them?", "Who does the work",
+    # distributed?" is a column heading. "Who does it employ, and how thinly are
+    # they spread?" is a question somebody has.
+    ("serving", "Which governments serve you here?", "Who is at the table",
+     "has_serving", "serving"),
+    ("governance", "Who runs it, and do you elect them?", "Who is at the table",
      "has_offices", "governance"),
-    ("salient", "What stands out about this government?", "Who does the work",
-     "has_operating_vs_capital", "salient"),
+    ("ecosystem", "What else is filed under this county?", "Who is at the table",
+     None, "ecosystem"),
 
-    ("spending", "Where does the money actually go?", "Follow the money",
+    # Descending, per Appendix A: the whole budget, then the areas it splits
+    # into, then the functions inside one, then how that function splits.
+    ("revenue_mix", "Whose money is this — your tax bill, or the state's?",
+     "What they can do here", "has_revenue_sources", "revenue_mix"),
+    ("scale", "Is this a lot to spend for a place this size?",
+     "What they can do here", "has_operating_vs_capital", "scale"),
+    ("debt", "What does it owe, and against how much a year?",
+     "What they can do here", "has_financial_trends", "debt"),
+    ("spending", "Where does the money actually go?", "What they can do here",
      "has_spending_breakdown", "spending"),
-    ("unusual_areas", "Which service areas is it unusual on?", "Follow the money",
-     "has_spending_breakdown", "unusual_areas"),
-    ("inside", "Take me inside its largest service area", "Follow the money",
+    ("unusual_areas", "Which service areas is it unusual on?",
+     "What they can do here", "has_spending_breakdown", "unusual_areas"),
+    ("inside", "Take me inside its largest service area", "What they can do here",
      "has_financial_functions", "inside"),
     # Level three of the drill. The split is the §11 signal at this depth:
     # capital share says whether a government is mid-construction on the thing it
     # spends most on, which is a fact about the year rather than a preference.
     ("function_split", "Is its biggest function running costs or construction?",
-     "Follow the money", "has_financial_functions", "function_split"),
+     "What they can do here", "has_financial_functions", "function_split"),
+    ("workforce", "Who does it employ, and how thinly are they spread?",
+     "What they can do here", "has_workforce", "workforce"),
 
     # The denominator is left out of these two labels on purpose: it is residents
     # for a city and students for a school district, and the answer states which.
     ("vs_peers_area", "How does its public safety spending compare, head for head?",
-     "Against other governments", "has_spending_breakdown", "vs_peers_area"),
+     "How it compares", "has_spending_breakdown", "vs_peers_area"),
     ("vs_peers_time", "Has its spending outgrown its peers?",
-     "Against other governments", "has_financial_trends", "vs_peers_time"),
-    ("trend", "How have revenue and spending moved?", "Against other governments",
+     "How it compares", "has_financial_trends", "vs_peers_time"),
+    ("trend", "How have revenue and spending moved?", "How it compares",
      "has_financial_trends", "trend"),
+    ("salient", "What stands out about this government?", "How it compares",
+     "has_operating_vs_capital", "salient"),
 
-    # The first question a resident actually has, and the reason it leads the
-    # group: everything above assumes you already knew which government to ask
-    # about. This one starts from the only thing anybody knows for certain,
-    # which is where they live.
-    ("serving", "Which governments serve you here?", "Place", "has_serving", "serving"),
-    ("ecosystem", "What else is filed under this county?", "Place", None, "ecosystem"),
-    ("map_area", "Map public safety spending across Oregon", "Place", None, "map_area"),
-    ("map_community", "Map how Oregon is doing, county by county", "Place", None,
-     "map_community"),
+    # §4 keeps this apart from every spending question above it. Conditions are
+    # not a government's record, and a group heading that mixed them with
+    # budgets would invite exactly the reading §4 forbids.
+    ("community", "What are people here living with?",
+     "What people here are facing", "has_dp03", "community"),
+    ("map_community", "Map how Oregon is doing, county by county",
+     "What people here are facing", None, "map_community"),
+    ("map_area", "Map public safety spending across Oregon",
+     "What people here are facing", None, "map_area"),
 
-    ("profile", "What kind of government is this?", "Reports", None, "profile"),
-    ("report", "Give me the full report", "Reports", None, "report"),
-    ("limits", "What can this data not tell me?", "Reports", None, "limits"),
+    # Appendix A: keep the data-limits group visible and phrased as real
+    # questions. A user who asks what the data cannot do and gets a competent
+    # answer trusts every other answer more, and for anyone taking a figure into
+    # a public room that trust is the product.
+    ("limits", "What can this data not settle?", "What this cannot settle",
+     None, "limits"),
+    ("profile", "What kind of government is this?", "What this cannot settle",
+     None, "profile"),
+    ("report", "Give me the full report", "What this cannot settle", None, "report"),
 ]
 
 # The service area the two comparison presets open on. Public safety is the one

@@ -582,7 +582,7 @@ tr:last-child td { border-bottom: 0; }
     <div class="brand"><h1>Public Foundry</h1><span class="mode" id="mode">…</span></div>
 
     <div class="search">
-      <input id="q" type="search" placeholder="Search 1,529 governments"
+      <input id="q" type="search" placeholder="A place, a subject, or a government"
              autocomplete="off" spellcheck="false" role="combobox"
              aria-expanded="false" aria-controls="results" aria-autocomplete="list"
              aria-label="Search governments and questions">
@@ -597,7 +597,8 @@ tr:last-child td { border-bottom: 0; }
     <div class="tray">
       <h2>Compare governments <span class="of" id="tray-count"></span></h2>
       <div class="picked" id="picked"></div>
-      <p class="empty" id="tray-empty">Add up to four and chart them side by side.
+      <p class="empty" id="tray-empty">The places in one engagement, side by side.
+      Add up to four.
       Press <kbd>+</kbd> on a search result, or <kbd>⌘</kbd><kbd>↵</kbd> while it is
       highlighted.</p>
       <div id="tray-controls" hidden>
@@ -807,7 +808,7 @@ let MODE = {};
   MODE = info;
   $('mode').textContent = info.mode;
   $('mode').classList.toggle('full', info.mode === 'full');
-  $('q').placeholder = `Search ${info.entities.toLocaleString()} governments`;
+  $('q').placeholder = 'A place, a subject, or a government';
   // Charts arrive as SVG using the same custom properties, so the palette is
   // defined once on the server and shared.
   const style = document.createElement('style');
@@ -824,9 +825,12 @@ let MODE = {};
         ? `Pre-rendered ${info.built || ''}. Presets work; free text needs the server.`
         : 'Free text needs ANTHROPIC_API_KEY. Presets work now.');
   if (!hasModel) $('input').placeholder = 'Pick a question on the left…';
+  // The subject list has to be in hand before the rail draws, or the rail
+  // draws its subject section empty and the front door is a heading with
+  // nothing under it.
+  await loadOpener();
   loadPresets();
   loadAreas();
-  loadOpener();
   drawTray();
   $('q').focus();
 })();
@@ -836,6 +840,9 @@ let MODE = {};
    same reason the preset list does: a copy of a list in the page is a list that
    goes stale, and the concordance is edited in rules.py. */
 let TOPICS = null, openerPlace = null, openerTopic = null;
+/* A subject clicked before a place is remembered, so choosing the town
+   next completes the sentence instead of starting it again. */
+let pendingSubject = null;
 
 async function loadOpener() {
   const info = await api('/api/topics');
@@ -1210,10 +1217,20 @@ async function drawBrowse() {
   const places = (browseAll.places || term) ? hits.slice(0, 60) : hits.slice(0, 8);
 
   $('presets').innerHTML = `
-    <div class="empty-hint">Nobody arrives able to name a rural fire district, and
-    districts are <b>two thirds</b> of Oregon's governments. So start from the one
-    thing you do know &mdash; a typical address sits inside about <b>ten</b> of them.</div>
+    <div class="empty-hint">Start with what you are working on and where. Nobody
+    arrives able to name a rural fire district, and districts are <b>two thirds</b>
+    of Oregon's governments &mdash; but a typical address sits inside about
+    <b>ten</b> of them, and they are the ones who would have to act.</div>
     <div class="browse">
+      <h3>What you are working on</h3>
+      <div class="tags">${(TOPICS || []).map((t) => `
+        <button class="tag" data-subject="${esc(t)}"
+                title="${entity ? 'Brief for ' + esc(entityName()) : 'Pick a place first'}"
+                >${esc(t)}</button>`).join('')}
+      </div>
+      ${entity ? '' : `<p class="none">Pick a town below, then a subject, and you get
+        the governments with a claim on it and what this data cannot say.</p>`}
+
       <h3>Where you live</h3>
       <input class="filter" id="place-filter" type="search" placeholder="Your town"
              autocomplete="off" spellcheck="false" aria-label="Filter towns">
@@ -1273,8 +1290,14 @@ async function drawBrowse() {
      the session, not the end of it. */
   $('presets').querySelectorAll('[data-place]').forEach((node) => {
     node.onclick = async () => {
-      await ask(`Which governments serve ${node.dataset.name}?`,
-                { id: 'serving', pid6: node.dataset.place });
+      if (pendingSubject) {
+        const subject = pendingSubject;
+        pendingSubject = null;
+        await askBrief({ pid6: node.dataset.place, name: node.dataset.name }, subject);
+      } else {
+        await ask(`Which governments serve ${node.dataset.name}?`,
+                  { id: 'serving', pid6: node.dataset.place });
+      }
       const match = (ENTITIES || []).find((e) => e.pid6 === node.dataset.place)
         || await api('/api/presets?pid6=' + node.dataset.place).then((r) => r.entity);
       if (match) choose(match);
@@ -1282,6 +1305,21 @@ async function drawBrowse() {
   });
   $('presets').querySelectorAll('[data-shared]').forEach((node) => {
     node.onclick = () => ask(node.dataset.label, { id: node.dataset.shared });
+  });
+  /* A subject with a place already chosen is a brief. Without one it scrolls to
+     the town list rather than doing nothing, because a disabled chip that never
+     says why is the same as a broken one. */
+  $('presets').querySelectorAll('[data-subject]').forEach((node) => {
+    node.onclick = () => {
+      const subject = node.dataset.subject;
+      if (entity) {
+        askBrief({ pid6: entity.pid6, name: entityName() }, subject);
+      } else {
+        pendingSubject = subject;
+        $('place-filter')?.focus();
+        $('place-filter')?.scrollIntoView({ block: 'nearest' });
+      }
+    };
   });
   $('presets').querySelectorAll('[data-fn]').forEach((node) => {
     node.onclick = () => ask(`Who spends on ${node.dataset.fn}?`,
