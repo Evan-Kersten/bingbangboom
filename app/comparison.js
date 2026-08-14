@@ -212,6 +212,79 @@
 
   // ----------------------------------------------------------------- forms
 
+  /* Change against a zero line. Running a change through the ordinary bar form
+     draws a shrinking government as a hairline at the left edge, which loses the
+     size of the fall. Growth and decline share one hue: neither direction is good
+     news on its own, and this data cannot say which it was (§4). Mirrors
+     viz.diverging_bars. */
+  function divergingBars(title, subtitle, rows, options) {
+    const o = options || {};
+    const formatter = o.formatter || percent;
+    const width = DATA.layout.width;
+    const thickness = DATA.layout.barThickness;
+    const slot = thickness + DATA.layout.barGap + 8;
+    const plotLeft = DATA.layout.labelColumn;
+    const plotWidth = width - DATA.layout.labelColumn - DATA.layout.valueColumn;
+
+    rows = rows.filter((r) => r.value !== null && r.value !== undefined);
+    if (!rows.length) return null;
+
+    const peers = rows.filter((r) => r.peerMedian !== null && r.peerMedian !== undefined)
+      .map((r) => r.peerMedian);
+    const values = rows.map((r) => r.value).concat(peers).concat([0]);
+    const low = Math.min.apply(null, values);
+    const high = Math.max.apply(null, values);
+    const span = (high - low) || 1;
+    const px = (v) => plotLeft + ((v - low) / span) * plotWidth;
+    const zeroX = px(0);
+
+    const head = header(title, subtitle);
+    let bodyParts = head.markup;
+    let y = head.offset + 8;
+    rows.forEach((row) => {
+      const x = px(row.value);
+      const left = Math.min(zeroX, x);
+      const right = Math.max(zeroX, x);
+      bodyParts += textEl(plotLeft - 10, y + thickness / 2 + 4,
+        truncate(row.label, DATA.layout.barLabelChars), { anchor: 'end' });
+      bodyParts += barPath(left, y, Math.max(right - left, 0.5), thickness, 3)
+        + ' fill="' + token('s1') + '"><title>' + esc(row.label) + ': '
+        + esc(formatter(row.value)) + '</title></path>';
+      if (row.peerMedian !== null && row.peerMedian !== undefined) {
+        const tick = px(row.peerMedian);
+        bodyParts += '<line x1="' + tick.toFixed(1) + '" y1="' + (y - 2) + '" x2="'
+          + tick.toFixed(1) + '" y2="' + (y + thickness + 2) + '" stroke="'
+          + token('ink-2') + '" stroke-width="1.5"><title>peer median '
+          + esc(formatter(row.peerMedian)) + '</title></line>';
+      }
+      bodyParts += textEl(width - DATA.layout.valueColumn + 8, y + thickness / 2 + 4,
+        formatter(row.value), { size: 11.5, tabular: true });
+      y += slot;
+    });
+
+    bodyParts += '<line x1="' + zeroX.toFixed(1) + '" y1="' + (head.offset + 2)
+      + '" x2="' + zeroX.toFixed(1) + '" y2="' + (y - DATA.layout.barGap - 6)
+      + '" stroke="' + token('axis') + '" stroke-width="1.5"/>';
+    bodyParts += textEl(zeroX, y + 8, 'no change',
+      { size: 10.5, fill: 'muted', anchor: 'middle' });
+    y += 20;
+
+    if (peers.length) {
+      bodyParts += textEl(plotLeft, y + 10,
+        '| tick marks the median change for that government type',
+        { size: 10.5, fill: 'muted' });
+      y += 16;
+    }
+    if (o.note) {
+      wrap(o.note, 92).forEach((line) => {
+        bodyParts += textEl(0, y + 12, line, { size: 11, fill: 'muted' });
+        y += 14;
+      });
+      y += 4;
+    }
+    return frame(width, y + 12, bodyParts, title + '. ' + (subtitle || ''));
+  }
+
   function horizontalBars(title, subtitle, rows, options) {
     const o = options || {};
     const formatter = o.formatter || money;
@@ -662,8 +735,6 @@
       entityTypes: types, unchartable: unchartable.map((e) => e.name), caveats };
   }
 
-  const MEASURE_COLUMN = { revenue: 1, expenditure: 2, debt: 3 };
-
   function seriesFor(pid6, measure, perResident) {
     const e = entity(pid6);
     if (!e) return null;
@@ -788,6 +859,179 @@
       unchartable: unchartable.map((e) => e.name), caveats };
   }
 
+  const MEASURE_COLUMN = { revenue: 1, expenditure: 2, debt: 3 };
+
+  /* The trend data is two panels and only one of them is annual. Around 1,005
+     governments filed 2017 and 2022 and nothing between; about 380 filed every
+     year from 2019. Drawing both as lines on one axis lets a reader read a path
+     through five years nobody reported, so the coverage is classified and the
+     sparse ones are dashed. Mirrors explore.coverage_of. */
+  const ANNUAL = 'annual';
+  const ENDPOINTS = 'endpoints';
+  const PARTIAL = 'partial';
+  const SINGLE = 'single';
+
+  function coverageOf(years) {
+    const inside = years.slice().sort((a, b) => a - b);
+    if (!inside.length) return null;
+    if (inside.length === 1) return SINGLE;
+    if (inside.length === (inside[inside.length - 1] - inside[0] + 1)
+        && inside.length >= 3) return ANNUAL;
+    if (inside.length === 2) return ENDPOINTS;
+    return PARTIAL;
+  }
+
+  function trendPanel(pid6List, measure) {
+    const [start, end] = DATA.windows.panel;
+    const column = MEASURE_COLUMN[measure || 'expenditure'];
+    const { found, unchartable, missing } = partition(pid6List);
+    const series = [];
+    const thin = [];
+    found.forEach((e) => {
+      const points = (DATA.trends[e.pid6] || [])
+        .filter((row) => row[0] >= start && row[0] <= end
+          && row[column] !== null && row[column] !== undefined)
+        .map((row) => [row[0], row[column]]);
+      const kind = coverageOf(points.map((pt) => pt[0]));
+      if (kind === null || kind === SINGLE) { thin.push({ name: e.name }); return; }
+      const first = points[0][1];
+      const last = points[points.length - 1][1];
+      series.push({
+        pid6: e.pid6, label: e.name, govType: e.govType, points,
+        coverage: kind, observations: points.length, first, last,
+        change: first ? (last / first - 1) * 100 : null,
+        interpolated: kind === ENDPOINTS || kind === PARTIAL,
+      });
+    });
+
+    const kinds = new Set(series.map((s) => s.coverage));
+    const caveats = [
+      { code: 'inputs_not_outcomes', rule: '§4',
+        guidance: 'This data measures what governments spend and who they employ. It '
+          + 'contains no performance measures, service levels or results.' },
+      { code: 'window_is_stated', rule: '§8',
+        guidance: 'The window is ' + start + ' to ' + end + ' and was chosen, not '
+          + 'inferred from whichever entity reported longest. Say the window; a '
+          + 'different one produces a different and equally true picture.' },
+      { code: 'totals_not_categories', rule: '§8',
+        guidance: 'These are entity totals. Service-area spending exists for one year '
+          + 'per entity, so no line here is a category.' },
+    ];
+    if (kinds.has(ENDPOINTS) || kinds.has(PARTIAL)) {
+      const sparse = series.filter((s) => s.interpolated).map((s) => s.label);
+      caveats.push({ code: 'series_not_annual', rule: '§8',
+        guidance: sparse.length + ' of these are not annual series: ' + nameList(sparse)
+          + ' report only some years in this window, and the line between their '
+          + 'observations is drawn, not measured. They are dashed for that reason. Do '
+          + 'not describe a year nobody filed, and do not read a rate of change off a '
+          + 'dashed segment.' });
+    }
+    if (kinds.has(ANNUAL) && kinds.size > 1) {
+      caveats.push({ code: 'mixed_density', rule: '§8',
+        guidance: 'This chart mixes annual series with series measured at two ends. '
+          + 'They are not equally precise and the difference is not visible in the '
+          + 'shape of a line. Say which are which.' });
+    }
+    if (thin.length) {
+      caveats.push({ code: 'entities_excluded', rule: '§12',
+        guidance: thin.length + ' entities report fewer than two years inside this '
+          + 'window and are not drawn: ' + nameList(thin.map((t) => t.name)) + '. Name them.' });
+    }
+    if (missing.length) {
+      caveats.push({ code: 'entities_missing', rule: '§12',
+        guidance: missing.length + ' requested entities are not in the data.' });
+    }
+    if (unchartable.length) caveats.push(unchartableCaveat(unchartable));
+
+    series.sort((a, b) => (b.last || 0) - (a.last || 0));
+    return { measure: measure || 'expenditure', start, end, series,
+      excludedThin: thin, missing,
+      annual: series.filter((s) => s.coverage === ANNUAL).length,
+      interpolated: series.filter((s) => s.interpolated).length,
+      count: series.length,
+      unchartable: unchartable.map((e) => e.name), caveats };
+  }
+
+  function compareChange(pid6List, measure) {
+    const [start, end] = DATA.windows.change;
+    const key = measure || 'expenditure';
+    const column = MEASURE_COLUMN[key];
+    const { found, unchartable, missing } = partition(pid6List);
+    const rows = [];
+    const incomplete = [];
+    found.forEach((e) => {
+      const all = DATA.trends[e.pid6] || [];
+      const at = (year) => {
+        const row = all.filter((r) => r[0] === year)[0];
+        return row && row[column] !== null && row[column] !== undefined
+          ? row[column] : null;
+      };
+      const first = at(start);
+      const last = at(end);
+      if (!first || last === null) { incomplete.push(e.name); return; }
+      const observed = all.filter((r) => r[0] >= start && r[0] <= end
+        && r[column] !== null && r[column] !== undefined).length;
+      rows.push({ pid6: e.pid6, label: e.name, govType: e.govType,
+        first, last, value: (last / first - 1) * 100, difference: last - first,
+        observations: observed, annual: observed === (end - start + 1) });
+    });
+    rows.sort((a, b) => b.value - a.value);
+
+    const stats = (DATA.changeStats || {})[key] || {};
+    const peers = {};
+    rows.forEach((row) => {
+      const s = stats[row.govType];
+      row.peerMedian = s ? s.median : null;
+      row.peerN = s ? s.n : null;
+      if (s) peers[row.govType] = s;
+    });
+
+    const caveats = [
+      { code: 'inputs_not_outcomes', rule: '§4',
+        guidance: 'This data measures what governments spend and who they employ. It '
+          + 'contains no performance measures, service levels or results.' },
+      { code: 'change_not_trend', rule: '§8',
+        guidance: 'This is the change between ' + start + ' and ' + end + ', which is '
+          + 'two observations five years apart and not a trend. Nothing here says '
+          + 'whether the change was steady, front-loaded or reversed in between. Do '
+          + 'not describe a direction over the middle years, and do not call it a '
+          + 'growth rate per year.' },
+      { code: 'no_price_index', rule: '§8',
+        guidance: 'No price index exists in this data, so these changes are in nominal '
+          + 'dollars. A government that grew is not necessarily buying more than it '
+          + 'did; say the figures are not inflation adjusted.' },
+    ];
+    const groups = Object.keys(peers).sort();
+    if (groups.length) {
+      caveats.push({ code: 'peer_group_stated', rule: '§8',
+        guidance: 'The peer medians are over '
+          + groups.map((t) => peers[t].n + ' Oregon ' + t).join(', ')
+          + ' entities reporting both years. State the group and the count; a median '
+          + 'without its pool is not a benchmark.' });
+    }
+    if (rows.some((r) => !r.annual)) {
+      caveats.push({ code: 'endpoints_only', rule: '§8',
+        guidance: 'Most of these governments report only these two years, so the '
+          + 'middle of the window is not in the data at all. That is why this is drawn '
+          + 'as a change and not as a line.' });
+    }
+    if (incomplete.length) {
+      caveats.push({ code: 'entities_excluded', rule: '§12',
+        guidance: incomplete.length + ' entities do not report both ' + start + ' and '
+          + end + ' and are not shown: ' + nameList(incomplete) + '. That is an absence '
+          + 'of a filing, not a change of zero.' });
+    }
+    if (missing.length) {
+      caveats.push({ code: 'entities_missing', rule: '§12',
+        guidance: missing.length + ' requested entities are not in the data.' });
+    }
+    if (unchartable.length) caveats.push(unchartableCaveat(unchartable));
+
+    return { measure: key, start, end, span: end - start, entities: rows, peers,
+      excluded: incomplete, missing, count: rows.length,
+      unchartable: unchartable.map((e) => e.name), caveats };
+  }
+
   // -------------------------------------------------------------- headline
 
   function headline(form, detail) {
@@ -845,6 +1089,69 @@
       return line;
     }
 
+    if (form === 'five_year_change') {
+      const rows = detail.entities;
+      if (!rows.length) {
+        return 'None of these governments reports both ' + detail.start + ' and '
+          + detail.end + ', so there is nothing to measure between. That is an absence '
+          + 'of a filing, not a change of zero.';
+      }
+      const top = rows[0];
+      const bottom = rows[rows.length - 1];
+      const signed = (v) => (v >= 0 ? '+' : '') + v.toFixed(0) + '%';
+      let line = rows.length === 1
+        ? top.label + ' changed ' + signed(top.value) + ' between ' + detail.start
+          + ' and ' + detail.end + '.'
+        : 'Between ' + detail.start + ' and ' + detail.end + ', ' + top.label
+          + ' changed most at ' + signed(top.value) + ' and ' + bottom.label
+          + ' least at ' + signed(bottom.value) + '.';
+      const against = rows.filter((r) => r.peerMedian !== null);
+      if (against.length) {
+        const ahead = against.filter((r) => r.value > r.peerMedian);
+        line += ' ' + ahead.length + ' of ' + against.length + ' outgrew the median '
+          + 'for their own government type over the same two years.';
+      }
+      line += ' This is a ' + detail.span + '-year change measured at two ends, not a '
+        + 'trend: nothing here says whether it was steady, and no price index is in '
+        + 'this data, so the figures are nominal.';
+      return line;
+    }
+
+    if (form === 'five_year_panel') {
+      const series = detail.series;
+      if (series.length < 2) {
+        return 'Fewer than two of these governments report more than one year between '
+          + detail.start + ' and ' + detail.end + '. Most Oregon governments file two '
+          + 'years five years apart rather than annually, so an annual panel covers '
+          + 'about 380 of them. The change between 2017 and 2022 is the five-year '
+          + 'comparison nearly all can answer.';
+      }
+      const ranked = series.filter((s) => s.change !== null)
+        .map((s) => [s.label, s.change]).sort((a, b) => b[1] - a[1]);
+      const signed = (v) => (v >= 0 ? '+' : '') + v.toFixed(0) + '%';
+      let line = 'Across ' + detail.start + ' to ' + detail.end + ', ' + ranked[0][0]
+        + ' grew fastest at ' + signed(ranked[0][1]) + ' and '
+        + ranked[ranked.length - 1][0] + ' slowest at '
+        + signed(ranked[ranked.length - 1][1]) + '.';
+      if (detail.annual) {
+        line += ' ' + detail.annual + ' of ' + series.length + ' are measured every '
+          + 'year in this window.';
+      }
+      if (detail.interpolated) {
+        line += ' ' + detail.interpolated + ' are not, and their lines are dashed '
+          + 'between observations because the years between were not filed.';
+      }
+      const thin = detail.excludedThin || [];
+      if (thin.length) {
+        const one = thin.length === 1;
+        line += ' ' + thin.slice(0, 3).map((t) => t.name).join(', ')
+          + (one ? ' reports' : ' report') + ' fewer than two years between '
+          + detail.start + ' and ' + detail.end + ' and ' + (one ? 'is' : 'are')
+          + ' not drawn; the five-year change reaches ' + (one ? 'it' : 'them') + '.';
+      }
+      return line;
+    }
+
     if (detail.mixedDenominators) {
       return 'This set mixes governments measured per '
         + detail.mixedDenominators.map((u) => u.replace(/s$/, '')).join(' and per ')
@@ -884,7 +1191,8 @@
   // ------------------------------------------------------------------ api
 
   const FORMS = ['per_capita_by_service_area', 'per_capita_over_time',
-    'service_area_across_entities', 'entities_over_time'];
+    'service_area_across_entities', 'entities_over_time',
+    'five_year_panel', 'five_year_change'];
 
   function compare(request) {
     const form = request.form;
@@ -904,7 +1212,73 @@
     let svg;
     let table;
 
-    if (form === 'per_capita_by_service_area') {
+    if (form === 'five_year_change') {
+      detail = compareChange(request.pid6_list, request.measure);
+      const rows = detail.entities;
+      const label = DATA.measureLabels[detail.measure] || 'Total spending';
+      if (!rows.length) {
+        svg = refusal('Change in ' + label.toLowerCase() + ', ' + detail.start + ' to '
+          + detail.end,
+          'None of these governments reports both ' + detail.start + ' and '
+          + detail.end + ', so there are no two ends to measure between. That is an '
+          + 'absence of a filing, not a change of zero.');
+      } else {
+        svg = divergingBars(label + ': change over ' + detail.span + ' years',
+          detail.start + ' to ' + detail.end + ', nominal dollars',
+          rows.map((r) => ({ label: r.label, value: r.value, peerMedian: r.peerMedian })),
+          { formatter: (v) => (v >= 0 ? '+' : '') + v.toFixed(0) + '%',
+            note: 'Two observations five years apart. Nothing here says whether the '
+              + 'change was steady, front-loaded or reversed in between, and no price '
+              + 'index is in this data, so these are nominal.' });
+        table = rows.map((r) => {
+          const row = { government: r.label, type: r.govType };
+          row[String(detail.start)] = money(r.first);
+          row[String(detail.end)] = money(r.last);
+          row.change = (r.value >= 0 ? '+' : '') + r.value.toFixed(0) + '%';
+          row['type median change'] = r.peerMedian === null ? 'not comparable'
+            : (r.peerMedian >= 0 ? '+' : '') + r.peerMedian.toFixed(0) + '%';
+          row['years reported'] = r.observations;
+          return row;
+        });
+      }
+    } else if (form === 'five_year_panel') {
+      detail = trendPanel(request.pid6_list, request.measure);
+      const series = detail.series;
+      const label = DATA.measureLabels[detail.measure] || 'Total spending';
+      if (series.length < 2) {
+        svg = refusal(label + ', ' + detail.start + ' to ' + detail.end,
+          'Fewer than two of these governments report more than one year inside '
+          + detail.start + ' to ' + detail.end + '. Most Oregon governments file two '
+          + 'years five years apart rather than annually, so a five-year annual panel '
+          + 'exists for about 380 of them. Compare the change between 2017 and 2022 '
+          + 'instead, which nearly all can answer.');
+      } else {
+        const drawn = series.slice(0, DATA.layout.maxSeries);
+        let note = detail.annual
+          ? detail.annual + ' of these are measured every year. ' : '';
+        if (detail.interpolated) {
+          note += 'Dashed lines are drawn between observations that are years apart; '
+            + 'the years between were not filed.';
+        }
+        if (series.length > DATA.layout.maxSeries) {
+          note += ' Four lines drawn: '
+            + series.slice(DATA.layout.maxSeries).map((s) => s.label).join(', ')
+            + ' also requested.';
+        }
+        svg = multiSeries(label + ': ' + plural(drawn.length, 'government') + ' compared',
+          detail.start + ' to ' + detail.end + ', entity totals in nominal dollars',
+          drawn, { formatter: money, note: note.trim() || null });
+        table = [];
+        for (let year = detail.start; year <= detail.end; year += 1) {
+          const row = { year };
+          drawn.forEach((entry) => {
+            const point = entry.points.filter((pt) => pt[0] === year)[0];
+            row[entry.label] = point ? money(point[1]) : '\u2014';
+          });
+          table.push(row);
+        }
+      }
+    } else if (form === 'per_capita_by_service_area') {
       detail = perCapitaByServiceArea(request.pid6_list, serviceArea);
       const rows = detail.entities;
       if (detail.mixedDenominators) {

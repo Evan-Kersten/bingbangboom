@@ -26,6 +26,7 @@ written out again in the client, so a colour or a bar height changes in one
 place.
 """
 
+import tools as T
 import viz
 from rules import DENOMINATOR
 
@@ -102,6 +103,25 @@ def build(store):
         share_stats.setdefault(row["peer_group"], {})[row["service_area"]] = {
             "median": row["median"], "degenerate": row["degenerate"], "n": row["n"]}
 
+    # Five-year peer medians, computed once here so the browser never has to
+    # scan the corpus. Keyed by government type and measure, over entities that
+    # filed both ends of the window — the same pool the server builds.
+    change_stats = {}
+    for measure, column in _explore().MEASURE_COLUMNS.items():
+        for gov_type in gov_types:
+            changes = sorted(
+                (row["e"] / row["s"] - 1) * 100 for row in store.rows(
+                    f"SELECT a.{column} AS s, b.{column} AS e FROM financial_trends a "
+                    "JOIN financial_trends b ON b.pid6 = a.pid6 AND b.year = ? "
+                    "JOIN entities x ON x.pid6 = a.pid6 "
+                    f"WHERE a.year = ? AND x.gov_type_name = ? AND a.{column} > 0 "
+                    f"AND b.{column} IS NOT NULL",
+                    _explore().CHANGE_END, _explore().CHANGE_START, gov_type))
+            if len(changes) >= 4:
+                change_stats.setdefault(measure, {})[gov_type] = {
+                    "n": len(changes),
+                    "median": _explore().quantile(changes, 0.5)}
+
     baselines = {}
     for gov_type in gov_types:
         baseline = _explore()._per_capita_baseline(store, gov_type)
@@ -115,6 +135,14 @@ def build(store):
         "areaStats": area_stats,
         "areaShareStats": share_stats,
         "baselines": baselines,
+        "changeStats": change_stats,
+        # Shipped rather than restated in the browser, so a measure renamed here
+        # is renamed in both engines at once.
+        "measureLabels": T.MEASURE_LABELS,
+        "windows": {
+            "panel": [_explore().PANEL_START, _explore().PANEL_END],
+            "change": [_explore().CHANGE_START, _explore().CHANGE_END],
+        },
         "serviceAreas": service_areas,
         # The payload calls one field population for every type and it is not the
         # same quantity in each: for a school district it is enrollment. The

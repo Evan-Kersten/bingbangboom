@@ -1320,3 +1320,261 @@ def debt_load(store, pid6):
         caveats=caveats,
         blocked=[not_computable("outcome_or_performance")],
         vintage={"finance": row["year"]})
+
+
+# ------------------------------------------------------------ five-year panel
+
+# The trend data is not one panel, it is two, and drawing them together without
+# saying so is the worst thing this module could do.
+#
+#     1,005 entities   two observations, 2017 and 2022, and nothing between
+#       313 entities   every year from 2017 to 2023
+#        67 entities   2017 and then 2019 to 2023
+#
+# A straight line between 2017 and 2022 looks exactly like a line measured seven
+# times. Next to each other on one axis, the reader has no way to tell which is
+# which, and will read a path through five years nobody reported. §8 already says
+# one year is a point rather than a trend; two points five years apart is a
+# change rather than a trend, and that is the distinction drawn here.
+ANNUAL = "annual"           # measured every year in the window
+ENDPOINTS = "endpoints"     # measured at the ends, with a gap between
+PARTIAL = "partial"         # some years, with holes
+SINGLE = "single"           # one observation, which is not a series
+
+# The window where a genuine annual panel exists. 2019 to 2023 is five years and
+# 381 entities report every one of them; widening it to 2017 buys two more years
+# and loses two thirds of the entities that could fill them.
+PANEL_START, PANEL_END = 2019, 2023
+
+# The window every entity can answer, because it is the two years almost all of
+# them filed. Five years apart, so it is a five-year change and never a trend.
+CHANGE_START, CHANGE_END = 2017, 2022
+
+MEASURE_COLUMNS = {"expenditure": "expenditure", "revenue": "revenue",
+                   "debt": "total_debt"}
+
+
+def coverage_of(years, start, end):
+    """What kind of series these observations are, inside a window."""
+    inside = sorted(y for y in years if start <= y <= end)
+    if not inside:
+        return None, []
+    if len(inside) == 1:
+        return SINGLE, inside
+    if len(inside) == (inside[-1] - inside[0] + 1) and len(inside) >= 3:
+        return ANNUAL, inside
+    if len(inside) == 2:
+        return ENDPOINTS, inside
+    return PARTIAL, inside
+
+
+def trend_panel(store, pid6_list, measure="expenditure",
+                start=PANEL_START, end=PANEL_END):
+    """Several governments over a stated window, each labelled by how densely
+    it is actually measured.
+
+    The window is stated rather than inferred from what happens to be present,
+    because a chart whose x-axis is decided by whichever entity reported longest
+    is a chart about that entity's filing habits.
+    """
+    column = MEASURE_COLUMNS.get(measure)
+    if not column:
+        return T.envelope("trend_panel", caveats=[{
+            "code": "unknown_measure", "rule": "§4",
+            "guidance": f"Measure must be one of {', '.join(MEASURE_COLUMNS)}."}])
+
+    found, unchartable, missing = partition(store, pid6_list)
+    series, thin = [], []
+    for entity in found:
+        rows = store.rows(
+            f"SELECT year, {column} AS value FROM financial_trends "
+            "WHERE pid6=? AND year BETWEEN ? AND ? AND " + column + " IS NOT NULL "
+            "ORDER BY year", entity["pid6"], start, end)
+        points = [(r["year"], r["value"]) for r in rows]
+        name = entity["common_name"] or entity["legal_name"]
+        kind, years = coverage_of([p[0] for p in points], start, end)
+        if kind in (None, SINGLE):
+            thin.append({"name": name, "years": len(points)})
+            continue
+        first, last = points[0][1], points[-1][1]
+        series.append({
+            "pid6": entity["pid6"], "label": name,
+            "gov_type": entity["gov_type_name"],
+            "points": points, "coverage": kind, "years": years,
+            "observations": len(points),
+            "first": first, "last": last,
+            "change": (last / first - 1) * 100 if first else None,
+            # The renderer dashes these, because the segment between the two
+            # observations is drawn and was never measured.
+            "interpolated": kind in (ENDPOINTS, PARTIAL),
+        })
+
+    covered = {s["coverage"] for s in series}
+    caveats = [
+        caveat("inputs_not_outcomes"),
+        {"code": "window_is_stated", "rule": "§8",
+         "guidance": f"The window is {start} to {end} and was chosen, not inferred "
+                     "from whichever entity reported longest. Say the window; a "
+                     "different one produces a different and equally true picture."},
+        {"code": "totals_not_categories", "rule": "§8",
+         "guidance": "These are entity totals. Service-area spending exists for one "
+                     "year per entity, so no line here is a category."},
+    ]
+    if ENDPOINTS in covered or PARTIAL in covered:
+        sparse = [s["label"] for s in series if s["interpolated"]]
+        caveats.append({
+            "code": "series_not_annual", "rule": "§8",
+            "guidance": f"{len(sparse)} of these are not annual series: "
+                        f"{', '.join(sparse[:4])} report only some years in this "
+                        "window, and the line between their observations is drawn, "
+                        "not measured. They are dashed for that reason. Do not "
+                        "describe a year nobody filed, and do not read a rate of "
+                        "change off a dashed segment."})
+    if ANNUAL in covered and len(covered) > 1:
+        caveats.append({
+            "code": "mixed_density", "rule": "§8",
+            "guidance": "This chart mixes annual series with series measured at two "
+                        "ends. They are not equally precise and the difference is "
+                        "not visible in the shape of a line. Say which are which."})
+    if thin:
+        caveats.append({
+            "code": "entities_excluded", "rule": "§12",
+            "guidance": f"{len(thin)} entities report fewer than two years inside this "
+                        f"window and are not drawn: "
+                        f"{', '.join(t['name'] for t in thin[:4])}. Name them."})
+    if missing:
+        caveats.append({
+            "code": "entities_missing", "rule": "§12",
+            "guidance": f"{len(missing)} requested entities are not in the data."})
+    if unchartable:
+        caveats.append(unchartable_caveat(unchartable))
+
+    series.sort(key=lambda s: s["last"] or 0, reverse=True)
+    return T.envelope(
+        "trend_panel",
+        data={"measure": measure, "start": start, "end": end,
+              "series": series, "excluded_thin": thin, "missing": missing,
+              "annual": sum(1 for s in series if s["coverage"] == ANNUAL),
+              "interpolated": sum(1 for s in series if s["interpolated"]),
+              "count": len(series),
+              "unchartable": [e["common_name"] or e["legal_name"] for e in unchartable]},
+        caveats=caveats,
+        blocked=[not_computable("service_area_yoy"),
+                 not_computable("outcome_or_performance")])
+
+
+def compare_change(store, pid6_list, measure="expenditure",
+                   start=CHANGE_START, end=CHANGE_END):
+    """What happened between two years, across several governments.
+
+    The five-year comparison almost every government can answer. An annual panel
+    exists for 381 entities; both ends of 2017 to 2022 exist for around 1,500,
+    because those are the two years nearly everybody filed.
+
+    Deliberately bars and never a line. The data between the endpoints does not
+    exist for most of this set, and a line would draw a path through it. A bar
+    says "this much more, over five years", which is what two observations
+    support and all they support.
+    """
+    column = MEASURE_COLUMNS.get(measure)
+    if not column:
+        return T.envelope("compare_change", caveats=[{
+            "code": "unknown_measure", "rule": "§4",
+            "guidance": f"Measure must be one of {', '.join(MEASURE_COLUMNS)}."}])
+
+    found, unchartable, missing = partition(store, pid6_list)
+    rows, incomplete = [], []
+    for entity in found:
+        name = entity["common_name"] or entity["legal_name"]
+        ends = {r["year"]: r["value"] for r in store.rows(
+            f"SELECT year, {column} AS value FROM financial_trends "
+            "WHERE pid6=? AND year IN (?, ?) AND " + column + " IS NOT NULL",
+            entity["pid6"], start, end)}
+        if start not in ends or end not in ends or not ends[start]:
+            incomplete.append(name)
+            continue
+        observed = store.row(
+            "SELECT COUNT(DISTINCT year) AS n FROM financial_trends "
+            f"WHERE pid6=? AND year BETWEEN ? AND ? AND {column} IS NOT NULL",
+            entity["pid6"], start, end)["n"]
+        rows.append({
+            "pid6": entity["pid6"], "label": name,
+            "gov_type": entity["gov_type_name"],
+            "first": ends[start], "last": ends[end],
+            "value": (ends[end] / ends[start] - 1) * 100,
+            "difference": ends[end] - ends[start],
+            "observations": observed,
+            "annual": observed == (end - start + 1)})
+
+    rows.sort(key=lambda r: r["value"], reverse=True)
+
+    # The peer median change, over the same two years and the same type, so the
+    # band a reader compares against is built the way the bars are.
+    peers = {}
+    for gov_type in sorted({r["gov_type"] for r in rows}):
+        changes = sorted(
+            (r["e"] / r["s"] - 1) * 100 for r in store.rows(
+                f"SELECT a.{column} AS s, b.{column} AS e FROM financial_trends a "
+                "JOIN financial_trends b ON b.pid6 = a.pid6 AND b.year = ? "
+                "JOIN entities x ON x.pid6 = a.pid6 "
+                f"WHERE a.year = ? AND x.gov_type_name = ? AND a.{column} > 0 "
+                f"AND b.{column} IS NOT NULL", end, start, gov_type))
+        if len(changes) >= 4:
+            peers[gov_type] = {"n": len(changes), "median": quantile(changes, 0.5),
+                               "p25": quantile(changes, 0.25),
+                               "p75": quantile(changes, 0.75)}
+    for row in rows:
+        stats = peers.get(row["gov_type"])
+        row["peer_median"] = stats["median"] if stats else None
+        row["peer_n"] = stats["n"] if stats else None
+
+    caveats = [
+        caveat("inputs_not_outcomes"),
+        {"code": "change_not_trend", "rule": "§8",
+         "guidance": f"This is the change between {start} and {end}, which is two "
+                     "observations five years apart and not a trend. Nothing here "
+                     "says whether the change was steady, front-loaded or reversed "
+                     "in between. Do not describe a direction over the middle years, "
+                     "and do not call it a growth rate per year."},
+        {"code": "no_price_index", "rule": "§8",
+         "guidance": "No price index exists in this data, so these changes are in "
+                     "nominal dollars. A government that grew is not necessarily "
+                     "buying more than it did; say the figures are not inflation "
+                     "adjusted."},
+    ]
+    if peers:
+        group = ", ".join(f"{stats['n']} Oregon {gov_type}"
+                          for gov_type, stats in sorted(peers.items()))
+        caveats.append({
+            "code": "peer_group_stated", "rule": "§8",
+            "guidance": f"The peer medians are over {group} entities reporting both "
+                        "years. State the group and the count; a median without its "
+                        "pool is not a benchmark."})
+    if any(not r["annual"] for r in rows):
+        caveats.append({
+            "code": "endpoints_only", "rule": "§8",
+            "guidance": "Most of these governments report only these two years, so "
+                        "the middle of the window is not in the data at all. That is "
+                        "why this is drawn as a change and not as a line."})
+    if incomplete:
+        caveats.append({
+            "code": "entities_excluded", "rule": "§12",
+            "guidance": f"{len(incomplete)} entities do not report both {start} and "
+                        f"{end} and are not shown: {', '.join(incomplete[:4])}. That "
+                        "is an absence of a filing, not a change of zero."})
+    if missing:
+        caveats.append({
+            "code": "entities_missing", "rule": "§12",
+            "guidance": f"{len(missing)} requested entities are not in the data."})
+    if unchartable:
+        caveats.append(unchartable_caveat(unchartable))
+
+    return T.envelope(
+        "compare_change",
+        data={"measure": measure, "start": start, "end": end, "span": end - start,
+              "entities": rows, "peers": peers, "excluded": incomplete,
+              "missing": missing, "count": len(rows),
+              "unchartable": [e["common_name"] or e["legal_name"] for e in unchartable]},
+        caveats=caveats,
+        blocked=[not_computable("service_area_yoy"),
+                 not_computable("outcome_or_performance")])

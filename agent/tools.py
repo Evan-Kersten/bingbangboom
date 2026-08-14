@@ -1031,7 +1031,12 @@ def render_chart(store, pid6, form):
 # -------------------------------------------------- multi-entity rendering
 
 COMPARISON_FORMS = ("entities_over_time", "service_area_across_entities",
-                    "per_capita_by_service_area", "per_capita_over_time")
+                    "per_capita_by_service_area", "per_capita_over_time",
+                    # Two five-year forms, because the trend data is two panels.
+                    # An annual window exists for about 380 governments; both ends
+                    # of 2017 and 2022 exist for around 1,500, which is the only
+                    # five-year comparison most of the corpus can answer.
+                    "five_year_panel", "five_year_change")
 
 MEASURE_LABELS = {"expenditure": "Total spending", "revenue": "Total revenue",
                   "debt": "Total debt"}
@@ -1130,6 +1135,71 @@ def render_comparison(store, pid6_list, form="entities_over_time",
                       "vs type median": (f"{r['ratio']:.2f}×" if r["ratio"]
                                          else "not comparable"),
                       "year": r["year"]} for r in rows]
+
+    elif form == "five_year_panel":
+        source = explore.trend_panel(store, pid6_list, measure)
+        data = source["data"]
+        series = data.get("series") or []
+        label = MEASURE_LABELS.get(measure, measure.title())
+        if len(series) < 2:
+            svg = viz.refusal(
+                f"{label}, {data['start']} to {data['end']}",
+                f"Fewer than two of these governments report more than one year "
+                f"inside {data['start']} to {data['end']}. Most Oregon governments "
+                "file two years five years apart rather than annually, so a "
+                "five-year annual panel exists for about 380 of them. Compare the "
+                "change between 2017 and 2022 instead, which nearly all can answer.")
+        else:
+            drawn = series[:4]
+            note = (f"{data['annual']} of these are measured every year. "
+                    if data["annual"] else "")
+            if data["interpolated"]:
+                note += ("Dashed lines are drawn between observations that are years "
+                         "apart; the years between were not filed.")
+            if len(series) > 4:
+                note += (" Four lines drawn: "
+                         + ", ".join(s["label"] for s in series[4:]) + " also requested.")
+            svg = viz.multi_series(
+                f"{label}: {fmt.plural(len(drawn), 'government')} compared",
+                f"{data['start']} to {data['end']}, entity totals in nominal dollars",
+                drawn, note=note.strip() or None)
+            table = []
+            for year in range(data["start"], data["end"] + 1):
+                row = {"year": year}
+                for entry in drawn:
+                    value = dict(entry["points"]).get(year)
+                    row[entry["label"]] = fmt.money(value) if value is not None else "—"
+                table.append(row)
+
+    elif form == "five_year_change":
+        source = explore.compare_change(store, pid6_list, measure)
+        data = source["data"]
+        rows = data.get("entities") or []
+        label = MEASURE_LABELS.get(measure, measure.title())
+        if not rows:
+            svg = viz.refusal(
+                f"Change in {label.lower()}, {data['start']} to {data['end']}",
+                f"None of these governments reports both {data['start']} and "
+                f"{data['end']}, so there are no two ends to measure between. That "
+                "is an absence of a filing, not a change of zero.")
+        else:
+            svg = viz.diverging_bars(
+                f"{label}: change over {data['span']} years",
+                f"{data['start']} to {data['end']}, nominal dollars",
+                [{"label": r["label"], "value": r["value"],
+                  "peer_median": r["peer_median"]} for r in rows],
+                formatter=lambda v: f"{v:+.0f}%",
+                note="Two observations five years apart. Nothing here says whether "
+                     "the change was steady, front-loaded or reversed in between, "
+                     "and no price index is in this data, so these are nominal.")
+            table = [{"government": r["label"], "type": r["gov_type"],
+                      f"{data['start']}": fmt.money(r["first"]),
+                      f"{data['end']}": fmt.money(r["last"]),
+                      "change": f"{r['value']:+.0f}%",
+                      "type median change": (f"{r['peer_median']:+.0f}%"
+                                             if r["peer_median"] is not None
+                                             else "not comparable"),
+                      "years reported": r["observations"]} for r in rows]
 
     elif form == "per_capita_over_time":
         source = explore.per_capita_over_time(store, pid6_list, indexed=indexed)
@@ -1438,7 +1508,7 @@ def _bind_explore():
     for name in ("drill", "compare_to_peer_group", "compare_entities_over_time",
                  "compare_service_area", "per_capita_by_service_area",
                  "per_capita_over_time", "who_spends_on", "staffing",
-                 "revenue_mix", "debt_load"):
+                 "revenue_mix", "debt_load", "compare_change", "trend_panel"):
         TOOLS[name] = getattr(explore, name)
 
 

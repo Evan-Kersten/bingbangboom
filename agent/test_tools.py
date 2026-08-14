@@ -207,6 +207,47 @@ def main():
     check("the role name is not doubled into the title",
           T._seat_noun("Community College District Director") == "director")
 
+    print("\nfive years is two panels, not one (§8)")
+    # 1,005 governments filed 2017 and 2022 and nothing between; 313 filed every
+    # year. Drawn as lines on one axis those are indistinguishable, and a reader
+    # reads a path through five years nobody reported.
+    import explore
+    keizer = store.row("SELECT pid6 FROM entities WHERE legal_name='CITY OF KEIZER'")["pid6"]
+    result = explore.trend_panel(store, [portland, keizer])
+    by_label = {s["label"]: s for s in result["data"]["series"]}
+    check("an annual filer is classified as annual",
+          by_label["Portland"]["coverage"] == explore.ANNUAL,
+          by_label["Portland"]["coverage"])
+    check("and a two-endpoint filer never reaches the annual panel",
+          "Keizer" not in by_label, str(list(by_label)))
+    check("the window is stated rather than inferred",
+          "window_is_stated" in codes(result))
+    check("and it is the window the data supports",
+          (result["data"]["start"], result["data"]["end"]) == (2019, 2023))
+
+    # coverage_of is the classifier both engines share.
+    check("consecutive years are annual",
+          explore.coverage_of([2019, 2020, 2021, 2022, 2023], 2019, 2023)[0]
+          == explore.ANNUAL)
+    check("two years with a gap are endpoints",
+          explore.coverage_of([2019, 2023], 2019, 2023)[0] == explore.ENDPOINTS)
+    check("one year is not a series at all",
+          explore.coverage_of([2021], 2019, 2023)[0] == explore.SINGLE)
+
+    result = explore.compare_change(store, [portland, keizer])
+    rows = {r["label"]: r for r in result["data"]["entities"]}
+    check("the change form reaches a government the panel cannot",
+          "Keizer" in rows and "Portland" in rows, str(list(rows)))
+    check("each row says how many years inside the window it filed",
+          rows["Keizer"]["observations"] == 2 and rows["Portland"]["observations"] > 2)
+    check("a change is never presented as a trend",
+          "change_not_trend" in codes(result))
+    check("and the figures are declared nominal",
+          "no_price_index" in codes(result))
+    check("with the median change for the same type alongside",
+          rows["Portland"]["peer_median"] is not None
+          and rows["Portland"]["peer_n"] > 4)
+
     print("\nrevenue_mix answers whose money it is (§9, §10, §12)")
     import explore
     schools = store.row("SELECT pid6 FROM entities WHERE legal_name='PORTLAND SCH DIST 1J'")["pid6"]
@@ -405,6 +446,8 @@ def main():
         "render_comparison": {"pid6_list": [portland, baker_county],
                               "form": "entities_over_time"},
         "who_spends_on": {"function_name": "Fire Protection"},
+        "compare_change": {"pid6_list": [portland, baker_county]},
+        "trend_panel": {"pid6_list": [portland, baker_county]},
     }
     for name, tool in T.TOOLS.items():
         args = extra_args.get(name, {"pid6": baker_county})

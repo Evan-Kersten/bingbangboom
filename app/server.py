@@ -132,7 +132,8 @@ DEFAULT_AREA = "Public Safety"
 ENTITY_INDEPENDENT = {"map_area"}
 
 COMPARISON_FORMS = ("per_capita_by_service_area", "per_capita_over_time",
-                    "service_area_across_entities", "entities_over_time")
+                    "service_area_across_entities", "entities_over_time",
+                    "five_year_panel", "five_year_change")
 
 
 def peer_set(pid6, count=3):
@@ -322,6 +323,63 @@ def _compare_headline(result):
         if excluded:
             line += (f" {len(excluded)} has no population in the data and cannot be "
                      f"put on this basis: {', '.join(excluded)}.")
+        return line
+
+    if form == "five_year_change":
+        rows = detail.get("entities") or []
+        if not rows:
+            return (f"None of these governments reports both {detail['start']} and "
+                    f"{detail['end']}, so there is nothing to measure between. That is "
+                    "an absence of a filing, not a change of zero.")
+        top, bottom = rows[0], rows[-1]
+        span = detail["span"]
+        if len(rows) == 1:
+            line = (f"{top['label']} changed {top['value']:+.0f}% between "
+                    f"{detail['start']} and {detail['end']}.")
+        else:
+            line = (f"Between {detail['start']} and {detail['end']}, {top['label']} "
+                    f"changed most at {top['value']:+.0f}% and {bottom['label']} least "
+                    f"at {bottom['value']:+.0f}%.")
+        against = [r for r in rows if r["peer_median"] is not None]
+        if against:
+            ahead = [r for r in against if r["value"] > r["peer_median"]]
+            line += (f" {len(ahead)} of {len(against)} outgrew the median for their own "
+                     "government type over the same two years.")
+        line += (f" This is a {span}-year change measured at two ends, not a trend: "
+                 "nothing here says whether it was steady, and no price index is in "
+                 "this data, so the figures are nominal.")
+        return line
+
+    if form == "five_year_panel":
+        series = detail.get("series") or []
+        if len(series) < 2:
+            return (f"Fewer than two of these governments report more than one year "
+                    f"between {detail['start']} and {detail['end']}. Most Oregon "
+                    "governments file two years five years apart rather than annually, "
+                    "so an annual panel covers about 380 of them. The change between "
+                    "2017 and 2022 is the five-year comparison nearly all can answer.")
+        ranked = sorted(((s["label"], s["change"]) for s in series
+                         if s["change"] is not None),
+                        key=lambda pair: pair[1], reverse=True)
+        line = (f"Across {detail['start']} to {detail['end']}, {ranked[0][0]} grew "
+                f"fastest at {ranked[0][1]:+.0f}% and {ranked[-1][0]} slowest at "
+                f"{ranked[-1][1]:+.0f}%.")
+        if detail.get("annual"):
+            line += (f" {detail['annual']} of {len(series)} are measured every year in "
+                     "this window.")
+        if detail.get("interpolated"):
+            line += (f" {detail['interpolated']} are not, and their lines are dashed "
+                     "between observations because the years between were not filed.")
+        # A government the reader picked and this window cannot draw has to be
+        # named here, not only in the rules panel underneath.
+        thin = detail.get("excluded_thin") or []
+        if thin:
+            line += (f" {', '.join(t['name'] for t in thin[:3])} "
+                     + ("reports" if len(thin) == 1 else "report")
+                     + f" fewer than two years between {detail['start']} and "
+                       f"{detail['end']} and " + ("is" if len(thin) == 1 else "are")
+                     + " not drawn; the five-year change reaches "
+                     + ("it" if len(thin) == 1 else "them") + ".")
         return line
 
     if detail.get("mixed_denominators"):
@@ -608,6 +666,39 @@ def _section_readout(section, entity=None):
                 f"{data['peer_group']} entities. The median is "
                 f"{fmt.rate(peers['median'])} and the middle half runs "
                 f"{fmt.rate(peers['p25'])} to {fmt.rate(peers['p75'])}.")
+
+    if section_id == "five_year_change":
+        direction = "more" if data["change"] > 0 else "less"
+        # The figures follow the years in the order the sentence names them, or a
+        # reader maps the first number to the first year and reads the move backwards.
+        line = (f"{name} spent {abs(data['change']):.0f}% {direction} in "
+                f"{data['end']} than in {data['start']}: {fmt.money(data['first'])} "
+                f"in {data['start']}, {fmt.money(data['last'])} in {data['end']}.")
+        if data.get("peer_median") is not None:
+            gap = data["change"] - data["peer_median"]
+            where = ("about the same as" if abs(gap) < 5
+                     else ("faster than" if gap > 0 else "slower than"))
+            line += (f" The median across {fmt.count(data['peer_n'])} entities of its "
+                     f"type moved {data['peer_median']:+.0f}% over the same two years, "
+                     f"so this is {where} its peers.")
+        if data.get("observations", 0) < (data["end"] - data["start"] + 1):
+            line += (f" Only {fmt.plural(data['observations'], 'year')} inside that "
+                     "window are filed, so this is a change between two ends and not "
+                     "a path.")
+        return line + " No price index is in this data, so the figures are nominal."
+
+    if section_id == "five_year_panel":
+        line = (f"{data['annual']} of these governments are measured in every year of "
+                "the window.")
+        if data.get("interpolated"):
+            line += (f" {data['interpolated']} are not; the line between their "
+                     "observations is drawn rather than measured, and is dashed for "
+                     "that reason.")
+        if data.get("excluded"):
+            line += (f" {fmt.plural(len(data['excluded']), 'government')} report fewer "
+                     "than two years here and are not drawn: "
+                     + ", ".join(e["name"] for e in data["excluded"][:3]) + ".")
+        return line
 
     if section_id == "spending":
         areas = data.get("service_areas") or []

@@ -179,6 +179,82 @@ VALUE_COLUMN = 78
 BAR_LABEL_CHARS = 23
 
 
+def diverging_bars(title, subtitle, rows, formatter=fmt.percent, width=680,
+                   note=None, peer_key="peer_median"):
+    """Change against a zero line, which is where the reader's eye belongs.
+
+    A change chart needs a real origin. Running it through the ordinary bar form
+    draws a shrinking government as a hairline at the left edge, which loses the
+    size of the fall and reads as "almost nothing" rather than "down twelve per
+    cent" — the opposite of the finding. Here zero sits inside the plot and bars
+    grow away from it in the direction they actually moved.
+
+    Growth and decline share one hue rather than taking green and red. Neither
+    direction is good news on its own: a government that spent less may have
+    finished a capital project or may have cut a service, and this data cannot
+    tell which (§4).
+    """
+    rows = [r for r in rows if r.get("value") is not None]
+    if not rows:
+        return None
+
+    top, offset = header(title, subtitle, width)
+    slot = BAR_THICKNESS + BAR_GAP + 8
+    plot_left = LABEL_COLUMN
+    plot_width = width - LABEL_COLUMN - VALUE_COLUMN
+
+    peers = [r[peer_key] for r in rows if r.get(peer_key) is not None]
+    values = [r["value"] for r in rows] + peers
+    low, high = min(values + [0]), max(values + [0])
+    span = (high - low) or 1
+    zero_x = plot_left + (0 - low) / span * plot_width
+    px = lambda v: plot_left + (v - low) / span * plot_width
+
+    body = [top]
+    y = offset + 8
+    for row in rows:
+        x = px(row["value"])
+        left, right = min(zero_x, x), max(zero_x, x)
+        body.append(text_el(plot_left - 10, y + BAR_THICKNESS / 2 + 4,
+                            truncate(row["label"], BAR_LABEL_CHARS), anchor="end"))
+        body.append(bar_path(left, y, max(right - left, 0.5), BAR_THICKNESS, radius=3)
+                    + f' fill="{token("s1")}">'
+                    + f'<title>{esc(row["label"])}: {esc(formatter(row["value"]))}</title>'
+                    + "</path>")
+        # The peer median as a tick on the same scale, so a bar is read against
+        # its own type rather than against the other bars in the picture.
+        if row.get(peer_key) is not None:
+            tick = px(row[peer_key])
+            body.append(f'<line x1="{tick:.1f}" y1="{y - 2}" x2="{tick:.1f}" '
+                        f'y2="{y + BAR_THICKNESS + 2}" stroke="{token("ink-2")}" '
+                        f'stroke-width="1.5"><title>peer median '
+                        f'{esc(formatter(row[peer_key]))}</title></line>')
+        body.append(text_el(width - VALUE_COLUMN + 8, y + BAR_THICKNESS / 2 + 4,
+                            formatter(row["value"]), size=11.5, tabular=True))
+        y += slot
+
+    # Drawn over the bars: zero is the reference every bar is measured from, and
+    # a bar crossing it would otherwise hide where it started.
+    body.append(f'<line x1="{zero_x:.1f}" y1="{offset + 2}" x2="{zero_x:.1f}" '
+                f'y2="{y - BAR_GAP - 6}" stroke="{token("axis")}" stroke-width="1.5"/>')
+    body.append(text_el(zero_x, y + 8, "no change", size=10.5, fill="muted",
+                        anchor="middle"))
+    y += 20
+
+    if peers:
+        body.append(text_el(plot_left, y + 10,
+                            "| tick marks the median change for that government type",
+                            size=10.5, fill="muted"))
+        y += 16
+    if note:
+        for line in wrap(note, 92):
+            body.append(text_el(0, y + 12, line, size=11, fill="muted"))
+            y += 14
+        y += 4
+
+    return frame(width, y + 12, "".join(body), f"{title}. {subtitle or ''}")
+
+
 def horizontal_bars(title, subtitle, rows, formatter=fmt.money, width=680,
                     emphasis=None, note=None, peer_key="peer_median"):
     """One hue for every bar: these categories are nominal, so a value ramp
@@ -628,9 +704,17 @@ def multi_series(title, subtitle, series, formatter=fmt.money, width=680, height
         points = [(px(y), py(v)) for y, v in entry["points"] if v is not None]
         path = " ".join(f"{'M' if i == 0 else 'L'}{x:.1f},{y:.1f}"
                         for i, (x, y) in enumerate(points))
+        # A series measured at two endpoints five years apart is drawn dashed,
+        # and its observations are marked. Solid, it is indistinguishable from a
+        # line measured every year, and the reader reads a path through years
+        # nobody reported. The dash says the segment is interpolation.
+        dash = (' stroke-dasharray="5 4"' if entry.get("interpolated") else "")
         body.append(f'<path d="{path}" fill="none" stroke="{token(colour)}" stroke-width="2" '
-                    f'stroke-linejoin="round" stroke-linecap="round"/>')
+                    f'stroke-linejoin="round" stroke-linecap="round"{dash}/>')
         for (x, y), (year, v) in zip(points, [p for p in entry["points"] if p[1] is not None]):
+            if entry.get("interpolated"):
+                body.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3" '
+                            f'fill="{token(colour)}"/>')
             body.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="9" fill="transparent">'
                         f'<title>{esc(entry["label"])} {year}: {esc(formatter(v))}</title></circle>')
         ends.append((points[-1][1], points[-1][0], colour, entry["label"]))

@@ -311,6 +311,24 @@ def entity_report(store, pid6):
             80, chart=trend_chart["data"]["svg"], table=trend_chart["data"]["table"],
             caveats=trend_chart["caveats"], blocked=trend_chart["not_computable"]))
 
+    # Where this government's own five-year change sits against its type. The
+    # trend chart above says what it did; this says whether that was unusual.
+    change = _explore().compare_change(store, [pid6])
+    rows = change["data"].get("entities") or []
+    if rows and rows[0]["peer_median"] is not None:
+        row = rows[0]
+        sections.append(_section(
+            "five_year_change", "Five years against its own type",
+            "State the change, the median for the type and the count behind it. This "
+            "is two observations five years apart rather than a trend, and the "
+            "figures are nominal — say both before the comparison.",
+            90, data={"change": row["value"], "peer_median": row["peer_median"],
+                      "peer_n": row["peer_n"], "first": row["first"],
+                      "last": row["last"], "start": change["data"]["start"],
+                      "end": change["data"]["end"],
+                      "observations": row["observations"]},
+            caveats=change["caveats"], blocked=change["not_computable"]))
+
     salient = T.find_salient(store, pid6)
     sections.append(_section(
         "salience", "What stands out",
@@ -396,6 +414,76 @@ def place_report(store, county_name):
               "total_word_budget": sum(s["word_budget"] for s in sections)})
 
 
+def _explore():
+    # Deferred: explore imports tools, and tools binds explore's functions at
+    # module load, so importing it at the top deadlocks the pair.
+    import explore
+    return explore
+
+
+def _five_year_sections(store, pid6_list, measure="expenditure"):
+    """The five-year material, in whichever of the two forms the data supports.
+
+    The trend data is two panels and only one of them is annual. Around 1,500
+    governments filed 2017 and 2022 and nothing between; about 380 filed every
+    year from 2019. So the change section is offered to almost everybody and the
+    year-by-year section only where it is real, rather than drawing a line
+    through years nobody reported and calling both a trend.
+    """
+    explore = _explore()
+    sections = []
+
+    change = explore.compare_change(store, pid6_list, measure)
+    rows = change["data"].get("entities") or []
+    if len(rows) > 1:
+        chart = viz.diverging_bars(
+            f"Change in total spending over {change['data']['span']} years",
+            f"{change['data']['start']} to {change['data']['end']}, nominal dollars",
+            [{"label": r["label"], "value": r["value"],
+              "peer_median": r["peer_median"]} for r in rows],
+            formatter=lambda v: f"{v:+.0f}%",
+            note="Two observations five years apart, so this is a change and not a "
+                 "trend. No price index is in this data, so the figures are nominal.")
+        sections.append(_section(
+            "five_year_change", "How each has moved over five years",
+            "Give the spread between the ends and say how many outgrew the median for "
+            "their own type. This is a change measured at two ends, never a growth "
+            "rate per year, and the figures are not inflation adjusted — say both.",
+            120, chart=chart,
+            table=[{"government": r["label"], "type": r["gov_type"],
+                    str(change["data"]["start"]): fmt.money(r["first"]),
+                    str(change["data"]["end"]): fmt.money(r["last"]),
+                    "change": f"{r['value']:+.0f}%",
+                    "type median": (f"{r['peer_median']:+.0f}%"
+                                    if r["peer_median"] is not None else "not comparable")}
+                   for r in rows],
+            caveats=change["caveats"], blocked=change["not_computable"]))
+
+    panel = explore.trend_panel(store, pid6_list, measure)
+    series = panel["data"].get("series") or []
+    if len(series) > 1:
+        drawn = series[:4]
+        chart = viz.multi_series(
+            f"Total spending, {panel['data']['start']} to {panel['data']['end']}",
+            f"{fmt.plural(len(drawn), 'government')} with more than one year filed",
+            drawn,
+            note=("Dashed lines are drawn between observations that are years apart."
+                  if panel["data"]["interpolated"] else
+                  "Every line here is measured in every year shown."))
+        sections.append(_section(
+            "five_year_panel", "Year by year, where the years exist",
+            "Say the window and how many of these are measured every year in it. A "
+            "dashed line is drawn between observations, not measured between them, "
+            "so no year on one may be described.",
+            110, chart=chart,
+            data={"annual": panel["data"]["annual"],
+                  "interpolated": panel["data"]["interpolated"],
+                  "excluded": panel["data"]["excluded_thin"]},
+            caveats=panel["caveats"], blocked=panel["not_computable"]))
+
+    return sections
+
+
 def comparison_report(store, pid6_list, basis="absolute", service_area=None):
     """Several entities on one stated basis."""
     comparison = compare_normalized(store, pid6_list, service_area, basis)
@@ -430,6 +518,11 @@ def comparison_report(store, pid6_list, basis="absolute", service_area=None):
         table=[{"government": e["name"], "type": e["gov_type"],
                 data["basis_label"]: formatter(e["value"])} for e in data["entities"]],
         caveats=[caveat("inputs_not_outcomes")]))
+
+    # A ranking is one moment. Five years of it says whether the ordering is
+    # stable or whether somebody just moved, which is what a reader comparing
+    # governments actually wants and what a snapshot cannot answer.
+    sections += _five_year_sections(store, pid6_list)
 
     if data["excluded"] or data["missing"]:
         sections.append(_section(

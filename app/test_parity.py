@@ -141,6 +141,7 @@ def main():
     school = store.row("SELECT pid6 FROM entities WHERE gov_type_name='School District' "
                        "AND legal_name LIKE '%PORTLAND%' LIMIT 1")["pid6"]
     salem_schools = pid("SALEM KEIZER SCH DIST 24J")
+    keizer = pid("CITY OF KEIZER")
     unchartable = store.row(
         "SELECT pid6 FROM entities WHERE pid6 NOT IN "
         "(SELECT pid6 FROM spending_by_service_area WHERE total > 0) "
@@ -170,6 +171,9 @@ def main():
         "one that cannot be charted": [portland, unchartable],
         # And the same government on its own: nothing to draw at all.
         "nothing chartable at all": [unchartable],
+        # Keizer filed 2017 and 2022 and nothing between; Portland filed every
+        # year. On one axis those look identical unless the engine says otherwise.
+        "annual beside two endpoints": [portland, keizer],
     }
 
     requests = []
@@ -184,6 +188,13 @@ def main():
         requests.append({"label": name, "form": "per_capita_over_time",
                          "pid6_list": group, "indexed": False})
         requests.append({"label": name, "form": "entities_over_time",
+                         "pid6_list": group, "measure": "expenditure"})
+        # The two five-year forms. The trend data is two panels — 1,005 entities
+        # filed only 2017 and 2022 — so both engines have to classify coverage
+        # the same way and dash the same lines.
+        requests.append({"label": name, "form": "five_year_change",
+                         "pid6_list": group, "measure": "expenditure"})
+        requests.append({"label": name, "form": "five_year_panel",
                          "pid6_list": group, "measure": "expenditure"})
 
     # A second service area, to catch anything keyed to public safety by accident.

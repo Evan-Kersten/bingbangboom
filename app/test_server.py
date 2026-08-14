@@ -14,6 +14,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import server as S
+from server import R
 
 failures = []
 checks = 0
@@ -249,6 +250,50 @@ def main():
     check("a districted body with no boundary says the map is missing",
           "map is missing rather than drawn as one electorate" in schools
           or "filled by district" in schools, schools[-220:])
+
+    print("\nfive years of data reaches the comparison and the report")
+    keizer = pid("CITY OF KEIZER")
+    portland = pid("CITY OF PORTLAND")
+    change = S.T.render_comparison(store, [portland, keizer], "five_year_change")
+    text = S._compare_headline(change)
+    check("a five-year change compares governments the annual panel cannot",
+          "Keizer" in text and "Portland" in text, text[:120])
+    check("and it refuses to be called a trend",
+          "not a trend" in text, text[-160:])
+    check("the figures are declared nominal", "nominal" in text)
+
+    panel = S.T.render_comparison(store, [portland, pid("CITY OF SALEM")],
+                                  "five_year_panel")
+    check("an annual panel says how many are measured every year",
+          "measured every year" in S._compare_headline(panel),
+          S._compare_headline(panel)[:160])
+
+    # §8: a line between two observations five years apart is drawn, not
+    # measured, and must not look like a line measured seven times.
+    mixed = S.T.render_comparison(store, [portland, keizer], "five_year_panel")
+    codes_here = {c["code"] for c in mixed["caveats"]}
+    check("a sparse series never sits unmarked beside an annual one",
+          "series_not_annual" in codes_here or "entities_excluded" in codes_here,
+          str(sorted(codes_here)))
+
+    report = R.compose_report(store, kind="comparison",
+                              pid6_list=[portland, keizer, pid("CITY OF MEDFORD")],
+                              basis="absolute")
+    ids = [s["id"] for s in report["data"]["sections"]]
+    check("the comparison report carries a five-year section",
+          "five_year_change" in ids, str(ids))
+    check("and a year-by-year section where the years exist",
+          "five_year_panel" in ids, str(ids))
+
+    entity_report = R.compose_report(store, kind="entity", pid6=keizer)
+    section = next((s for s in entity_report["data"]["sections"]
+                    if s["id"] == "five_year_change"), None)
+    check("an entity report places its own five years against its type",
+          section is not None)
+    readout = S._section_readout(section, S.T._entity(store, keizer))
+    check("and the readout names both ends in the order it says them",
+          "2017" in readout and "2022" in readout and "nominal" in readout,
+          readout[:200])
 
     print("\na search row says what its number counts")
     rows = [S._with_magnitude(store.row(

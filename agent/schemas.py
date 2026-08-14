@@ -294,6 +294,51 @@ SCHEMAS = [
         },
     },
     {
+        "name": "compare_change",
+        "description": "How much several governments' totals moved between two years, "
+                       "with the median change for each government type. This is the "
+                       "five-year comparison nearly the whole corpus can answer: around "
+                       "1,500 Oregon governments filed 2017 and 2022 and nothing "
+                       "between, while only about 380 filed every year. It is therefore "
+                       "a change measured at two ends and never a trend — nothing in it "
+                       "says whether the move was steady, front-loaded or reversed, so "
+                       "never describe a direction over the middle years and never call "
+                       "it a growth rate per year. No price index is in this data, so "
+                       "the figures are nominal and a government that grew is not "
+                       "necessarily buying more. " + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pid6_list": {"type": "array", "items": {"type": "string"}},
+                "measure": {"type": "string",
+                            "enum": ["expenditure", "revenue", "debt"]},
+            },
+            "required": ["pid6_list"],
+        },
+    },
+    {
+        "name": "trend_panel",
+        "description": "Several governments year by year across a stated window, each "
+                       "labelled by how densely it is actually measured. The window is "
+                       "chosen rather than inferred from whichever entity reported "
+                       "longest, because an axis set by one government's filing habits "
+                       "is a chart about that government. Coverage comes back per "
+                       "entity: annual means every year in the window, endpoints means "
+                       "two observations with a gap, and a line between endpoints is "
+                       "drawn rather than measured — those are dashed and no year on "
+                       "one may be described. Around 380 governments support an annual "
+                       "five-year panel; for the rest use compare_change. " + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pid6_list": {"type": "array", "items": {"type": "string"}},
+                "measure": {"type": "string",
+                            "enum": ["expenditure", "revenue", "debt"]},
+            },
+            "required": ["pid6_list"],
+        },
+    },
+    {
         "name": "staffing",
         "description": "Who a government employs, split into named jobs, with each job "
                        "expressed as a ratio against the population it serves: one sworn "
