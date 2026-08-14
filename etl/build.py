@@ -357,6 +357,12 @@ def build_fiscal_tables(raw, type_counts):
                 })
 
         # --- financial functions ---------------------------------------------
+        # The source nests the function breakdown inside a procurement-opportunity
+        # object, so this reads that object for the rows. It deliberately takes
+        # only the reported expenditure columns: the vendor-addressable figures
+        # beside them are a derivation, and carrying an estimate next to reported
+        # spending under names that both end in "expenditures" is how the two get
+        # compared. Operating plus capital is the basis everywhere else here.
         po = record.get("procurementOpportunity")
         if po:
             for fn in po.get("financialFunctions") or []:
@@ -366,10 +372,6 @@ def build_fiscal_tables(raw, type_counts):
                     "service_area": fn.get("serviceArea"),
                     "operating_expenditures": fn.get("operatingExpenditures"),
                     "capital_expenditures": fn.get("capitalExpenditures"),
-                    "excluded_amounts": fn.get("excludedAmounts"),
-                    "personnel_costs_adjusted": fn.get("personnelCostsAdjusted"),
-                    "operating_pae": fn.get("operatingPae"), "capital_pae": fn.get("capitalPae"),
-                    "total_function_pae": fn.get("totalFunctionPae"),
                     "pct_of_entity_total": fn.get("pctOfEntityTotal"),
                 })
 

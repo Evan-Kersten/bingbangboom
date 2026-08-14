@@ -21,9 +21,16 @@ all of those are structural, so they are caught here rather than hoped away.
 
 import format as fmt
 import tools as T
+from rules import THRESHOLDS
 
 # §15.1: a map is offered only where the picture is not mostly absence.
-MAP_COVERAGE_FLOOR = 0.5
+#
+# One rule enforced at two layers, so it is defined once. render_map refuses to
+# draw below this and returns the reason in place of the picture; this is the
+# backstop that catches a map block which got here some other way. The two used
+# to be separate literals that happened to agree, which is the state a rule is
+# in just before it stops agreeing.
+MAP_COVERAGE_FLOOR = THRESHOLDS["map_density_minimum"]
 
 # §15.1: past roughly seven rows colour classes blur and the reader is looking
 # up rather than comparing, so the table becomes the primary form.
@@ -52,9 +59,9 @@ BLOCK_ORDER = {
 
 # Follow-ups are offered only where the block behind them exists for the entity.
 # Ordered so the first few carry a reader downward: from the whole budget, to
-# the categories it splits into, to the functions inside one, to what of that is
-# actually purchasable. A follow-up that opens a new topic is offered after the
-# ones that go deeper into this one.
+# the categories it splits into, to the functions inside one, and then out to
+# where that function is done across the state. A follow-up that opens a new
+# topic is offered after the ones that go deeper into this one.
 NEXT_QUESTIONS = [
     # Money the reader recognises as their own leads, because it is the one
     # follow-up that does not require already caring about municipal finance.
@@ -63,7 +70,6 @@ NEXT_QUESTIONS = [
     ("has_spending_breakdown", "Where does the money actually go?"),
     ("has_spending_breakdown", "Which service areas is it unusual on?"),
     ("has_financial_functions", "Take me inside its largest service area"),
-    ("has_financial_functions", "What in its biggest function is actually purchasable?"),
     ("has_operating_vs_capital", "Is this budget large or small for its type?"),
     ("has_spending_breakdown", "How does its public safety spending compare, head for head?"),
     ("has_financial_trends", "Has its spending outgrown its peers?"),

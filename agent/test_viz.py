@@ -59,14 +59,21 @@ def main():
         check(f"render_chart takes no '{forbidden}' parameter", forbidden not in signature)
     check("render_chart takes only a store, an entity and a form",
           set(signature) == {"store", "pid6", "form"}, str(set(signature)))
+    # This set is allowed to grow, but only with parameters that select data.
+    # service_area and function are the two depths of the drill; a title or a
+    # caption would be the model writing on the picture, which is the thing the
+    # signature exists to prevent.
     map_signature = set(inspect.signature(T.render_map).parameters)
     check("render_map takes no title either",
           map_signature == {"store", "layer", "metric", "county", "service_area",
-                            "highlight_pid6"},
+                            "function", "highlight_pid6"},
           str(map_signature))
-    check("and every map parameter names data, never wording",
-          not (map_signature & {"title", "subtitle", "caption", "note", "label"}),
-          str(map_signature))
+    for name in ("render_map", "render_function_map"):
+        parameters = set(inspect.signature(getattr(T, name)).parameters)
+        check(f"and every {name} parameter names data, never wording",
+              not (parameters & {"title", "subtitle", "caption", "note", "label",
+                                 "colour", "color"}),
+              str(parameters))
 
     print("\nSVG is well formed")
     for form in T.CHART_FORMS:

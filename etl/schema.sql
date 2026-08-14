@@ -171,6 +171,14 @@ CREATE TABLE workforce_top_functions (
     total_payroll   DOUBLE
 );
 
+-- One year per entity, so there is no per-function change over time here.
+--
+-- The source nests these rows under a procurement-opportunity object that also
+-- carries a vendor-addressable derivation: operating and capital less personnel
+-- less amounts held to be unpurchasable. That derivation is not read. It is an
+-- estimate rather than a reported line, and every figure in this product is
+-- operating plus capital, which is the basis the service-area shares are drawn
+-- against (§8). Taking only the reported columns keeps one basis in the tree.
 DROP TABLE IF EXISTS financial_functions;
 CREATE TABLE financial_functions (
     pid6                      TEXT,
@@ -179,11 +187,6 @@ CREATE TABLE financial_functions (
     service_area              TEXT,
     operating_expenditures    DOUBLE,
     capital_expenditures      DOUBLE,
-    excluded_amounts          DOUBLE,
-    personnel_costs_adjusted  DOUBLE,
-    operating_pae             DOUBLE,
-    capital_pae               DOUBLE,
-    total_function_pae        DOUBLE,
     pct_of_entity_total       DOUBLE
 );
 

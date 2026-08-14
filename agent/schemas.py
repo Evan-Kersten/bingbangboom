@@ -158,9 +158,8 @@ SCHEMAS = [
                        "pid6 alone it returns the twelve service areas with each area's peer "
                        "median share beside it. Add service_area and it returns the functions "
                        "inside that area. Add function_name and it returns how that one "
-                       "function's total decomposes: operating, capital, personnel, amounts "
-                       "excluded, and the vendor-addressable remainder. Three levels is as "
-                       "deep as the data goes. Use this rather than get_spending_breakdown "
+                       "function's total splits between operating and capital. Three levels "
+                       "is as deep as the data goes. Use this rather than get_spending_breakdown "
                        "whenever the question is about a category rather than the whole "
                        "budget. " + ENVELOPE_NOTE,
         "input_schema": {
@@ -586,7 +585,14 @@ SCHEMAS = [
                        "223; special districts have no boundaries in this data and cannot be "
                        "mapped at all, so list them instead. Every map covers one government "
                        "type, so it never shows all public spending in a place. Pass county "
-                       "to scope a place map, which is unreadable statewide. " + ENVELOPE_NOTE,
+                       "to scope a place map, which is unreadable statewide. The two function "
+                       "metrics map one named function inside a service area, which is a "
+                       "level deeper than the service_area metrics. A map is refused where "
+                       "fewer than half the boundaries in the extent report the measure, and "
+                       "the refusal names the governments that do the work instead: fire "
+                       "protection and transit are done by districts with no boundary here, "
+                       "so they cannot be mapped however the request is phrased. Use "
+                       "who_spends_on for those. " + ENVELOPE_NOTE,
         "input_schema": {
             "type": "object",
             "properties": {
@@ -594,12 +600,40 @@ SCHEMAS = [
                 "metric": {"type": "string",
                            "enum": ["spending_per_resident", "total_spending",
                                     "capital_share", "employees_per_1000", "average_wage",
-                                    "service_area_share", "service_area_per_resident"]},
+                                    "service_area_share", "service_area_per_resident",
+                                    "function_share", "function_per_resident"]},
                 "county": {"type": "string",
                            "description": "Optional county name to scope the extent to."},
                 "service_area": {"type": "string",
                                  "description": "Required for the two service_area metrics."},
+                "function": {"type": "string",
+                             "description": "Required for the two function metrics. A named "
+                                            "function inside a service area, as returned by "
+                                            "drill or who_spends_on."},
             },
+        },
+    },
+    {
+        "name": "render_function_map",
+        "description": "Map one named function on the boundary layer that holds most of "
+                       "the work, which is the right level below a service-area map. Police "
+                       "protection lands on counties, sewerage on places, elementary and "
+                       "secondary education on school districts. Prefer this to render_map "
+                       "for a function, because choosing the layer by hand compares a city "
+                       "against counties that do not do the work. Where no layer can carry "
+                       "it the result is a refusal naming the governments that do, which is "
+                       "the answer for fire protection and transit: districts with no "
+                       "boundary in this data. Follow a refusal with who_spends_on. "
+                       + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "function": {"type": "string",
+                             "description": "A named function, as returned by drill."},
+                "county": {"type": "string",
+                           "description": "Optional county to scope a place map to."},
+            },
+            "required": ["function"],
         },
     },
     {

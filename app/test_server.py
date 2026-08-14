@@ -442,14 +442,24 @@ def main():
 
     print("\nthe drill-down reaches the line item")
     levels = [S.answer_preset(preset, baker) for preset in
-              ("spending", "inside", "purchasable")]
+              ("spending", "inside", "function_split")]
     check("all three levels answer", all(r["blocks"] for r in levels))
     check("the second level names functions inside one area",
           any("largest function is" in b.get("text", "") for b in levels[1]["blocks"]))
-    check("the third names the vendor-addressable remainder",
-          any("addressable" in b.get("text", "") for b in levels[2]["blocks"]))
-    check("and calls it a derivation rather than a reported line",
-          any("derivation" in b.get("text", "") for b in levels[2]["blocks"]))
+    check("the third splits one function into operating and capital",
+          any("operating and" in b.get("text", "") and "capital" in b.get("text", "")
+              for b in levels[2]["blocks"]))
+    # §8: one year of capital is a position in a bond cycle. The sentence has to
+    # say so, because a share this large reads as a preference otherwise.
+    check("and says a capital share is a cycle rather than a trend",
+          any("rather than a trend" in b.get("text", "") for b in levels[2]["blocks"]))
+    # Every level is operating plus capital now, so the figures nest. A share
+    # taken off one basis beside a total on another was the reason the
+    # vendor-addressable derivation came out.
+    figures = [b for b in levels[2]["blocks"] if b["kind"] == "figure"]
+    check("the figure states the basis it is on",
+          bool(figures) and figures[0].get("basis") == "operating plus capital",
+          str(figures[:1]))
 
     print("\nrefusals survive into the interface")
     result = S.answer_preset("scale", new_bridge)

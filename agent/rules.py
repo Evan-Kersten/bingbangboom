@@ -316,6 +316,22 @@ THRESHOLDS = {
     "other_partial": 20.0,
     "stability_move": 5.0,
     "workforce_divergence": 5.0,
+    # §15.1 says a map is drawn only where coverage is high enough that the
+    # picture is not mostly absence, and "mostly" is the line: below half the
+    # boundaries in the drawn extent carrying a value, the reader is looking at
+    # a field of no-data with a few marks in it and reading the marks as the
+    # pattern. Kept here rather than in the map code so the number that decides
+    # a refusal is data with a test beside it.
+    "map_density_minimum": 0.5,
+    # §15.5 forbids presenting a map as complete when a government type is
+    # missing from it. Below this share of the money for the mapped measure
+    # sitting on the drawn layer, saying so becomes the main point of the
+    # caveat rather than a footnote to it.
+    "map_layer_share_partial": 0.5,
+    # §15.5 forbids a chart of a single number, and a choropleth of two or three
+    # polygons is that chart with a coastline on it. Scoping a place map to a
+    # rural county is how you get there without noticing.
+    "map_min_polygons": 4,
 }
 
 

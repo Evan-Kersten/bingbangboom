@@ -1133,9 +1133,9 @@ def render_chart(store, pid6, form):
                     [{"label": f["label"], "value": f["value"],
                       "peer_median": f["peer_median"],
                       "peer_degenerate": f["peer_degenerate"]} for f in functions],
-                    note="Bars are operating plus capital. Vendor addressable is smaller.")
+                    note="Bars are operating plus capital, the basis the service-area "
+                         "shares are drawn against.")
                 table = [{"function": f["label"], "spending": fmt.money(f["value"]),
-                          "vendor addressable": fmt.money(f["addressable"]),
                           "share of entity": fmt.percent(f["share_of_entity"])}
                          for f in functions]
 
@@ -1547,6 +1547,108 @@ SERVICE_AREA_MAP_METRICS = {
         fmt.rate, "Spending per resident on"),
 }
 
+# One level below the service area: the named function inside it. Drawn on
+# operating plus capital, which is the basis the service-area shares above are
+# computed against, so the two maps stack instead of being two measures of
+# loosely the same thing.
+FUNCTION_MAP_METRICS = {
+    "function_share": (
+        "SELECT pid6, pct_of_entity_total AS value FROM financial_functions "
+        "WHERE function_name = ? AND pct_of_entity_total IS NOT NULL",
+        fmt.percent, "Share of spending on"),
+    "function_per_resident": (
+        "SELECT f.pid6 AS pid6, (COALESCE(f.operating_expenditures, 0) "
+        "     + COALESCE(f.capital_expenditures, 0)) * 1.0 / w.population AS value "
+        "FROM financial_functions f JOIN workforce_profile w ON w.pid6 = f.pid6 "
+        "WHERE f.function_name = ? AND w.population > 0 "
+        "  AND COALESCE(f.operating_expenditures, 0) "
+        "    + COALESCE(f.capital_expenditures, 0) > 0",
+        fmt.rate, "Spending per resident on"),
+}
+
+# What a coverage figure is measured over, per family. Both tables hold one year
+# per entity, which is why the vintage spread is part of what gets measured.
+COVERAGE_SOURCES = {
+    "service_area": ("spending_by_service_area", "COALESCE(t.total, 0)", "service_area"),
+    "function": ("financial_functions",
+                 "COALESCE(t.operating_expenditures, 0) "
+                 "+ COALESCE(t.capital_expenditures, 0)", "function_name"),
+}
+
+
+def map_coverage(store, kind, selector, layer):
+    """How much of the thing being mapped this layer can actually show.
+
+    Two different measures, because they answer two different objections.
+
+    `layer_share` is how much of the money local governments report on this
+    measure sits in entities drawable on this layer. It is the §15.5 question:
+    a map that leaves out the governments doing most of the work is not a map of
+    the work. Fire protection is the case that motivated this. 243 of Oregon's
+    fire districts report it and one of them has a boundary in this data, so a
+    place map of fire protection draws the 83 cities with their own department
+    and leaves rural Oregon blank, which reads as an absence of fire spending
+    where it is really an absence of drawable fire districts.
+
+    `holders` names who the missing money belongs to, by government type, and
+    distinguishes the two reasons it is missing. A municipality absent from a
+    county map has a boundary and is on another layer; a fire district has none
+    at all and cannot appear on any map this data can draw. Collapsing those two
+    into "no boundary" was wrong in the first draft of this and would have told
+    a reader Oregon's cities are unmapped.
+
+    The state is counted separately rather than in the denominator: it is never
+    drawable on a local boundary layer, and folding it in would make every map
+    of a state-heavy function look like a coverage failure when the real point
+    is that another level of government does the work.
+    """
+    table, money, column = COVERAGE_SOURCES[kind]
+    rows = store.rows(
+        f"SELECT e.gov_type_name AS gov_type, g.layer AS layer, "
+        f"       COUNT(DISTINCT t.pid6) AS n, SUM({money}) AS amount, "
+        f"       MIN(t.year) AS first_year, MAX(t.year) AS last_year "
+        f"FROM {table} t JOIN entities e ON e.pid6 = t.pid6 "
+        f"LEFT JOIN geo_entity g ON g.pid6 = t.pid6 "
+        f"WHERE t.{column} = ? AND {money} > 0 "
+        f"GROUP BY e.gov_type_name, g.layer", selector)
+
+    local = [r for r in rows if r["gov_type"] != "State"]
+    total = sum(r["amount"] or 0 for r in local)
+    on_layer = sum(r["amount"] or 0 for r in local if r["layer"] == layer)
+
+    holders = {}
+    for row in local:
+        if row["layer"] == layer:
+            continue
+        # The recovered special-district layer is 19 boundaries from the
+        # Multnomah pilot, spanning fire, water, transit and a community
+        # college. It locates a government; it is not a layer anything can be
+        # drawn against. Counting it as somewhere else to draw would answer "so
+        # map it there" with a map of nineteen unrelated districts.
+        elsewhere = row["layer"] if row["layer"] != "special_district" else None
+        key = (row["gov_type"], elsewhere)
+        entry = holders.setdefault(key, {
+            "gov_type": row["gov_type"], "entities": 0, "amount": 0.0,
+            # No boundary anywhere this can draw, as against a boundary on a
+            # layer other than the one being drawn.
+            "unmapped": elsewhere is None,
+            "layer": elsewhere})
+        entry["entities"] += row["n"]
+        entry["amount"] += row["amount"] or 0
+
+    state = next((r for r in rows if r["gov_type"] == "State"), None)
+    years = sorted({y for r in rows for y in (r["first_year"], r["last_year"]) if y})
+
+    return {
+        "layer_share": (on_layer / total) if total else 0.0,
+        "on_layer": on_layer,
+        "total": total,
+        "holders": sorted(holders.values(), key=lambda h: h["amount"], reverse=True),
+        "state_reports": bool(state),
+        "state_amount": (state["amount"] if state else None),
+        "years": years,
+    }
+
 
 def entity_layer(store, pid6):
     """Which boundary layer a government can be drawn on, and its geo_id.
@@ -1561,8 +1663,44 @@ def entity_layer(store, pid6):
     return dict(row) if row else None
 
 
+def render_function_map(store, function, county=None, highlight_pid6=None):
+    """Map one named function on the layer that does the work.
+
+    Whoever does the work decides the layer, not the caller's habit. Sewerage is
+    overwhelmingly municipal, and drawing it on counties would compare a city's
+    sewers against county governments that mostly run none, which is the
+    like-with-like error §12 names, arriving as a picture rather than a
+    sentence. Police is a city and county function and reads either way.
+
+    Layers are tried in order of how much of the function's reported spending
+    they hold, and the first one that survives render_map's coverage gate is
+    returned. Where none survives, the refusal from the layer holding most of
+    the work is what comes back, because that is the one whose reason names the
+    governments actually doing it: for fire protection, 243 districts with no
+    boundary in this data. A refusal from a layer that was never the right one
+    would blame the wrong absence.
+    """
+    ranked = sorted(
+        ("county", "place", "school_district"),
+        key=lambda candidate: map_coverage(store, "function", function,
+                                           candidate)["layer_share"],
+        reverse=True)
+
+    first = None
+    for candidate in ranked:
+        # A place map is dots at state scale, so it is scoped where the caller
+        # has a county to scope it to, exactly as the peer maps are.
+        drawn = render_map(store, candidate, "function_per_resident",
+                           county=(county if candidate == "place" else None),
+                           function=function, highlight_pid6=highlight_pid6)
+        if not drawn["data"].get("refused"):
+            return drawn
+        first = first or drawn
+    return first
+
+
 def render_map(store, layer="county", metric="spending_per_resident", county=None,
-               service_area=None, highlight_pid6=None):
+               service_area=None, function=None, highlight_pid6=None):
     """Choropleth over a boundary layer.
 
     Memoized on its arguments. The store is read-only, so a map drawn twice with
@@ -1573,11 +1711,21 @@ def render_map(store, layer="county", metric="spending_per_resident", county=Non
     name and cover 156 of 223. Special districts have no boundaries at all, so
     they are not offerable as a layer: two thirds of Oregon's governments cannot
     be drawn, and the honest form for them is a list.
+
+    `service_area` and `function` are the two depths of the same drill: an area
+    is twelve Census categories, a function is the named work inside one. Both
+    select what is drawn. Neither selects any words on the picture, and nothing
+    here takes a title, a caption or a colour, because a caption is where a map
+    asserts the relationship §4 forbids and the way to prevent that is to have
+    nowhere to put one.
+
+    Whether the map is drawn at all is decided by measurement rather than by
+    whoever called it. See the coverage gate below.
     """
     cache = getattr(store, "_map_cache", None)
     if cache is None:
         cache = store._map_cache = {}
-    signature = (layer, metric, county, service_area, highlight_pid6)
+    signature = (layer, metric, county, service_area, function, highlight_pid6)
     if signature in cache:
         return cache[signature]
 
@@ -1587,6 +1735,7 @@ def render_map(store, layer="county", metric="spending_per_resident", county=Non
             "guidance": f"No layer '{layer}'. Available: {', '.join(maps.LAYERS)}. "
                         "Special districts have no boundaries in this data and cannot "
                         "be mapped; list them instead."}])
+    coverage_kind = coverage_selector = None
     if metric in SERVICE_AREA_MAP_METRICS:
         if not service_area:
             return envelope("render_map", caveats=[{
@@ -1595,15 +1744,36 @@ def render_map(store, layer="county", metric="spending_per_resident", county=Non
         inner, formatter, label = SERVICE_AREA_MAP_METRICS[metric]
         arguments = (service_area, layer)
         label = f"{label} {service_area}"
+        function = None
+        coverage_kind, coverage_selector = "service_area", service_area
+    elif metric in FUNCTION_MAP_METRICS:
+        if not function:
+            return envelope("render_map", caveats=[{
+                "code": "function_required", "rule": "§9",
+                "guidance": f"'{metric}' maps one named function and needs to be told "
+                            "which. Functions are the level below service areas; drill "
+                            "to get their names for an entity, or call who_spends_on."}])
+        known = store.row("SELECT service_area FROM financial_functions "
+                          "WHERE function_name=? LIMIT 1", function)
+        if not known:
+            return envelope("render_map", caveats=[{
+                "code": "no_such_function", "rule": "§2",
+                "guidance": f"No government reports spending on '{function}', so there "
+                            "is nothing to draw. Check the name against a drill result."}])
+        inner, formatter, label = FUNCTION_MAP_METRICS[metric]
+        arguments = (function, layer)
+        label = f"{label} {function}"
+        service_area = known["service_area"]
+        coverage_kind, coverage_selector = "function", function
     elif metric in MAP_METRICS:
         inner, formatter, label = MAP_METRICS[metric]
         arguments = (layer,)
-        service_area = None
+        service_area = function = None
     else:
         return envelope("render_map", caveats=[{
             "code": "unknown_metric", "rule": "§4",
             "guidance": f"No mappable metric '{metric}'. Available: "
-                        f"{', '.join(list(MAP_METRICS) + list(SERVICE_AREA_MAP_METRICS))}."}])
+                        f"{', '.join(list(MAP_METRICS) + list(SERVICE_AREA_MAP_METRICS) + list(FUNCTION_MAP_METRICS))}."}])
 
     rows = store.rows(
         f"SELECT g.geo_id, m.value AS value, e.common_name, e.legal_name, "
@@ -1636,7 +1806,70 @@ def render_map(store, layer="county", metric="spending_per_resident", county=Non
     total = store.row("SELECT COUNT(*) AS n FROM entities WHERE gov_type_name IN "
                       "('County','Municipal','School District','Special District')")["n"]
 
+    # ---- the coverage gate ------------------------------------------------
+    #
+    # §15.1: a map is drawn only where coverage is high enough that the picture
+    # is not mostly absence. Measured on the extent actually drawn, so scoping a
+    # place map to one county judges that county rather than the state.
+    #
+    # This is the whole reason the drill from service area to function needs a
+    # gate at all. An area like Public Safety is reported by nearly every
+    # general-purpose government, so the county map is dense and the colour
+    # differences are differences in spending. One level down the functions
+    # separate by who does the work: police is a city and county function and
+    # draws at 34 of 36 counties, while fire protection is done by districts and
+    # draws at one. The same map code, the same measure, and one of the two is a
+    # picture of Oregon's fire spending while the other is a picture of which
+    # governments happen to have a boundary in this file.
+    collection, geo_key = maps.load_layer(layer)
+    extent = {feature["properties"].get(geo_key)
+              for feature in collection["features"] if feature["geometry"]}
+    if only is not None:
+        extent &= only
+    drawn = len(extent & set(values))
+    density = (drawn / len(extent)) if extent else 0.0
+
+    coverage = (map_coverage(store, coverage_kind, coverage_selector, layer)
+                if coverage_kind else None)
+
     caveats = [caveat("inputs_not_outcomes")]
+
+    if coverage:
+        missing = ", ".join(
+            f"{fmt.count(h['entities'])} {h['gov_type']} "
+            f"{'entity' if h['entities'] == 1 else 'entities'} holding "
+            f"{fmt.money(h['amount'])} "
+            + ("with no boundary in this data" if h["unmapped"]
+               else f"drawn on the {h['layer'].replace('_', ' ')} layer instead")
+            for h in coverage["holders"][:3])
+        share_line = (
+            f"{fmt.percent(100 * coverage['layer_share'])} of what Oregon's local "
+            f"governments report spending on {coverage_selector} sits in entities "
+            f"drawable on this layer.")
+        if coverage["holders"]:
+            share_line += f" The rest is {missing}."
+        if coverage["state_reports"]:
+            share_line += (f" The state reports {fmt.money(coverage['state_amount'])} on "
+                           "this as well, on no local boundary at all.")
+        caveats.append({
+            "code": ("map_layer_holds_minority"
+                     if coverage["layer_share"] < THRESHOLDS["map_layer_share_partial"]
+                     else "map_layer_share"),
+            "rule": "§15",
+            "guidance": share_line + " Name the share when describing this map, and never "
+                        "call it a picture of what Oregon spends on this."})
+        # Both source tables hold one year per entity and the year differs
+        # between entities, so a single map is several vintages at once. §8 says
+        # figures from different moments are not one moment.
+        if len(coverage["years"]) > 1:
+            caveats.append({
+                "code": "map_years_differ", "rule": "§8",
+                "guidance": f"These figures span {coverage['years'][0]} to "
+                            f"{coverage['years'][-1]}, one year per government rather than "
+                            "one year across the map. Neighbouring boundaries can be two "
+                            "years apart, so read this as a level and not as a moment."})
+
+
     if layer == "school_district":
         caveats.append({
             "code": "geometry_by_name", "rule": "§9",
@@ -1656,19 +1889,82 @@ def render_map(store, layer="county", metric="spending_per_resident", county=Non
                         "areas are land area rather than anything measured here. Scope the "
                         "map to a county, or use a list."})
 
-    if service_area:
+    if coverage_selector:
         caveats.append({
             "code": "absence_is_not_zero", "rule": "§9",
-            "guidance": f"A boundary with no value reports nothing on {service_area}, which "
-                        "is not a report of zero. It usually means another government holds "
-                        "that responsibility here. The no-data colour is off the ramp for "
-                        "exactly this reason; do not read it as low."})
+            "guidance": f"A boundary with no value reports nothing on {coverage_selector}, "
+                        "which is not a report of zero. It usually means another government "
+                        "holds that responsibility here. The no-data colour is off the ramp "
+                        "for exactly this reason; do not read it as low."})
     if metric in ("spending_per_resident", "service_area_per_resident",
-                  "employees_per_1000"):
+                  "function_per_resident", "employees_per_1000"):
         caveats.append({
             "code": "population_is_one_estimate", "rule": "§8",
             "guidance": "The denominator is a single population estimate per entity, not a "
                         "series. This is a level at one moment and carries no rate of change."})
+
+    thin = len(extent) < THRESHOLDS["map_min_polygons"]
+    # A statewide place map is 378 cities rendered as specks, and what a reader
+    # compares is their land area. The rule was already stated as a caveat and
+    # the picture was drawn anyway, which is a caveat doing no work: drawn out,
+    # sewerage across Oregon is a scatter of dots you cannot read a value from.
+    # Every caller in this product already scopes place maps to a county, so
+    # this refuses what none of them asks for and what §15.1 does not allow.
+    unscoped_places = layer == "place" and not county
+    if thin or unscoped_places or density < THRESHOLDS["map_density_minimum"]:
+        # Refused rather than drawn, and the reason is drawn in its place: a
+        # blank frame reads as a failure, a stated reason reads as a rule.
+        # Which rule stopped it, so a caller can say why rather than guess. The
+        # three refusals mean different things: mostly-absence is a fact about
+        # who does the work, a thin extent is a fact about the extent, and
+        # needing a county is only a fact about scale.
+        #
+        # Tested in that order, because the weakest reason is the one that reads
+        # as most fixable. Ordered the other way, fire protection came back as
+        # "scope it to a county" when the truth is that 243 of the districts
+        # doing it have no boundary at any scale, and a reader who scoped it
+        # would get an emptier map and the same silence about why.
+        because = ("mostly_absence" if density < THRESHOLDS["map_density_minimum"]
+                   else "thin_extent" if thin else "needs_a_county")
+        if because == "needs_a_county":
+            reason = ("Oregon's 378 cities render as specks at state scale, so this map "
+                      "would compare land areas rather than the measure. Name a county to "
+                      "scope it to, or read the list instead. The governments are here; "
+                      "the state-wide picture of them is not a picture.")
+        elif because == "thin_extent":
+            # §15.5: a choropleth of two or three shapes is a chart of a couple
+            # of numbers wearing a map's clothes, and the shapes carry land area
+            # rather than anything measured. A scoped place map hits this in the
+            # rural counties, where the extent is one or two incorporated cities.
+            reason = (f"{len(extent)} boundaries fall inside this extent, which is too few "
+                      "to read as a map: the shapes would carry land area rather than the "
+                      "measure. A table of the same values says it without the picture "
+                      "claiming a geography.")
+        else:
+            reason = (f"{drawn} of {len(extent)} boundaries on this layer report "
+                      f"{coverage_selector or 'this measure'}, so most of this map would be "
+                      "the no-data colour and the few that carry a value would read as the "
+                      "pattern.")
+            if coverage and coverage["holders"]:
+                reason += f" The work is done by {missing}."
+            reason += " Ask who spends on it instead, which lists them all."
+        result = envelope(
+            "render_map",
+            data={"layer": layer, "metric": metric, "county": county,
+                  "service_area": service_area, "function": function,
+                  "refused": True, "refused_because": because,
+                  "covered": drawn, "polygons": len(extent), "density": density,
+                  "layer_share": coverage["layer_share"] if coverage else None,
+                  "holders": coverage["holders"] if coverage else [],
+                  "svg": viz.refusal(f"{label} by {layer.replace('_', ' ')}", reason),
+                  "table": []},
+            caveats=caveats + [{
+                "code": "map_mostly_absence", "rule": "§15",
+                "guidance": reason + " Do not describe this as a low-spending region, and "
+                            "do not draw it on a different layer to get around the gap: "
+                            "the governments are missing, not their figures."}])
+        cache[signature] = result
+        return result
 
     highlight = None
     if highlight_pid6:
@@ -1695,9 +1991,13 @@ def render_map(store, layer="county", metric="spending_per_resident", county=Non
     cache[signature] = envelope(
         "render_map",
         data={"layer": layer, "metric": metric, "county": county,
-              "service_area": service_area, "highlighted": bool(highlight),
+              "service_area": service_area, "function": function,
+              "highlighted": bool(highlight), "refused": False,
               "svg": result["svg"],
               "covered": result["covered"], "polygons": result["polygons"],
+              "density": density,
+              "layer_share": coverage["layer_share"] if coverage else None,
+              "holders": coverage["holders"] if coverage else [],
               "table": [{"name": r["common_name"] or r["legal_name"],
                          "value": formatter(r["value"])}
                         for r in listed][:60]},
@@ -1707,6 +2007,7 @@ def render_map(store, layer="county", metric="spending_per_resident", county=Non
 
 TOOLS["render_chart"] = render_chart
 TOOLS["render_map"] = render_map
+TOOLS["render_function_map"] = render_function_map
 TOOLS["render_comparison"] = render_comparison
 
 

@@ -53,7 +53,7 @@ QUESTION_TYPE = {
     "scale": "financial_interpretation",
     "spending": "financial_interpretation",
     "inside": "financial_interpretation",
-    "purchasable": "financial_interpretation",
+    "function_split": "financial_interpretation",
     "unusual_areas": "what_stands_out",
     "vs_peers_area": "place_or_cross_entity",
     "vs_peers_time": "place_or_cross_entity",
@@ -106,8 +106,11 @@ PRESETS = [
      "has_spending_breakdown", "unusual_areas"),
     ("inside", "Take me inside its largest service area", "Follow the money",
      "has_financial_functions", "inside"),
-    ("purchasable", "What in its biggest function is actually purchasable?",
-     "Follow the money", "has_financial_functions", "purchasable"),
+    # Level three of the drill. The split is the §11 signal at this depth:
+    # capital share says whether a government is mid-construction on the thing it
+    # spends most on, which is a fact about the year rather than a preference.
+    ("function_split", "Is its biggest function running costs or construction?",
+     "Follow the money", "has_financial_functions", "function_split"),
 
     # The denominator is left out of these two labels on purpose: it is residents
     # for a city and students for a school district, and the answer states which.
@@ -229,20 +232,24 @@ def _headline(entity, result):
     if tool == "drill" and data.get("level") == "function":
         top = data["functions"][0]
         line = (f"Inside {data['service_area']}, the largest function is {top['label']} "
-                f"at {fmt.money(top['value'])}, of which {fmt.money(top['addressable'])} "
-                "is vendor addressable.")
+                f"at {fmt.money(top['value'])}, operating plus capital.")
         if top.get("peer_median"):
             line += (f" The median {top['label']} budget among peers reporting it is "
                      f"{fmt.money(top['peer_median'])}.")
         return line
     if tool == "drill" and data.get("level") == "line_item":
         items = {i["label"]: i["value"] for i in data["items"]}
-        return (f"{data['function']} runs {fmt.money(items.get('Operating expenditure'))} "
-                f"operating and {fmt.money(items.get('Capital expenditure'))} capital. "
-                f"After {fmt.money(items.get('Personnel, adjusted'))} of personnel and "
-                f"{fmt.money(items.get('Excluded amounts'))} that cannot be purchased, "
-                f"{fmt.money(items.get('Vendor addressable'))} is addressable. That last "
-                "figure is a derivation, not a reported line.")
+        line = (f"{data['function']} runs {fmt.money(items.get('Operating expenditure'))} "
+                f"operating and {fmt.money(items.get('Capital expenditure'))} capital, "
+                f"{fmt.money(data.get('total'))} together.")
+        # §8: capital is lumpy, so the share is a position in a bond cycle rather
+        # than a preference. Saying that here keeps the sentence from reading as
+        # a characterisation of how this government chooses to spend.
+        if data.get("capital_share"):
+            line += (f" Capital is {fmt.percent(data['capital_share'])} of the function "
+                     f"in {data['year']}, which is one year of a construction cycle "
+                     "rather than a trend.")
+        return line
     if tool == "get_spending_breakdown" and data.get("service_areas"):
         top = data["service_areas"][0]
         return (f"Largest reported area is {top['service_area']} at "
@@ -853,13 +860,10 @@ def _section_readout(section, entity=None):
             return "No functions are reported inside this area."
         top = functions[0]
         line = (f"Inside {data['service_area']}, the largest function is {top['label']} at "
-                f"{fmt.money(top['value'])}, of which {fmt.money(top['addressable'])} is "
-                "vendor addressable.")
+                f"{fmt.money(top['value'])}, operating plus capital.")
         if top.get("peer_median"):
             line += (f" The median {top['label']} budget among peers reporting it is "
                      f"{fmt.money(top['peer_median'])}.")
-        line += (" The addressable figure is a derivation, not a reported line: operating "
-                 "and capital less personnel and less amounts that cannot be purchased.")
         return line
 
     if section_id == "workforce":
@@ -926,6 +930,88 @@ def _section_readout(section, entity=None):
     return None
 
 
+def _function_map_options(service_area):
+    """The functions inside one service area, and what each can be drawn on.
+
+    Ordered by what Oregon's local governments report spending on them, so the
+    row a reader checks first is the one carrying the most money rather than the
+    one that happens to map.
+    """
+    functions = [r["function_name"] for r in STORE.rows(
+        "SELECT function_name, SUM(COALESCE(operating_expenditures, 0) "
+        "     + COALESCE(capital_expenditures, 0)) AS spend "
+        "FROM financial_functions WHERE service_area = ? "
+        "GROUP BY function_name ORDER BY spend DESC", service_area)]
+    rows = []
+    for name in functions:
+        drawn = T.render_function_map(STORE, name)
+        data = drawn["data"]
+        holders = data.get("holders") or []
+        if data.get("refused") and data.get("refused_because") == "needs_a_county":
+            # Mappable, but city by city, so it needs an extent a reader can
+            # see. Calling this "no map" would be wrong in the direction that
+            # matters: the picture exists, it just cannot be drawn statewide.
+            drawable = f"{data['layer']}, county by county"
+            why = "cities are specks at state scale, so this one needs a county"
+        elif data.get("refused"):
+            drawable = "no map"
+            why = f"only {data['covered']} of {data['polygons']} boundaries report it"
+            # Name who does the work only where they actually hold the money. A
+            # function can fail the density gate while nearly all of it sits on
+            # the layer, and blaming districts for that would be a story about
+            # the wrong absence.
+            share = data.get("layer_share")
+            if holders and share is not None and share < rules.THRESHOLDS[
+                    "map_layer_share_partial"]:
+                why += (f", and {fmt.percent(100 * (1 - share))} of it is "
+                        f"{holders[0]['gov_type'].lower()} work")
+        else:
+            drawable = data["layer"].replace("_", " ")
+            why = (f"{fmt.percent(100 * data['layer_share'])} of the reported spending "
+                   "sits on that layer")
+        rows.append({"function": name, "drawn on": drawable, "why": why})
+    return rows
+
+
+def _map_blocks(result, intro):
+    """A map result as blocks: the picture where it was drawn, the reason where
+    it was not.
+
+    A refused map is not a missing map. render_map returns the reason drawn in
+    the frame, and dropping that leaves the reader with a list and no hint that
+    a map was considered and declined, which is exactly the fact worth knowing:
+    fire protection has no county map because fire districts have no boundary,
+    not because nobody looked. The block carries no coverage figure because
+    nothing was drawn, which also keeps it clear of the §15.1 floor check that
+    guards real choropleths.
+    """
+    data = result.get("data") or {}
+    if not data.get("svg"):
+        return []
+    if data.get("refused"):
+        subject = data.get("function") or data.get("service_area") or "this measure"
+        layer = (data.get("layer") or "").replace("_", " ")
+        if data.get("refused_because") == "needs_a_county":
+            line = (f"{subject} is mostly {layer} work, and Oregon's cities are specks at "
+                    "state scale, so it maps one county at a time rather than statewide.")
+        else:
+            line = (f"{subject} cannot be drawn on a {layer} map: {data.get('covered')} of "
+                    f"{data.get('polygons')} boundaries there report it.")
+            unmapped = [h for h in (data.get("holders") or []) if h["unmapped"]]
+            if unmapped:
+                line += (" It is done by " + ", ".join(
+                    f"{fmt.count(h['entities'])} {h['gov_type'].lower()} entities"
+                    for h in unmapped[:2]) + ", which have no boundary in this data.")
+        return [{"kind": "text", "text": line},
+                {"kind": "map", "svg": data["svg"], "refused": True}]
+    polygons = data.get("polygons") or 0
+    coverage = (data.get("covered", 0) / polygons) if polygons else None
+    if (coverage or 0) < B.MAP_COVERAGE_FLOOR:
+        return []
+    return [{"kind": "text", "text": intro},
+            {"kind": "map", "svg": data["svg"], "coverage": coverage}]
+
+
 def answer_function(function_name):
     """Who does this? The answer a name search cannot give.
 
@@ -963,24 +1049,21 @@ def answer_function(function_name):
          "per resident or student": (
              f"{fmt.rate(row['per_unit'])} per {row['unit']}"
              if row["per_unit"] and row["unit"] else "no denominator"),
-         "vendor addressable": fmt.money(row["addressable"]),
          "year": row["year"]}
         for row in data["entities"]]})
 
-    # The service area this function sits in, mapped across the counties, so the
-    # answer places the list rather than only ranking it.
-    area_map = T.render_map(STORE, "county", "service_area_per_resident",
-                            service_area=data["service_area"])
-    results.append(area_map)
-    map_data = area_map["data"]
-    polygons = map_data.get("polygons") or 0
-    coverage = (map_data.get("covered", 0) / polygons) if polygons else None
-    if map_data.get("svg") and (coverage or 0) >= B.MAP_COVERAGE_FLOOR:
-        blocks.append({"kind": "text", "text": (
-            f"County spending on {data['service_area']} per resident. This is county "
-            "government only, and most of the governments in the list above are not "
-            "counties, so the map places the service rather than the list.")})
-        blocks.append({"kind": "map", "svg": map_data["svg"], "coverage": coverage})
+    # The function itself mapped across the counties, which is the question a
+    # reader of this list has next: not only who spends on it, but where. It is
+    # also the question that cannot always be answered. Where the governments
+    # doing the work have no boundary, the map refuses and says which they are,
+    # and the list above is the honest form of the same question.
+    function_map = T.render_function_map(STORE, function_name)
+    results.append(function_map)
+    layer = (function_map["data"].get("layer") or "").replace("_", " ")
+    blocks.extend(_map_blocks(
+        function_map,
+        f"Spending on {function_name} per resident, by {layer}, the layer holding "
+        "most of it. The list above is several government types; the map is one."))
 
     composed = [{"kind": "answer",
                  "text": " ".join(b["text"] for b in blocks if b["kind"] == "text")}]
@@ -1127,26 +1210,45 @@ def answer_preset(preset_id, pid6=None, county=None):
                 "not a midpoint and a gap against it would not mean anything.")})
     elif preset_id == "inside":
         area = STORE.row("SELECT service_area FROM financial_functions WHERE pid6=? "
-                         "GROUP BY service_area ORDER BY SUM(total_function_pae) DESC "
+                         "GROUP BY service_area ORDER BY SUM(COALESCE(operating_expenditures, 0) "
+                         "  + COALESCE(capital_expenditures, 0)) DESC "
                          "LIMIT 1", pid6)
         add(explore.drill(STORE, pid6, area["service_area"]) if area
             else T.envelope("drill"), "service_area_functions")
-    elif preset_id == "purchasable":
-        top = STORE.row("SELECT service_area, function_name FROM financial_functions "
-                        "WHERE pid6=? ORDER BY total_function_pae DESC LIMIT 1", pid6)
+    elif preset_id == "function_split":
+        top = STORE.row(
+            "SELECT service_area, function_name FROM financial_functions WHERE pid6=? "
+            "ORDER BY COALESCE(operating_expenditures, 0) "
+            "       + COALESCE(capital_expenditures, 0) DESC LIMIT 1", pid6)
         if top:
             result = explore.drill(STORE, pid6, top["service_area"], top["function_name"])
+            # No table. The split is two numbers and the answer sentence states
+            # both, so a table of them restates the sentence, and §15.2 gives a
+            # financial interpretation no table block to put it in.
             add(result)
-            items = result["data"].get("items") or []
-            if items:
-                blocks.append({"kind": "table", "rows": [
-                    {"component": i["label"], "amount": fmt.money(i["value"]),
-                     "what it is": i["note"]} for i in items]})
+            # Where the same function is done elsewhere in Oregon, the map for it
+            # is the next question a reader has, and it is the one place the
+            # coverage gate is visible: some functions can be drawn and some
+            # cannot, and which is which is a fact about who does the work.
+            function_map = T.render_function_map(
+                STORE, top["function_name"],
+                county=(entity or {}).get("host_county"), highlight_pid6=pid6)
+            results.append(function_map)
+            data = function_map["data"]
+            layer = (data.get("layer") or "").replace("_", " ")
+            scoped = data.get("county")
+            blocks.extend(_map_blocks(
+                function_map,
+                f"{top['function_name']} per resident across "
+                f"{(scoped or '').title() + ' County' if scoped else 'Oregon'}, by "
+                f"{layer}, the layer holding most of this function, with "
+                f"{_named(entity)} outlined. Other types report it too and are "
+                "not drawn."))
         else:
             add(T.envelope("drill", caveats=[{
                 "code": "no_functions", "rule": "§2",
                 "guidance": "This entity reports no functions, so there is nothing to "
-                            "decompose. That is an absence of detail, not a report of "
+                            "split. That is an absence of detail, not a report of "
                             "zero spending."}]))
     elif preset_id == "vs_peers_area":
         group, basis = peer_set(pid6)
@@ -1201,6 +1303,21 @@ def answer_preset(preset_id, pid6=None, county=None):
             blocks.append({"kind": "table", "rows": [
                 {"county": r["name"], "per resident": r["value"]}
                 for r in (data.get("table") or [])[:10]]})
+            # The drill from the area to the functions inside it, said as a
+            # table because the answer is which of them can be drawn at all.
+            # Public Safety maps cleanly at the area level and separates one
+            # level down: police is city and county work, fire is district work,
+            # and a reader who only ever sees the area map would take the two to
+            # be equally mappable. Naming the layer each one lands on, or why it
+            # lands on none, is the honest form of "go deeper".
+            inside = _function_map_options(DEFAULT_AREA)
+            if inside:
+                blocks.append({"kind": "text", "text": (
+                    f"One level down, {DEFAULT_AREA} splits into functions that are not "
+                    "done by the same kinds of government, so they do not all map. Where "
+                    "the governments doing the work have no boundary in this data, the "
+                    "map is refused rather than drawn over the gap.")})
+                blocks.append({"kind": "table", "rows": inside})
     elif preset_id == "workforce":
         add(T.get_workforce(STORE, pid6), "workforce_composition")
         # The split into named jobs is what turns a payroll into a picture of a
@@ -1472,12 +1589,10 @@ def answer_preset(preset_id, pid6=None, county=None):
                 context=f"peer median {fmt.rate(data['peers']['median'])} across "
                         f"{fmt.count(data['peers']['n'])} {data['peer_group']} entities"))
         elif result["tool"] == "drill" and data.get("level") == "line_item":
-            addressable = next((i["value"] for i in data["items"]
-                                if i["label"] == "Vendor addressable"), None)
             composed.append(B.figure(
-                f"Vendor addressable, {data['function']}", fmt.money(addressable),
+                data["function"], fmt.money(data.get("total")),
                 marks=marks, year=data.get("year"),
-                context="a derivation, not a reported line"))
+                basis="operating plus capital"))
         elif result["tool"] == "get_spending_breakdown" and data.get("service_areas"):
             top = data["service_areas"][0]
             composed.append(B.figure(

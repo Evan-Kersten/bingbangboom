@@ -202,6 +202,98 @@ def main():
         check(f"{name.title()} is drawn as its own boundary",
               drawn["basis"] == "own_boundary" and drawn["svg"], str(drawn["basis"]))
 
+    print("\nthe drill from service area to function reaches the map (§15.1)")
+    # The case this gate exists for. Fire protection is done by 243 special
+    # districts and 83 cities; one of those districts has a boundary anywhere in
+    # this data. Drawn on places it colours the cities with their own department
+    # and leaves rural Oregon in the no-data neutral, which reads as an absence
+    # of fire spending where it is an absence of drawable fire districts.
+    fire = T.render_function_map(store, "Fire Protection")
+    check("fire protection is refused on every layer",
+          fire["data"]["refused"] is True, str(fire["data"]["layer"]))
+    check("and the refusal is drawn rather than left blank",
+          "fire protection" in fire["data"]["svg"].lower())
+    check("and it names the districts doing the work",
+          any(h["gov_type"] == "Special District" and h["unmapped"]
+              for h in fire["data"]["holders"]), str(fire["data"]["holders"]))
+    check("and says so as a rule, not only as a picture",
+          "map_mostly_absence" in codes(fire))
+    # The sibling function inside the same service area draws, which is the
+    # whole point: the refusal is a fact about who does the work rather than a
+    # blanket rule about mapping functions.
+    police = T.render_function_map(store, "Police Protection")
+    check("police protection, in the same service area, draws",
+          police["data"]["refused"] is False and police["data"]["layer"] == "county",
+          str(police["data"]["layer"]))
+    check("and still states what share of the work its layer holds",
+          "map_layer_holds_minority" in codes(police))
+
+    # Whoever does the work picks the layer. Sewerage is municipal, so counties
+    # would compare a city against governments that mostly run no sewers.
+    sewerage = T.render_function_map(store, "Sewerage")
+    check("a municipal function is drawn on places, not counties",
+          sewerage["data"]["layer"] == "place", str(sewerage["data"]["layer"]))
+    schools = T.render_function_map(store, "Elementary & Secondary Education")
+    check("and a school function on school districts",
+          schools["data"]["layer"] == "school_district", str(schools["data"]["layer"]))
+
+    coverage = T.map_coverage(store, "function", "Fire Protection", "place")
+    check("coverage counts the money, not the entities",
+          0.4 < coverage["layer_share"] < 0.6, str(coverage["layer_share"]))
+    check("the state is held out of the local denominator",
+          coverage["total"] > 0 and not any(
+              h["gov_type"] == "State" for h in coverage["holders"]))
+    # A city missing from a county map has a boundary and is on another layer.
+    # A fire district has none at all. Telling a reader Oregon's cities are
+    # unmapped would be false, and the first draft of this said exactly that.
+    county_view = T.map_coverage(store, "function", "Fire Protection", "county")
+    kinds = {(h["gov_type"], h["unmapped"]) for h in county_view["holders"]}
+    check("a government on another layer is not called unmapped",
+          ("Municipal", False) in kinds, str(kinds))
+    check("and one with no boundary anywhere is",
+          ("Special District", True) in kinds, str(kinds))
+    # The recovered special-district layer is 19 unrelated boundaries. Offering
+    # it as somewhere else to draw invites a map of nineteen districts.
+    check("the recovered layer is never offered as an alternative",
+          all(h["layer"] != "special_district" for h in county_view["holders"]),
+          str(county_view["holders"]))
+
+    print("\nthe gate is measured, and the measure is one number (§15.1)")
+    import rules as R
+    import blocks as B
+    check("the tool and the block validator share one floor",
+          B.MAP_COVERAGE_FLOOR == R.THRESHOLDS["map_density_minimum"])
+    thin = T.render_map(store, "place", "function_per_resident",
+                        function="Sewerage", county="Gilliam")
+    check("an extent of a couple of polygons is refused as too thin to read",
+          thin["data"]["refused"] is True
+          and thin["data"]["polygons"] < R.THRESHOLDS["map_min_polygons"],
+          str(thin["data"]["polygons"]))
+    # A statewide place map is 378 specks and the reader compares land areas.
+    # Every caller scopes place maps; this is what happens when one does not.
+    statewide = T.render_map(store, "place", "function_per_resident", function="Sewerage")
+    check("a statewide place map is refused as unreadable",
+          statewide["data"]["refused_because"] == "needs_a_county",
+          str(statewide["data"].get("refused_because")))
+    scoped = T.render_map(store, "place", "function_per_resident",
+                          function="Sewerage", county="Multnomah")
+    check("and the same map scoped to a county draws",
+          scoped["data"]["refused"] is False, str(scoped["data"]["polygons"]))
+    # The reasons are ranked, strongest first. Fire protection is a place-layer
+    # function and unscoped, so the weak reason applies to it too, and reporting
+    # that one would send a reader off to scope a map that will still be empty.
+    check("mostly-absence outranks needing a county",
+          fire["data"]["refused_because"] == "mostly_absence",
+          str(fire["data"]["refused_because"]))
+
+    missing = T.render_map(store, "county", "function_per_resident")
+    check("a function metric without a function says which argument is missing",
+          "function_required" in codes(missing))
+    unknown = T.render_map(store, "county", "function_per_resident",
+                           function="Sanitation Marketing")
+    check("and an invented function name is refused rather than drawn empty",
+          "no_such_function" in codes(unknown))
+
     # The precinct source is state plane feet and every other layer is degrees.
     # Mixed without conversion, Oregon shrinks to a dot and the district lands
     # off frame — which is what happened the first time this was drawn.
@@ -626,6 +718,7 @@ def main():
         "render_comparison": {"pid6_list": [portland, baker_county],
                               "form": "entities_over_time"},
         "who_spends_on": {"function_name": "Fire Protection"},
+        "render_function_map": {"function": "Police Protection"},
         "compare_change": {"pid6_list": [portland, baker_county]},
         "render_community_map": {"code": "DP03_0128P", "geo_level": "county"},
         "trend_panel": {"pid6_list": [portland, baker_county]},
