@@ -49,8 +49,14 @@ python3 agent/test_tools.py        # 201    python3 app/test_server.py    # 168
 python3 agent/test_orchestrator.py #  44    python3 app/test_parity.py    # 452
 python3 agent/test_viz.py          #  87    python3 evals/run.py          #  22
 python3 agent/test_reports.py      #  53    python3 etl/verify.py         #  52
-python3 agent/test_blocks.py       #  45
+python3 agent/test_blocks.py       #  45    python3 etl/test_project.py   #   6
 ```
+
+CI runs exactly these ten. `evals/run.py --route` is the CI form: without a
+model it checks that each trap question routes to the right tools, which is
+what can be asserted deterministically. The answer assertions need `--model`
+and an API key, and they are what tell you whether a caveat that reached the
+context actually changed the answer — worth running by hand before a release.
 
 `anthropic` is the only third-party import in the tree, in
 `agent/orchestrator.py` alone. Without it — and without `ANTHROPIC_API_KEY` —
@@ -141,9 +147,10 @@ evals/        trap questions, the ones a fluent model gets wrong
 
 Each directory has its own README with more detail.
 
-`.github/workflows/pages.yml` builds and tests on every push and publishes to
-Pages from the default branch only. **Its branch list still names the branch
-this work was done on** — update it for whoever takes over.
+`.github/workflows/pages.yml` runs the ten suites and a real render on every
+pull request and on every push to the default branch, and publishes to Pages
+from the default branch only. Doc-only changes are skipped via `paths-ignore`,
+so a README push does not spend a deploy.
 
 ## Known unfinished
 
