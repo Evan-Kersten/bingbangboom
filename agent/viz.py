@@ -25,6 +25,7 @@ renders in light.
 
 import html
 import math
+import re
 
 import format as fmt
 
@@ -121,6 +122,32 @@ def frame(width, height, body, label):
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" '
             f'width="100%" style="max-width:{width}px;height:auto;display:block" '
             f'role="img" aria-label="{esc(label)}" class="pf-viz">{body}</svg>')
+
+
+def append_note(svg, note, columns=86):
+    """Add a line under a finished chart, growing the frame to hold it.
+
+    Used for facts about the drawing that only exist once the drawing is done —
+    chiefly a government the reader picked that the chart could not draw. That
+    belongs on the picture, because the picture is what gets read and screenshot,
+    and a caveat in a panel underneath does not travel with it.
+    """
+    match = re.search(r'viewBox="0 0 ([\d.]+) ([\d.]+)"', svg)
+    if not match:
+        return svg
+    width, height = float(match.group(1)), float(match.group(2))
+    lines = wrap(note, columns)
+    grown = height + 6 + len(lines) * 15
+
+    extra = []
+    y = height + 14
+    for line in lines:
+        extra.append(text_el(0, y, line, size=11, fill="muted"))
+        y += 15
+
+    svg = svg.replace(f'viewBox="0 0 {match.group(1)} {match.group(2)}"',
+                      f'viewBox="0 0 {match.group(1)} {grown:g}"', 1)
+    return svg.replace("</svg>", "".join(extra) + "</svg>", 1)
 
 
 def header(title, subtitle, width):

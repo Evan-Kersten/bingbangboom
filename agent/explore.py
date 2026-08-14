@@ -346,9 +346,7 @@ def compare_entities_over_time(store, pid6_list, measure="expenditure"):
             "code": "unknown_measure", "rule": "§4",
             "guidance": "Measure must be expenditure, revenue or debt."}])
 
-    entities = [T._entity(store, p) for p in pid6_list]
-    found = [e for e in entities if e]
-    missing = [p for p, e in zip(pid6_list, entities) if not e]
+    found, unchartable, missing = partition(store, pid6_list)
     types = {e["gov_type_name"] for e in found}
 
     series, thin = [], []
@@ -383,6 +381,8 @@ def compare_entities_over_time(store, pid6_list, measure="expenditure"):
         caveats.append({
             "code": "entities_missing", "rule": "§12",
             "guidance": f"{len(missing)} requested entities are not in the data."})
+    if unchartable:
+        caveats.append(unchartable_caveat(unchartable))
     if len(series) > 4:
         caveats.append({
             "code": "series_capped", "rule": "§15",
@@ -392,7 +392,8 @@ def compare_entities_over_time(store, pid6_list, measure="expenditure"):
     return T.envelope(
         "compare_entities_over_time",
         data={"measure": measure, "series": series, "excluded": thin, "missing": missing,
-              "entity_types": sorted(types), "count": len(series)},
+              "entity_types": sorted(types), "count": len(series),
+              "unchartable": [e["common_name"] or e["legal_name"] for e in unchartable]},
         caveats=caveats,
         blocked=[not_computable("service_area_yoy"), not_computable("outcome_or_performance")])
 
@@ -404,9 +405,7 @@ def compare_service_area(store, pid6_list, service_area):
     entity. Entities may report different years, which is stated rather than
     aligned away.
     """
-    entities = [T._entity(store, p) for p in pid6_list]
-    found = [e for e in entities if e]
-    missing = [p for p, e in zip(pid6_list, entities) if not e]
+    found, unchartable, missing = partition(store, pid6_list)
     types = {e["gov_type_name"] for e in found}
 
     rows, absent, years = [], [], set()
@@ -453,11 +452,14 @@ def compare_service_area(store, pid6_list, service_area):
         caveats.append({
             "code": "entities_missing", "rule": "§12",
             "guidance": f"{len(missing)} requested entities are not in the data."})
+    if unchartable:
+        caveats.append(unchartable_caveat(unchartable))
 
     return T.envelope(
         "compare_service_area",
         data={"service_area": service_area, "entities": rows, "absent": absent,
               "missing": missing, "years": sorted(years),
+              "unchartable": [e["common_name"] or e["legal_name"] for e in unchartable],
               "entity_types": sorted(types), "count": len(rows)},
         caveats=caveats,
         blocked=[not_computable("service_area_yoy")])
@@ -470,6 +472,47 @@ def compare_service_area(store, pid6_list, service_area):
 # The quantile is the same linear interpolation etl/peers.py uses; it is repeated
 # rather than imported because the ETL is not on the agent's path at runtime.
 DEGENERATE_RATIO = 0.05
+
+
+def chartable(store, pid6):
+    """Whether any of the four comparison forms has anything to draw for this.
+
+    Fifteen governments report neither a spending breakdown nor a year of
+    totals. They are real, they are searchable, and until this existed the
+    browser dropped them from a comparison without a word — so a reader who
+    picked one got an answer about the other government alone. §9: reporting
+    nothing is not the same as not existing, and both are different again from
+    spending zero.
+    """
+    return bool(
+        store.row("SELECT 1 AS x FROM spending_by_service_area "
+                  "WHERE pid6=? AND total > 0 LIMIT 1", pid6)
+        or store.row("SELECT 1 AS x FROM financial_trends WHERE pid6=? LIMIT 1", pid6))
+
+
+def partition(store, pid6_list):
+    """Split a picked set into drawable, present-but-undrawable, and unknown."""
+    found, unchartable, missing = [], [], []
+    for pid6 in pid6_list:
+        entity = T._entity(store, pid6)
+        if not entity:
+            missing.append(pid6)
+        elif not _cached(store, ("chartable", pid6), lambda p=pid6: chartable(store, p)):
+            unchartable.append(entity)
+        else:
+            found.append(entity)
+    return found, unchartable, missing
+
+
+def unchartable_caveat(unchartable):
+    names = [e["common_name"] or e["legal_name"] for e in unchartable]
+    return {
+        "code": "nothing_to_compare", "rule": "§9",
+        "guidance": f"{len(names)} of the governments picked report neither a spending "
+                    "breakdown nor a year of totals, so there is nothing to put on this "
+                    f"axis for them: {', '.join(names[:4])}. They are in the data and "
+                    "were left out of the drawing, which is not the same as spending "
+                    "nothing. Name them."}
 
 
 def _cached(store, key, build):
@@ -559,9 +602,7 @@ def per_capita_by_service_area(store, pid6_list, service_area):
     estimate per entity, not a series, and service-area spending is a single year
     per entity, so this is a snapshot on both axes.
     """
-    entities = [T._entity(store, p) for p in pid6_list]
-    found = [e for e in entities if e]
-    missing = [p for p, e in zip(pid6_list, entities) if not e]
+    found, unchartable, missing = partition(store, pid6_list)
     types = {e["gov_type_name"] for e in found}
 
     # A school district's population field is enrollment, so dividing by it gives
@@ -672,6 +713,8 @@ def per_capita_by_service_area(store, pid6_list, service_area):
         caveats.append({
             "code": "entities_missing", "rule": "§12",
             "guidance": f"{len(missing)} requested entities are not in the data."})
+    if unchartable:
+        caveats.append(unchartable_caveat(unchartable))
 
     return T.envelope(
         "per_capita_by_service_area",
@@ -679,6 +722,7 @@ def per_capita_by_service_area(store, pid6_list, service_area):
               "unit": (sorted(units)[0].rstrip("s") if units else "resident"),
               "entities": rows, "peers": peers, "excluded_no_population": no_population,
               "absent": absent, "missing": missing, "years": sorted(years),
+              "unchartable": [e["common_name"] or e["legal_name"] for e in unchartable],
               "entity_types": sorted(types), "count": len(rows)},
         caveats=caveats,
         blocked=[not_computable("service_area_yoy")])
@@ -697,9 +741,7 @@ def per_capita_over_time(store, pid6_list, indexed=False, reference=True):
     changes size year to year moves when its membership moves, and that would
     read as a trend.
     """
-    entities = [T._entity(store, p) for p in pid6_list]
-    found = [e for e in entities if e]
-    missing = [p for p, e in zip(pid6_list, entities) if not e]
+    found, unchartable, missing = partition(store, pid6_list)
     types = {e["gov_type_name"] for e in found}
 
     units = {denominator(e["gov_type_name"]) for e in found
@@ -813,6 +855,8 @@ def per_capita_over_time(store, pid6_list, indexed=False, reference=True):
         caveats.append({
             "code": "entities_missing", "rule": "§12",
             "guidance": f"{len(missing)} requested entities are not in the data."})
+    if unchartable:
+        caveats.append(unchartable_caveat(unchartable))
 
     return T.envelope(
         "per_capita_over_time",
@@ -820,7 +864,8 @@ def per_capita_over_time(store, pid6_list, indexed=False, reference=True):
               "unit": (sorted(units)[0].rstrip("s") if units else "resident"),
               "indexed": bool(indexed), "series": series, "baseline": baseline,
               "excluded_no_population": no_population, "excluded_thin": thin,
-              "missing": missing, "entity_types": sorted(types), "count": len(series)},
+              "missing": missing, "entity_types": sorted(types), "count": len(series),
+              "unchartable": [e["common_name"] or e["legal_name"] for e in unchartable]},
         caveats=caveats,
         blocked=[not_computable("service_area_yoy"),
                  not_computable("outcome_or_performance")])

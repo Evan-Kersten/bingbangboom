@@ -608,6 +608,75 @@ def list_ecosystem(store, county_pid6=None, county_name=None):
 
 # ---------------------------------------------------------------- offices
 
+# The OCD id already carries the fact that matters most about an elected seat
+# and nothing was reading it. A seat filed under
+#
+#     ocd-division/country:us/state:or/place:adair_village/council_district:ward_1
+#
+# is elected by ward one alone. A seat filed under the bare jurisdiction with
+# office_position "Position 3" is elected by everybody in the jurisdiction. That
+# is the difference between "you vote on all seven of these" and "you vote on
+# one of seven, the one covering your address", and it is the single thing about
+# a governing body a reader can act on.
+#
+# board_distict is a misspelling present in the source data; it is matched here
+# rather than corrected upstream so the parser stays true to what is filed.
+SUBDIVISION = re.compile(
+    r"/(board_district|board_distict|council_district|ward|zone|subdistrict):([^/]+)$")
+
+# §7: a ballot structure describes how a seat is filled, never who holds it.
+AT_LARGE = "at_large"          # whole jurisdiction votes, seats numbered by position
+BY_DISTRICT = "by_district"    # each seat belongs to a ward, zone or board district
+SINGLE = "single"              # one seat for the whole jurisdiction
+MIXED = "mixed"                # a body that fills some seats each way
+
+
+def _seat_order(label):
+    """Sort 'Ward 2' before 'Ward 10', which a plain string sort will not."""
+    match = re.search(r"(\d+)", label or "")
+    return (re.sub(r"\d+", "", label or ""), int(match.group(1)) if match else 0)
+
+
+def parse_ocd(ocd_id):
+    """Split an OCD id into the jurisdiction and the sub-district inside it."""
+    match = SUBDIVISION.search(ocd_id or "")
+    if not match:
+        return {"jurisdiction": ocd_id, "subdivision_type": None, "subdivision": None}
+    kind = match.group(1).replace("board_distict", "board_district")
+    return {"jurisdiction": ocd_id[:match.start()],
+            "subdivision_type": kind,
+            "subdivision": match.group(2)}
+
+
+def district_label(subdivision_type, subdivision):
+    """'Ward 1', 'Zone 3', 'District 4' — what the ballot would call it."""
+    if not subdivision:
+        return None
+    name = subdivision.replace("_", " ").strip()
+    # Sources write both "ward_1" and "district_1"; the prefix is already the
+    # noun, so repeating the subdivision type would read "Ward ward 1".
+    if re.match(r"^(ward|zone|district|position|subdistrict)\b", name, re.I):
+        return name[:1].upper() + name[1:]
+    noun = {"council_district": "District", "board_district": "Zone",
+            "ward": "Ward", "zone": "Zone", "subdistrict": "Subdistrict"}.get(
+                subdivision_type, "District")
+    return f"{noun} {name}"
+
+
+def ballot_structure(seats):
+    """How a body's seats are filled, from the seats themselves.
+
+    Returns one of the four constants above. A body is only called at-large when
+    no seat carries a sub-district, because one districted seat in a body means a
+    reader's ballot does not contain all of them.
+    """
+    districted = [s for s in seats if s.get("district")]
+    if not districted:
+        return SINGLE if len(seats) == 1 else AT_LARGE
+    return BY_DISTRICT if len(districted) == len(seats) else MIXED
+
+
+
 def get_offices(store, pid6):
     """§7: role, seat and holder are three different things, and holders are absent."""
     entity = _entity(store, pid6)
@@ -647,10 +716,23 @@ def get_offices(store, pid6):
 
     roles = []
     for role, seats in sorted(by_role.items()):
+        parsed = []
+        for seat in seats:
+            parts = parse_ocd(seat["ocd_id"])
+            parsed.append({
+                "position": seat["office_position"],
+                "district": district_label(parts["subdivision_type"],
+                                           parts["subdivision"]),
+                "district_type": parts["subdivision_type"],
+                "ocd_id": seat["ocd_id"]})
+        parsed.sort(key=lambda s: _seat_order(s["district"] or s["position"] or ""))
+        structure = ballot_structure(parsed)
         roles.append({
             "role": role,
-            "seats": [s["office_position"] for s in seats],
+            "seats": parsed,
             "seat_count": len(seats),
+            "ballot": structure,
+            "districts": [s["district"] for s in parsed if s["district"]],
             "filled_by": _one(s["occupation_method"] for s in seats),
             "partisan": _one(s["partisan_election"] for s in seats),
             "term_length": _one(s["term_length"] for s in seats)})
@@ -665,10 +747,33 @@ def get_offices(store, pid6):
                         "can act on, so state it. It describes the seat, not who holds "
                         "it; no holder names are in this data."})
 
+    # The distinction a ballot actually makes. Reporting "7 seats" without it
+    # lets a reader assume they vote on all seven when they may vote on one.
+    districted = [r for r in roles if r["ballot"] in (BY_DISTRICT, MIXED)]
+    at_large = [r for r in roles if r["ballot"] == AT_LARGE]
+    if districted:
+        caveats.append({
+            "code": "seats_elected_by_district", "rule": "§7",
+            "guidance": "Seats in "
+                        + ", ".join(r["role"] for r in districted)
+                        + " belong to a ward, zone or board district, so a voter fills "
+                          "one of them rather than all of them. Say which seats are on "
+                          "any one ballot; a seat count is not a ballot."})
+    if at_large:
+        caveats.append({
+            "code": "seats_elected_at_large", "rule": "§7",
+            "guidance": "Seats in " + ", ".join(r["role"] for r in at_large)
+                        + " are numbered positions with no sub-district in the record, "
+                          "so on the evidence here every voter in the jurisdiction "
+                          "votes on each of them. The numbering is a ballot label, not "
+                          "a geography."})
+
     return envelope(
         "get_offices", entity=entity,
         data={"roles": roles, "total_seats": len(rows),
               "elected_seats": elected, "appointed_seats": appointed,
+              "districted_seats": sum(r["seat_count"] for r in districted),
+              "at_large_seats": sum(r["seat_count"] for r in at_large),
               "match_confidence": sorted(confidences)},
         caveats=caveats)
 
@@ -1007,7 +1112,7 @@ def render_comparison(store, pid6_list, form="entities_over_time",
             single_type = len({r["gov_type"] for r in rows}) == 1
             svg = viz.horizontal_bars(
                 f"{service_area}: spending per {unit}",
-                f"{len(rows)} governments, {span}",
+                f"{fmt.plural(len(rows), 'government')}, {span}",
                 [{"label": r["label"], "value": r["value"],
                   "peer_median": r["peer_median"] if single_type else None,
                   "peer_degenerate": 0 if (single_type and r["peer_median"]) else 1}
@@ -1090,7 +1195,7 @@ def render_comparison(store, pid6_list, form="entities_over_time",
                     else f"{min(years)} to {max(years)}, one year each")
             svg = viz.horizontal_bars(
                 f"Spending on {service_area}",
-                f"{len(rows)} governments, {span}",
+                f"{fmt.plural(len(rows), 'government')}, {span}",
                 [{"label": r["label"], "value": r["value"],
                   "peer_median": None, "peer_degenerate": 1} for r in rows],
                 note="A snapshot, not a trend. Service-area spending exists for one "
@@ -1102,10 +1207,19 @@ def render_comparison(store, pid6_list, form="entities_over_time",
                       if not r["peer_degenerate"] else "not comparable",
                       "year": r["year"]} for r in rows]
 
+    # A government the reader picked and the chart could not draw has to leave a
+    # mark on the drawing, not only in the rules panel. Dropping it silently is
+    # the defect this whole comparison path was rebuilt to prevent.
+    unchartable = source["data"].get("unchartable") or []
+    if unchartable and svg:
+        svg = viz.append_note(
+            svg, f"Not drawn: {', '.join(unchartable)} — neither a spending breakdown "
+                 "nor a year of totals is reported. That is an absence, not a zero.")
+
     return envelope(
         "render_comparison",
         data={"form": form, "measure": measure, "service_area": service_area,
-              "indexed": bool(indexed),
+              "indexed": bool(indexed), "unchartable": unchartable,
               "svg": svg, "table": table, "refused": table is None,
               "detail": source["data"]},
         caveats=source["caveats"], blocked=source["not_computable"])

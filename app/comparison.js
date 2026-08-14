@@ -64,6 +64,11 @@
     return Math.round(value).toLocaleString('en-US');
   }
 
+  function plural(number, noun, many) {
+    const word = Math.abs(number) === 1 ? noun : (many || noun + 's');
+    return count(number) + ' ' + word;
+  }
+
   function index(value) {
     if (value === null || value === undefined) return null;
     return Math.round(value).toLocaleString('en-US');
@@ -74,7 +79,7 @@
   function esc(text) {
     return String(text === null || text === undefined ? '' : text)
       .replace(/[&<>"']/g, (c) => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#x27;',
       }[c]));
   }
 
@@ -164,7 +169,7 @@
 
   function refusal(title, reason) {
     const width = DATA.layout.width;
-    const lines = wrap(reason, 78);
+    const lines = wrap(reason, 84);
     let y = 44;
     let body = textEl(0, 16, title, { size: 14, fill: 'ink', weight: '600' });
     lines.forEach((line) => {
@@ -174,6 +179,35 @@
     body += '<rect x="0" y="30" width="3" height="' + (y - 40)
       + '" rx="1.5" fill="' + token('warning') + '"/>';
     return frame(width, y, body, title + '. ' + reason);
+  }
+
+  /* A fact about the drawing that only exists once the drawing is done, chiefly
+     a government the reader picked that the chart could not draw. It belongs on
+     the picture, because the picture is what gets read and screenshot, and a
+     rule in a panel underneath does not travel with it. Mirrors
+     viz.append_note so both engines produce the same chart. */
+  function appendNote(svg, note, columns) {
+    const match = /viewBox="0 0 ([\d.]+) ([\d.]+)"/.exec(svg);
+    if (!match) return svg;
+    const height = parseFloat(match[2]);
+    const lines = wrap(note, columns || 86);
+    const grown = height + 6 + lines.length * 15;
+    let extra = '';
+    let y = height + 14;
+    lines.forEach((line) => {
+      extra += textEl(0, y, line, { size: 11, fill: 'muted' });
+      y += 15;
+    });
+    return svg
+      .replace('viewBox="0 0 ' + match[1] + ' ' + match[2] + '"',
+               'viewBox="0 0 ' + match[1] + ' ' + trimNumber(grown) + '"')
+      .replace('</svg>', extra + '</svg>');
+  }
+
+  /* Python's %g drops a trailing ".0"; JS toString does not add one, but a
+     fractional height has to render the same in both or the frames differ. */
+  function trimNumber(value) {
+    return String(Math.round(value * 1e6) / 1e6);
   }
 
   // ----------------------------------------------------------------- forms
@@ -403,7 +437,36 @@
 
   function entity(pid6) {
     const row = DATA.entities[pid6];
-    return row ? { pid6, name: row[0], govType: row[1], population: row[2] } : null;
+    return row ? { pid6, name: row[0], govType: row[1], population: row[2],
+                   chartable: Boolean(row[3]) } : null;
+  }
+
+  /* Three states, not two, and collapsing the middle one is what made a picked
+     government vanish from its own comparison: an id this build has never heard
+     of, an entity that is in the data but reports nothing any of these charts
+     can draw, and one that can be drawn. §9 and §14 want the first two told
+     apart — "not in the data" and "nothing to compare here" are different
+     sentences, and only one of them is true of a drainage district. */
+  function partition(pid6List) {
+    const found = [];
+    const unchartable = [];
+    const missing = [];
+    pid6List.forEach((pid6) => {
+      const e = entity(pid6);
+      if (!e) missing.push(pid6);
+      else if (!e.chartable) unchartable.push(e);
+      else found.push(e);
+    });
+    return { found, unchartable, missing };
+  }
+
+  function unchartableCaveat(unchartable) {
+    return { code: 'nothing_to_compare', rule: '§9',
+      guidance: unchartable.length + ' of the governments picked report neither a '
+        + 'spending breakdown nor a year of totals, so there is nothing to put on '
+        + 'this axis for them: ' + nameList(unchartable.map((e) => e.name))
+        + '. They are in the data and were left out of the drawing, which is not the '
+        + 'same as spending nothing. Name them.' };
   }
 
   // A school district's population is its enrollment, so dividing by it gives
@@ -440,8 +503,7 @@
   }
 
   function perCapitaByServiceArea(pid6List, serviceArea) {
-    const found = pid6List.map(entity).filter(Boolean);
-    const missing = pid6List.filter((p) => !DATA.entities[p]);
+    const { found, unchartable, missing } = partition(pid6List);
     const types = Array.from(new Set(found.map((e) => e.govType))).sort();
 
     const mixed = mixedDenominators(found);
@@ -534,18 +596,18 @@
       caveats.push({ code: 'entities_missing', rule: '§12',
         guidance: missing.length + ' requested entities are not in the data.' });
     }
+    if (unchartable.length) caveats.push(unchartableCaveat(unchartable));
 
     return { serviceArea, entities: rows, peers, excludedNoPopulation: noPopulation,
       absent, missing, years: sortedYears, entityTypes: types,
-      unit: unitOf(found), caveats };
+      unit: unitOf(found), unchartable: unchartable.map((e) => e.name), caveats };
   }
 
   // Written out rather than derived from the per-resident form: it compares
   // shares, not per-resident amounts, so it carries a different median, and it
   // needs no population, so an entity excluded there belongs here.
   function serviceAreaAbsolute(pid6List, serviceArea) {
-    const found = pid6List.map(entity).filter(Boolean);
-    const missing = pid6List.filter((p) => !DATA.entities[p]);
+    const { found, unchartable, missing } = partition(pid6List);
     const types = Array.from(new Set(found.map((e) => e.govType))).sort();
 
     const rows = [];
@@ -594,9 +656,10 @@
       caveats.push({ code: 'entities_missing', rule: '§12',
         guidance: missing.length + ' requested entities are not in the data.' });
     }
+    if (unchartable.length) caveats.push(unchartableCaveat(unchartable));
 
     return { serviceArea, entities: rows, absent, missing, years: sortedYears,
-      entityTypes: types, caveats };
+      entityTypes: types, unchartable: unchartable.map((e) => e.name), caveats };
   }
 
   const MEASURE_COLUMN = { revenue: 1, expenditure: 2, debt: 3 };
@@ -616,8 +679,7 @@
     const o = options || {};
     const perResident = Boolean(o.perResident);
     const measure = o.measure || 'expenditure';
-    const found = pid6List.map(entity).filter(Boolean);
-    const missing = pid6List.filter((p) => !DATA.entities[p]);
+    const { found, unchartable, missing } = partition(pid6List);
     const types = Array.from(new Set(found.map((e) => e.govType))).sort();
 
     const mixed = perResident ? mixedDenominators(found) : null;
@@ -713,6 +775,7 @@
       caveats.push({ code: 'entities_missing', rule: '§12',
         guidance: missing.length + ' requested entities are not in the data.' });
     }
+    if (unchartable.length) caveats.push(unchartableCaveat(unchartable));
     if (!perResident && series.length > DATA.layout.maxSeries) {
       caveats.push({ code: 'series_capped', rule: '§15',
         guidance: 'Past four lines the legend stops carrying identity. Only the first four '
@@ -721,7 +784,8 @@
 
     return { series, baseline, indexed: Boolean(o.indexed), measure,
       excludedNoPopulation: noPopulation, excludedThin: thin, missing,
-      entityTypes: types, unit: unitOf(found), caveats };
+      entityTypes: types, unit: unitOf(found),
+      unchartable: unchartable.map((e) => e.name), caveats };
   }
 
   // -------------------------------------------------------------- headline
@@ -747,11 +811,28 @@
         : 'in total dollars, which ranks by population';
       const top = rows[0];
       const bottom = rows[rows.length - 1];
-      let line = 'On ' + detail.serviceArea + ' ' + basis + ', ' + top.label
-        + ' is highest at ' + formatter(top.value) + ' and ' + bottom.label
-        + ' lowest at ' + formatter(bottom.value) + '.';
-      if (rows.length > 1 && bottom.value) {
-        line += ' That is a ' + (top.value / bottom.value).toFixed(1) + '× spread.';
+      /* One row is not a comparison. Reading rows[0] and rows[-1] off a single
+         row produced "Portland is highest at $709 and Portland lowest at $709",
+         which stages a race between a government and itself. */
+      let line;
+      if (rows.length === 1) {
+        line = 'Only ' + top.label + ' can be drawn here, at ' + formatter(top.value)
+          + ' on ' + detail.serviceArea + ' ' + basis + '. One government is a figure, '
+          + 'not a comparison.';
+      } else {
+        line = 'On ' + detail.serviceArea + ' ' + basis + ', ' + top.label
+          + ' is highest at ' + formatter(top.value) + ' and ' + bottom.label
+          + ' lowest at ' + formatter(bottom.value) + '.';
+        if (bottom.value) {
+          line += ' That is a ' + (top.value / bottom.value).toFixed(1) + '× spread.';
+        }
+      }
+      if (detail.unchartable && detail.unchartable.length) {
+        const one = detail.unchartable.length === 1;
+        line += ' ' + detail.unchartable.join(', ') + (one ? ' reports' : ' report')
+          + ' neither a spending breakdown nor a year of totals, so there is nothing '
+          + 'to draw for ' + (one ? 'it' : 'them')
+          + ' here; that is not a report of zero.';
       }
       if (detail.absent && detail.absent.length) {
         line += ' ' + detail.absent.length + ' of the set reports nothing here: '
@@ -843,7 +924,7 @@
         const span = detail.years.length === 1 ? String(detail.years[0])
           : detail.years[0] + ' to ' + detail.years[detail.years.length - 1] + ', one year each';
         svg = horizontalBars(serviceArea + ': spending per ' + detail.unit,
-          rows.length + ' governments, ' + span,
+          plural(rows.length, 'government') + ', ' + span,
           rows.map((r) => ({ label: r.label, value: r.value,
             peerMedian: singleType ? r.peerMedian : null,
             peerDegenerate: !(singleType && r.peerMedian) })),
@@ -873,7 +954,7 @@
         const span = detail.years.length === 1 ? String(detail.years[0])
           : detail.years[0] + ' to ' + detail.years[detail.years.length - 1] + ', one year each';
         svg = horizontalBars('Spending on ' + serviceArea,
-          rows.length + ' governments, ' + span,
+          plural(rows.length, 'government') + ', ' + span,
           rows.map((r) => ({ label: r.label, value: r.value, peerMedian: null,
             peerDegenerate: true })),
           { note: 'A snapshot, not a trend. Service-area spending exists for one year per '
@@ -897,12 +978,14 @@
           + 'different measures and cannot share an axis. Compare entity totals, or '
           + 'split the set by type.');
       } else if (series.length < 2) {
-        svg = refusal(perResident ? 'Spending per ' + detail.unit + ' over time'
-          : 'Spending over time',
-          'Fewer than two entities can be drawn: an entity needs two or more years'
-          + (perResident ? ', and a per-' + detail.unit + ' line needs a ' + detail.unit
-            + ' count' : '')
-          + '. One year is a point, not a trend.');
+        svg = perResident
+          ? refusal('Spending per ' + detail.unit + ' over time',
+              'Fewer than two entities can be drawn: an entity needs both a '
+              + detail.unit + ' count in the data and two or more years of spending. '
+              + 'One year is a point, not a trend.')
+          : refusal('Total spending over time',
+              'Fewer than two entities have two or more years of data, so there is '
+              + 'nothing to compare. One year is a point, not a trend.');
       } else {
         const drawn = series.slice(0, DATA.layout.maxSeries);
         const years = Array.from(new Set([].concat.apply([],
@@ -910,20 +993,22 @@
         let note = perResident
           ? 'The ' + detail.unit + ' count is one estimate per entity and is held constant, '
             + 'so what moves here is spending.'
-          : 'Entity totals. No line here is a service area.';
-        if (series.length > DATA.layout.maxSeries) {
-          note += ' Four lines drawn: '
-            + series.slice(DATA.layout.maxSeries).map((s) => s.label).join(', ')
-            + ' also requested.';
+          : null;
+        const folded = series.slice(DATA.layout.maxSeries).map((s) => s.label);
+        if (perResident && folded.length) {
+          note += ' Four lines drawn: ' + folded.join(', ') + ' also requested.';
+        } else if (!perResident && folded.length) {
+          note = 'Four lines drawn. Also requested: ' + folded.join(', ') + '.';
         }
         const formatter = indexed ? index : (perResident ? rate : money);
         svg = multiSeries(
           indexed ? 'Spending per ' + detail.unit + ', indexed'
-            : (perResident ? 'Spending per ' + detail.unit : 'Total spending over time'),
+            : (perResident ? 'Spending per ' + detail.unit
+              : 'Total spending: ' + plural(drawn.length, 'government') + ' compared'),
           indexed ? years[0] + ' = 100, ' + drawn.length + ' governments compared'
             : years[0] + ' to ' + years[years.length - 1]
               + (perResident ? ', entity totals divided by ' + detail.unit + 's'
-                : ', entity totals'),
+                : ', entity totals rather than any single category'),
           drawn,
           { formatter, note, reference: detail.baseline,
             baseline: indexed ? 100 : null });
@@ -940,6 +1025,13 @@
           return row;
         });
       }
+    }
+
+    const unchartable = detail.unchartable || [];
+    if (unchartable.length && svg) {
+      svg = appendNote(svg, 'Not drawn: ' + unchartable.join(', ')
+        + ' \u2014 neither a spending breakdown nor a year of totals is reported. '
+        + 'That is an absence, not a zero.');
     }
 
     const blocks = [{ kind: 'answer', text: headline(form, detail) }];

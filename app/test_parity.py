@@ -20,6 +20,7 @@ sorting, the caveat logic, and the headline sentence.
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -70,6 +71,10 @@ const out = requests.map((r) => {{
     codes: limits ? limits.rules.map((x) => x.code).sort() : [],
     refused: Boolean(result.refused),
     svgBytes: chart && chart.svg ? chart.svg.length : 0,
+    // Text nodes only: coordinates round differently between the two engines,
+    // but a sentence drawn on a chart is a claim and has to match exactly.
+    svgText: chart && chart.svg
+      ? (chart.svg.match(/>([^<>]+)</g) || []).map((t) => t.slice(1, -1)) : [],
   }};
 }});
 process.stdout.write(JSON.stringify(out));
@@ -104,6 +109,7 @@ def python_answer(store, request):
         "codes": sorted({c["code"] for c in result["caveats"]}),
         "refused": bool(result["data"].get("refused")),
         "svgBytes": len(result["data"].get("svg") or ""),
+        "svgText": re.findall(r">([^<>]+)<", result["data"].get("svg") or ""),
     }
 
 
@@ -135,6 +141,10 @@ def main():
     school = store.row("SELECT pid6 FROM entities WHERE gov_type_name='School District' "
                        "AND legal_name LIKE '%PORTLAND%' LIMIT 1")["pid6"]
     salem_schools = pid("SALEM KEIZER SCH DIST 24J")
+    unchartable = store.row(
+        "SELECT pid6 FROM entities WHERE pid6 NOT IN "
+        "(SELECT pid6 FROM spending_by_service_area WHERE total > 0) "
+        "AND pid6 NOT IN (SELECT pid6 FROM financial_trends) LIMIT 1")["pid6"]
     beaverton_schools = pid("BEAVERTON SCH DIST 48J")
 
     # The sets are chosen to hit the branches that differ: the pair the reader
@@ -154,6 +164,12 @@ def main():
         # And a set entirely of school districts, which is not refused but must
         # be labelled per student everywhere the city set says per resident.
         "school districts only": [school, salem_schools, beaverton_schools],
+        # A government the search box offers and no chart can draw. The browser
+        # used to drop it silently and answer about the other one alone, which
+        # is the exact failure this whole mechanism exists to prevent.
+        "one that cannot be charted": [portland, unchartable],
+        # And the same government on its own: nothing to draw at all.
+        "nothing chartable at all": [unchartable],
     }
 
     requests = []
@@ -202,6 +218,13 @@ def main():
         check(f"{label}: same rules attached", js["codes"] == py["codes"],
               f"\n      js only: {sorted(set(js['codes']) - set(py['codes']))}"
               f"\n      py only: {sorted(set(py['codes']) - set(js['codes']))}")
+        # The chart is a claim too. A note naming a government that could not be
+        # drawn has to appear on both, or a reader gets a different picture
+        # depending on whether a server happened to be running.
+        check(f"{label}: the chart says the same words",
+              js["svgText"] == py["svgText"],
+              f"\n      js only: {[t for t in js['svgText'] if t not in py['svgText']][:3]}"
+              f"\n      py only: {[t for t in py['svgText'] if t not in js['svgText']][:3]}")
 
         if py["table"] is None or js["table"] is None:
             check(f"{label}: both omit the table", py["table"] == js["table"],

@@ -136,6 +136,45 @@ def main():
     check("and an entity with real staff is not flagged that way",
           "reported_zero_workforce" not in codes(T.get_workforce(store, baker_county)))
 
+    print("\noffices say how a seat is filled, not just that it exists (§7)")
+    # The OCD id already carried this and nothing read it. A seat filed under a
+    # sub-district is elected by that ward alone; a seat filed under the bare
+    # jurisdiction with a numbered position is elected by everybody.
+    parts = T.parse_ocd("ocd-division/country:us/state:or/place:x/council_district:ward_1")
+    check("a sub-district is parsed off the jurisdiction",
+          parts["subdivision"] == "ward_1" and parts["jurisdiction"].endswith("place:x"))
+    check("and reads as a ballot would name it",
+          T.district_label("council_district", "ward_1") == "Ward 1")
+    # board_distict is misspelled in the source; the parser matches what is filed.
+    check("the source's misspelled sub-district is still parsed",
+          T.parse_ocd("ocd-division/x/board_distict:zone_2")["subdivision"] == "zone_2")
+    check("a bare jurisdiction has no sub-district",
+          T.parse_ocd("ocd-division/country:us/state:or/county:baker")["subdivision"] is None)
+
+    schools = store.row("SELECT pid6 FROM entities WHERE legal_name='PORTLAND SCH DIST 1J'")["pid6"]
+    data = T.get_offices(store, schools)["data"]
+    board = next(r for r in data["roles"] if r["role"] == "School Board Member")
+    check("a board elected by zone is marked as such", board["ballot"] == T.BY_DISTRICT,
+          board["ballot"])
+    check("and every zone is named", len(board["districts"]) == board["seat_count"])
+    check("zones sort 2 before 10, not lexically",
+          board["districts"] == sorted(board["districts"], key=T._seat_order))
+    check("the reader is told a ballot holds one of them, not all",
+          "seats_elected_by_district" in codes(T.get_offices(store, schools)))
+
+    result = T.get_offices(store, baker_county)
+    commissioners = next(r for r in result["data"]["roles"]
+                         if r["role"] == "County Commissioner")
+    check("a board elected at large is marked differently",
+          commissioners["ballot"] == T.AT_LARGE, commissioners["ballot"])
+    check("and the numbering is called a ballot label, not a geography",
+          "seats_elected_at_large" in codes(result))
+    check("a lone office is neither", next(
+        r for r in result["data"]["roles"] if r["role"] == "County Sheriff"
+    )["ballot"] == T.SINGLE)
+    check("holders are still absent and the rule still says so",
+          "offices_have_no_holders" in codes(result))
+
     print("\nrevenue_mix answers whose money it is (§9, §10, §12)")
     import explore
     schools = store.row("SELECT pid6 FROM entities WHERE legal_name='PORTLAND SCH DIST 1J'")["pid6"]

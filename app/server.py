@@ -293,11 +293,27 @@ def _compare_headline(result):
                  if form == "per_capita_by_service_area"
                  else "in total dollars, which ranks by population")
         top, bottom = rows[0], rows[-1]
-        line = (f"On {detail['service_area']} {basis}, {top['label']} is highest at "
-                f"{formatter(top['value'])} and {bottom['label']} lowest at "
-                f"{formatter(bottom['value'])}.")
-        if len(rows) > 1 and bottom["value"]:
-            line += f" That is a {top['value'] / bottom['value']:.1f}× spread."
+        # One row is not a comparison. Reading the first and last row off a
+        # single row produced "Portland is highest at $709 and Portland lowest
+        # at $709", which stages a race between a government and itself.
+        if len(rows) == 1:
+            line = (f"Only {top['label']} can be drawn here, at "
+                    f"{formatter(top['value'])} on {detail['service_area']} {basis}. "
+                    "One government is a figure, not a comparison.")
+        else:
+            line = (f"On {detail['service_area']} {basis}, {top['label']} is highest at "
+                    f"{formatter(top['value'])} and {bottom['label']} lowest at "
+                    f"{formatter(bottom['value'])}.")
+            if bottom["value"]:
+                line += f" That is a {top['value'] / bottom['value']:.1f}× spread."
+        unchartable = detail.get("unchartable") or []
+        if unchartable:
+            one = len(unchartable) == 1
+            line += (f" {', '.join(unchartable)} "
+                     + ("reports" if one else "report")
+                     + " neither a spending breakdown nor a year of totals, so there is "
+                       "nothing to draw for " + ("it" if one else "them")
+                     + " here; that is not a report of zero.")
         absent = detail.get("absent") or []
         if absent:
             line += (f" {len(absent)} of the set reports nothing here: "

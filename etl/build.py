@@ -817,6 +817,16 @@ def main():
     except Exception as error:                       # pragma: no cover
         report["service_extent_rows"] = f"skipped: {error}"
 
+    # The same precinct file read the other way round: keeping the zone rather
+    # than stripping it recovers the ground each elected seat answers to, and
+    # district_geometry lands in this store too.
+    try:
+        import dissolve_districts
+        report["electoral_districts"] = dissolve_districts.main(
+            argv=["--out", out_dir, "--quiet"])
+    except Exception as error:                       # pragma: no cover
+        report["electoral_districts"] = f"skipped: {error}"
+
     with open(os.path.join(out_dir, "build_report.json"), "w") as fh:
         json.dump(report, fh, indent=2)
 

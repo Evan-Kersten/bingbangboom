@@ -70,6 +70,12 @@ def ratio(value):
     return f"{value:.1f} times"
 
 
+def plural(number, noun, many=None):
+    """'1 government', '3 governments'. A count of one still needs a sentence."""
+    word = noun if abs(number) == 1 else (many or noun + "s")
+    return f"{count(number)} {word}"
+
+
 def count(value):
     if value is None:
         return None

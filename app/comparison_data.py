@@ -64,10 +64,17 @@ def build(store):
             None if row["expenditure"] is None else round(row["expenditure"]),
             None if row["total_debt"] is None else round(row["total_debt"])])
 
-    # Only entities with something to compare. A government with neither a
-    # breakdown nor a trend cannot appear on any of these four charts.
-    entities = {pid: value for pid, value in entities.items()
-                if pid in areas or pid in trends}
+    # Every entity ships, including the fifteen with neither a breakdown nor a
+    # trend. They used to be filtered out here, which cost almost nothing in
+    # bytes and produced the worst failure this file exists to prevent: the
+    # search box still offered them, so a reader could pick Coaledo Drainage
+    # District, and the browser — not recognising the id — dropped it without a
+    # word and answered about the other government alone. A government that
+    # cannot be charted has to be *known* to be sayable, and §9 wants it said:
+    # reporting nothing here is not the same as not existing.
+    chartable = {pid for pid in entities if pid in areas or pid in trends}
+    for pid, value in entities.items():
+        value.append(1 if pid in chartable else 0)
 
     gov_types = sorted({value[1] for value in entities.values() if value[1]})
     service_areas = sorted({row[0] for rows in areas.values() for row in rows})
