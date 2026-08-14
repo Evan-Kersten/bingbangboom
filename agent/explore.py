@@ -4,11 +4,15 @@ Three levels, which is as deep as the data goes and no deeper:
 
     service area   twelve Census functional categories, with the entity's share
                    and its peer group's distribution
-    function       thirty-six functions inside those areas, each with the peer
-                   distribution for the same area
-    line item      how one function's total decomposes: operating, capital,
-                   personnel, amounts excluded, and the vendor-addressable
-                   remainder
+    function       thirty-six functions inside those areas, each against the
+                   median for that named function among governments doing it
+    line item      how one function's total splits between operating and capital
+
+Every level is on one basis, operating plus capital, which is the basis the
+service-area shares are computed against. The source also carries a
+vendor-addressable derivation per function; it is not built and not shown,
+because it is an estimate sitting in columns named like the reported ones, and
+a reader who compares the two is comparing a derivation to a filing.
 
 Peer context comes from peer_stats, computed over the entity set rather than
 shipped in the payload, so every level can say where a figure sits among its
@@ -214,35 +218,37 @@ def drill(store, pid6, service_area=None, function_name=None):
                 "code": "no_function", "rule": "§2",
                 "guidance": f"{function_name} is not reported for this entity."}])
 
+        operating = row["operating_expenditures"] or 0
+        capital = row["capital_expenditures"] or 0
         items = [
             {"label": "Operating expenditure", "value": row["operating_expenditures"],
              "note": "day to day running costs"},
             {"label": "Capital expenditure", "value": row["capital_expenditures"],
              "note": "construction and equipment, lumpy by nature"},
-            {"label": "Personnel, adjusted", "value": row["personnel_costs_adjusted"],
-             "note": "wages and benefits, removed from the addressable figure"},
-            {"label": "Excluded amounts", "value": row["excluded_amounts"],
-             "note": "transfers and debt service, not purchasable"},
-            {"label": "Vendor addressable", "value": row["total_function_pae"],
-             "note": "what remains after personnel and exclusions"},
         ]
+        total = operating + capital
+        # Capital share is the signal at this level, and it is the one figure
+        # here a reader will misread as a policy preference. §8 says one year is
+        # a point in a bond cycle, so the caveat travels with the split itself.
         return T.envelope(
             "drill", entity=entity,
             data={"level": "line_item", "service_area": row["service_area"],
                   "function": function_name, "year": row["year"],
-                  "share_of_entity": row["pct_of_entity_total"], "items": items},
-            caveats=caveats + [{
-                "code": "pae_is_an_estimate", "rule": "§4",
-                "guidance": "The vendor-addressable figure is a derivation, not a reported "
-                            "line. It is operating and capital spending less personnel and "
-                            "less amounts that cannot be purchased. Call it an estimate."}],
+                  "share_of_entity": row["pct_of_entity_total"],
+                  "total": total,
+                  # Percentages in this tree are 0 to 100, the way the source
+                  # files carry them and the way fmt.percent reads them.
+                  "capital_share": (100 * capital / total) if total else None,
+                  "items": items},
+            caveats=caveats + [caveat("capital_lumpy")],
             blocked=blocked, vintage={"finance": row["year"]})
 
     # ---- level 2: functions inside one service area ---------------------
     if service_area:
         rows = store.rows(
             "SELECT * FROM financial_functions WHERE pid6=? AND service_area=? "
-            "ORDER BY total_function_pae DESC", pid6, service_area)
+            "ORDER BY COALESCE(operating_expenditures, 0) "
+            "       + COALESCE(capital_expenditures, 0) DESC", pid6, service_area)
         if not rows:
             return T.envelope("drill", entity=entity, caveats=[{
                 "code": "no_functions", "rule": "§2",
@@ -251,9 +257,7 @@ def drill(store, pid6, service_area=None, function_name=None):
 
         # The median is computed per function and on the same measure as the bar.
         # A single median for the whole area would compare Police Protection to
-        # the typical function rather than to other Police Protection budgets, and
-        # the area median is built from vendor-addressable totals, which are a
-        # different quantity from the operating-plus-capital figure shown.
+        # the typical function rather than to other Police Protection budgets.
         medians = _cached(store, ("fn_median", gov_type),
                           lambda: _function_medians(store, gov_type))
         functions = []
@@ -262,7 +266,6 @@ def drill(store, pid6, service_area=None, function_name=None):
             functions.append({
                 "label": row["function_name"],
                 "value": (row["operating_expenditures"] or 0) + (row["capital_expenditures"] or 0),
-                "addressable": row["total_function_pae"],
                 "share_of_entity": row["pct_of_entity_total"],
                 "peer_median": stats["median"],
                 "peer_n": stats["n"],
@@ -887,8 +890,7 @@ def who_spends_on(store, function_name, limit=12):
         "SELECT f.pid6, COALESCE(e.common_name, e.legal_name) AS name, "
         "       e.gov_type_name AS gov_type, e.host_county, f.service_area, f.year, "
         "       COALESCE(f.operating_expenditures, 0) "
-        "     + COALESCE(f.capital_expenditures, 0) AS spending, "
-        "       f.total_function_pae AS addressable, w.population "
+        "     + COALESCE(f.capital_expenditures, 0) AS spending, w.population "
         "FROM financial_functions f "
         "JOIN entities e ON e.pid6 = f.pid6 "
         "LEFT JOIN workforce_profile w ON w.pid6 = f.pid6 AND w.population > 0 "

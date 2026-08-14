@@ -281,10 +281,10 @@ def entity_report(store, pid6):
                 sections.append(_section(
                     "inside_largest", f"Inside {largest}",
                     "Name the functions and what each spends, against the median for "
-                    "that same function among peers that report it. Then give the "
-                    "vendor-addressable figure and say it is a derivation, not a "
-                    "reported line: operating and capital less personnel and less "
-                    "amounts that cannot be purchased.",
+                    "that same function among peers that report it. The median is "
+                    "taken over governments that report the function, so it says "
+                    "what a government doing this spends, not what a typical "
+                    "government spends.",
                     110, data=inside["data"], chart=chart["data"]["svg"],
                     table=chart["data"]["table"], caveats=inside["caveats"],
                     blocked=inside["not_computable"]))

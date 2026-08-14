@@ -3,10 +3,11 @@
 Follow the money to the line item, for all 1,529 of Oregon's local governments.
 
 Start from where you live and see the governments with a claim on that address,
-or search any of them by name. Then go from a whole budget down to what is
-actually purchasable inside one function, with every figure placed against its
-peers — and with the reasons a figure cannot carry weight travelling beside it
-rather than in a footnote nobody reads.
+or search any of them by name. Then go from a whole budget down to one function
+inside one service area, and out to who else does that function across the
+state, with every figure placed against its peers — and with the reasons a
+figure cannot carry weight travelling beside it rather than in a footnote
+nobody reads.
 
 ## Run it
 
@@ -27,7 +28,7 @@ returns are the same ones the model is handed.
 `.github/workflows/pages.yml` rebuilds the store, runs every test, pre-renders
 all 25,664 answers and publishes to GitHub Pages. Grounded mode is
 deterministic, so the whole interface can be served as static files with no
-server at all. The rendered site is ~256 MB and is never committed.
+server at all. The rendered site is ~344 MB and is never committed.
 
 Details in `app/DEPLOY.md`.
 

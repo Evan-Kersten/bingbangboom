@@ -37,7 +37,7 @@ No dependencies. Standard library only, so there is nothing to install.
 python3 etl/build.py          # ~20s, writes build/ from the files in the root
 python3 etl/verify.py         # 52 assertions about the built store
 python3 app/server.py         # http://localhost:8000
-python3 app/export_static.py --out site --clean   # ~50s, ~256 MB
+python3 app/export_static.py --out site --clean   # ~70s, ~344 MB
 ```
 
 `build/` and `site/` are gitignored and reproducible; never commit either.
@@ -45,9 +45,9 @@ python3 app/export_static.py --out site --clean   # ~50s, ~256 MB
 The full suite, all of which must pass before a push:
 
 ```
-python3 agent/test_tools.py        # 201    python3 app/test_server.py    # 168
+python3 agent/test_tools.py        # 222    python3 app/test_server.py    # 169
 python3 agent/test_orchestrator.py #  44    python3 app/test_parity.py    # 452
-python3 agent/test_viz.py          #  87    python3 evals/run.py          #  22
+python3 agent/test_viz.py          #  88    python3 evals/run.py          #  22
 python3 agent/test_reports.py      #  53    python3 etl/verify.py         #  52
 python3 agent/test_blocks.py       #  45    python3 etl/test_project.py   #   6
 ```
@@ -91,6 +91,27 @@ against the same dict.
 usually evidence that another government holds that responsibility. A blank must
 never render as `$0`, and a reported zero must be said to be a reported zero.
 
+**A map is drawn by measurement, not by request.** §15.1. `render_map` measures
+two things before drawing: how many boundaries in the extent carry a value, and
+what share of the money for that measure sits on the layer at all. Below
+`THRESHOLDS["map_density_minimum"]` it refuses and draws the reason in the frame.
+`blocks.MAP_COVERAGE_FLOOR` is that same threshold, not a second copy of it.
+
+This is what makes the drill from service area to function safe. Public Safety
+maps cleanly across the counties; one level down, police protection draws at 34
+of 36 counties and fire protection draws at one, because fire is district work
+and 243 of those districts have no boundary anywhere in this data. Same code,
+same measure, and without the gate the second one is a picture saying rural
+Oregon spends nothing on fire. `render_function_map` picks the layer that holds
+the work, so a municipal function is not drawn against counties that do not do
+it, and a statewide `place` map is refused outright: 378 cities at that scale
+are specks whose areas are land area.
+
+The three refusals are ranked and the order matters. Mostly-absence beats a thin
+extent beats needing a county, because the weakest reason reads as the most
+fixable, and fire protection reported as "scope it to a county" sends a reader
+to a map that will be just as empty for a reason nobody stated.
+
 ## Data traps
 
 **There are two different expenditure totals and they disagree** for 1,112 of
@@ -115,6 +136,21 @@ therefore over-collects districts serving elsewhere and misses districts serving
 here from a neighbouring filing. `service_extent` holds measured extent, which
 outranks filing.
 
+**Function data is one year per entity, and not the same year.** 978 entities
+report their functions at 2022, 400 at 2023, 45 at 2017. A statewide function
+map is therefore several vintages at once, and neighbouring boundaries can be
+years apart. `map_years_differ` says so on every map drawn from
+`financial_functions` or `spending_by_service_area`, both of which have this
+shape. It is a level, never a moment.
+
+**There is no vendor-addressable figure any more.** The source nests the
+function rows inside a procurement-opportunity object that also carries a
+derived "purchasable" remainder: operating and capital less personnel less
+amounts held to be unpurchasable. The ETL takes only the reported columns. One
+basis, operating plus capital, at every level of the drill, which is also the
+basis the service-area shares are computed against. If a future refresh
+reintroduces those columns, leaving them unread is deliberate.
+
 **The trend data is two panels, not one.** 1,006 entities have only 2017 and
 2022; 313 have all seven years. A chart mixing them without marking which is
 which is a lie about coverage.
@@ -137,7 +173,7 @@ never share an axis or a legend with a spending figure.
 public_foundry_system_prompt_v2.md   the specification
 etl/          build.py, verify.py, schema.sql, plus the shapefile and
               dissolve work. Reads the loose files in the repository root.
-agent/        rules.py (the caveat catalogue), tools.py (35 tools), explore.py,
+agent/        rules.py (the caveat catalogue), tools.py (36 tools), explore.py,
               community.py (DP03, structurally unable to see a fiscal figure),
               viz.py + maps.py (hand-authored SVG), blocks.py (§15 block order),
               reports.py, orchestrator.py, schemas.py (what the model sees)

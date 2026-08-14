@@ -1,12 +1,12 @@
 # The agent
 
-Thirty-five typed tools over the store built by `etl/`, the §4 formatter, and the
+Thirty-six typed tools over the store built by `etl/`, the §4 formatter, and the
 orchestrator that routes a question and runs the tool loop.
 
 ```
-python3 agent/test_tools.py         # 201 checks
+python3 agent/test_tools.py         # 222 checks
 python3 agent/test_orchestrator.py  # 44 checks, uses a scripted model
-python3 agent/test_viz.py           # 87 checks on the render layer
+python3 agent/test_viz.py           # 88 checks on the render layer
 python3 agent/test_reports.py       # 53 checks on report composition
 python3 agent/test_blocks.py        # 45 checks on §15 block order and gating
 python3 agent/gallery.py            # every chart form on one page, to look at
@@ -53,6 +53,7 @@ circumstance under which a per-service-area growth rate is legitimate.
 | `list_ecosystem` | which governments serve this place | §9 basis, no summing, partial geometry |
 | `get_offices` | who governs | §7 seats vs roles, confidence, no holders |
 | `map_topic_to_categories` | issue questions | §12 name the gap, offer the proxy |
+| `render_function_map` | where one function is done | §15.1 coverage gate, §12 layer that does the work |
 | `run_sql` | anything else | read-only, logged, carries a standing caveat |
 
 ## `rules.py`
@@ -177,9 +178,33 @@ exactly, school districts by name at 156 of 223, and special districts have no
 boundaries at all, so they are not offerable as a layer. No data gets its own
 neutral well off the ramp, and the ramp's light end is a mid step, because a
 near-white lightest bin is indistinguishable from an empty one and turns a
-coverage gap into an apparent measurement. A statewide place map warns that it is
-unreadable: 378 Oregon cities render as dots, and comparing dot areas compares
-city land area. Pass a county to scope it.
+coverage gap into an apparent measurement.
+
+The constraint is measured rather than asserted. Before drawing, `render_map`
+counts how many boundaries in the extent carry a value and what share of the
+money for that measure sits on the layer at all, and it refuses on three
+grounds, tested strongest first:
+
+| Refusal | What it means | Example |
+|---|---|---|
+| `mostly_absence` | under half the extent reports it, so the marks read as the pattern | fire protection, 83 of 378 places |
+| `thin_extent` | fewer than four boundaries; a choropleth of three shapes is a chart of three numbers with a coastline | a place map scoped to a rural county |
+| `needs_a_county` | a statewide place map is 378 specks whose areas are land area | sewerage across Oregon |
+
+The order is the point. Fire protection is a place-layer function drawn without
+a county, so the weak reason applies to it too, and reporting that one would
+send a reader to scope a map that is empty for a reason nobody stated.
+
+`render_function_map` is the drill one level below a service area. It picks the
+layer holding most of the function rather than taking one from the caller, so
+police lands on counties, sewerage on places and elementary education on school
+districts, and a city's sewers are never drawn against counties that run none.
+Where no layer survives the gate the refusal comes from the layer holding the
+work, because that is the one whose reason names the governments doing it. The
+share of the money the drawn layer holds travels on every result and is stated
+in the answer: a county police map is 35% of what Oregon's local governments
+report on policing, and saying so is the difference between a map of county
+policing and a claim about policing.
 
 `gallery.py` renders every form to one page. The validator checks colour; it does
 not catch a label collision, a legend sitting on an axis, or a map drawing over

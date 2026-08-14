@@ -137,12 +137,10 @@ def compute(conn):
                WHERE s.total > 0""",
             "service_area_total", "service_area")
 
-    collect("""SELECT e.gov_type_name AS peer_group, f.service_area,
-                      f.total_function_pae AS value
-               FROM financial_functions f JOIN entities e ON e.pid6=f.pid6
-               WHERE f.total_function_pae > 0""",
-            "function_pae", "service_area")
-
+    # No function-level distribution is written here. The drill computes its
+    # median per named function rather than per service area, because the
+    # comparison a reader wants is police against police, not police against the
+    # typical function in the area, and a per-area statistic cannot answer that.
     return rows
 
 
