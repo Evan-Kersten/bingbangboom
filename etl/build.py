@@ -827,6 +827,15 @@ def main():
     except Exception as error:                       # pragma: no cover
         report["electoral_districts"] = f"skipped: {error}"
 
+    # Which governments serve each place. Runs last because it reads the
+    # boundaries the two dissolves produce, and lands in the same store: a build
+    # that leaves serves_place behind is a build the front door cannot open.
+    try:
+        import serving
+        report["serves_place"] = serving.main(argv=["--out", out_dir, "--quiet"])
+    except Exception as error:                       # pragma: no cover
+        report["serves_place"] = f"skipped: {error}"
+
     with open(os.path.join(out_dir, "build_report.json"), "w") as fh:
         json.dump(report, fh, indent=2)
 
