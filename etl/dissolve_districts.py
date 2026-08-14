@@ -155,6 +155,61 @@ def resolve_zone(name, pattern, index, by_ocd, known):
     return government, zone, None
 
 
+def outline(polygons, precision=7):
+    """The edges on the outside of a group of polygons, chained into polylines.
+
+    Concatenating rings is not a dissolve: drawing it strokes every precinct seam
+    inside the district, which on a map reads as a boundary a reader could vote
+    across and is the opposite of what the picture is for.
+
+    These polygons come from one topology — precinct splits are cut from the same
+    source, so neighbours share vertices exactly — which makes the outline
+    available without a geometry library. An edge interior to the group appears
+    twice, once in each direction, so cancelling matched pairs leaves exactly the
+    outside. What survives is chained into open polylines rather than closed
+    rings: closure is where this gets fragile at pinch points, and a stroked
+    outline does not need it.
+
+    Returned separately from the fill. The fill stays as the raw polygons, drawn
+    without a stroke so neighbouring precincts abut invisibly, and this is drawn
+    over it as the only line on the map.
+    """
+    edges = {}
+    for polygon in polygons:
+        for ring in polygon:
+            points = [(round(x, precision), round(y, precision)) for x, y in ring]
+            for a, b in zip(points, points[1:]):
+                if a == b:
+                    continue
+                if edges.get((b, a)):
+                    edges[(b, a)] -= 1
+                    if not edges[(b, a)]:
+                        del edges[(b, a)]
+                else:
+                    edges[(a, b)] = edges.get((a, b), 0) + 1
+
+    following = {}
+    for (a, b), count in edges.items():
+        following.setdefault(a, []).extend([b] * count)
+
+    lines = []
+    while following:
+        start = next(iter(following))
+        line = [start]
+        current = start
+        while following.get(current):
+            nxt = following[current].pop()
+            if not following[current]:
+                del following[current]
+            line.append(nxt)
+            current = nxt
+            if current == start:
+                break
+        if len(line) > 1:
+            lines.append([list(point) for point in line])
+    return lines
+
+
 def dissolve(rows, geometries, index, by_ocd, known):
     """Group precinct polygons into districts, keeping the district identity."""
     groups = defaultdict(lambda: {"polygons": [], "precincts": 0, "raw": set()})
@@ -217,6 +272,10 @@ def dissolve(rows, geometries, index, by_ocd, known):
                 "coverage": "multnomah_county_only",
             },
             "geometry": {"type": "MultiPolygon", "coordinates": group["polygons"]},
+            # The outside of the district, with every interior precinct seam
+            # cancelled. Drawn over the fill as the only line on the map.
+            "outline": {"type": "MultiLineString",
+                        "coordinates": outline(group["polygons"])},
         })
     return features, skipped
 

@@ -242,3 +242,119 @@ def choropleth(layer, values, title, subtitle, formatter=fmt.percent,
 
     svg = viz.frame(width, height, top + "".join(body), f"{title}. {subtitle or ''} {coverage}")
     return {"svg": svg, "covered": covered, "polygons": len(features), "breaks": breaks}
+
+
+# ----------------------------------------------------- electoral districts
+
+# A district map is not a choropleth. Nothing is being measured, so nothing
+# should be coloured as though it were: filling sixteen state house districts
+# from a ramp invites a reader to rank them, and there is no quantity to rank.
+# Identity is carried by the number at the centre of each shape, which is how a
+# ballot names it and how every real district map works.
+DISTRICT_BAND = 34
+
+# Cycled, not ramped. Districts are numbered and adjacent numbers are usually
+# adjacent ground, so stepping the hue each time is what keeps neighbours apart.
+DISTRICT_TINTS = ["d1", "d2", "d3", "d4", "d5", "d6"]
+
+
+def _centroid(geometry):
+    """The centre of the largest ring, for placing a district's number.
+
+    Area-weighted over the biggest polygon rather than over all of them: a
+    district with an island would otherwise place its label in the water
+    between the two, which is not inside the district at all.
+    """
+    best_ring, best_area = None, 0.0
+    for polygon in geometry["coordinates"]:
+        if not polygon:
+            continue
+        ring = polygon[0]
+        area = 0.0
+        for i in range(len(ring) - 1):
+            area += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1]
+        if abs(area) > best_area:
+            best_ring, best_area = ring, abs(area)
+    if not best_ring or best_area < 1e-12:
+        return None
+
+    cx = cy = 0.0
+    for i in range(len(best_ring) - 1):
+        cross = (best_ring[i][0] * best_ring[i + 1][1]
+                 - best_ring[i + 1][0] * best_ring[i][1])
+        cx += (best_ring[i][0] + best_ring[i + 1][0]) * cross
+        cy += (best_ring[i][1] + best_ring[i + 1][1]) * cross
+    signed = sum(best_ring[i][0] * best_ring[i + 1][1]
+                 - best_ring[i + 1][0] * best_ring[i][1]
+                 for i in range(len(best_ring) - 1)) / 2
+    if abs(signed) < 1e-12:
+        return None
+    return (cx / (6 * signed), cy / (6 * signed))
+
+
+def districts(features, title, subtitle, width=680, height=460, note=None,
+              highlight=None, coverage_note=None):
+    """Draw the pieces of ground that each elect one seat.
+
+    `features` is a list of {"label", "name", "geometry"}. `highlight` names one
+    of them, which is the question a reader actually arrives with: not "how are
+    these arranged" but "which one is mine". The highlighted district takes the
+    series colour and the rest stay quiet, because the others are context and
+    colouring them equally would make the reader hunt.
+    """
+    drawn = [f for f in features if f.get("geometry")]
+    if not drawn:
+        return {"svg": viz.refusal(title, coverage_note or
+                                   "No boundary for these districts is in this data."),
+                "districts": 0, "highlighted": None}
+
+    top, offset = viz.header(title, subtitle, width)
+    map_height = height - offset - DISTRICT_BAND
+    project = _project([{"geometry": f["geometry"]} for f in drawn], width, map_height)
+    body = [f'<g transform="translate(0,{offset + 4})">']
+
+    labels, found, position = [], None, 0
+    for feature in drawn:
+        path = _path(feature["geometry"], project)
+        if not path:
+            continue
+        is_one = highlight is not None and feature["label"] == highlight
+        if is_one:
+            found = feature
+        # No stroke, anywhere. A district is stored as the precincts it is built
+        # from, and precinct splits carry slivers, so any stroke draws interior
+        # seams as though they were boundaries a reader could vote across. Unstroked,
+        # the precincts abut invisibly and the boundary appears exactly where the
+        # fill changes — which is geometrically exact and needs no union.
+        fill = viz.token("s1" if is_one else DISTRICT_TINTS[position % len(DISTRICT_TINTS)])
+        position += 1
+        body.append(
+            f'<path d="{path}" fill="{fill}" stroke="none">'
+            f'<title>{viz.esc(feature.get("name") or feature["label"])}</title></path>')
+        centre = _centroid(feature["geometry"])
+        if centre:
+            labels.append((project(centre[0], centre[1]), feature["label"], is_one))
+
+    # Numbers last and inside the same transform, so no neighbour's fill lands
+    # on top of the one identifier this map has.
+    for (x, y), label, is_one in labels:
+        body.append(viz.text_el(x, y + 4, label, size=11.5, anchor="middle",
+                                weight="600" if is_one else "500",
+                                fill="surface" if is_one else "ink-2"))
+    body.append("</g>")
+
+    line = note or f"{fmt.count(len(drawn))} districts drawn."
+    if coverage_note:
+        line += " " + coverage_note
+    # Wrapped and the frame grown to hold it. A note that runs off the right edge
+    # is worse than no note, because the half a reader can see reads as the whole.
+    lines = viz.wrap(line, 92)
+    grown = height + max(0, (len(lines) - 1)) * 14
+    y = grown - 10 - (len(lines) - 1) * 14
+    for text in lines:
+        body.append(viz.text_el(0, y, text, size=11, fill="muted"))
+        y += 14
+
+    svg = viz.frame(width, grown, top + "".join(body), f"{title}. {subtitle or ''} {line}")
+    return {"svg": svg, "districts": len(drawn),
+            "highlighted": found["label"] if found else None}

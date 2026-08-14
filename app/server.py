@@ -446,6 +446,24 @@ def data_units(result):
     return result["data"].get("units") or "people"
 
 
+def _ballot_line(drawn):
+    """One sentence about what a reader's ballot actually holds."""
+    seats = fmt.plural(drawn["seat_count"], "seat")
+    if drawn["ballot"] in ("by_district", "mixed"):
+        named = drawn.get("districts_named") or []
+        line = (f"{drawn['role']} is filled by district: {seats} across the "
+                f"{fmt.plural(drawn['districts'], 'area')} below, and a voter fills "
+                "the one covering their address rather than all of them.")
+        if named and drawn["districts"] < drawn["seat_count"]:
+            line += (f" {drawn['seat_count'] - drawn['districts']} of the districts "
+                     "extend past Multnomah County, which is as far as the boundary "
+                     "data goes, so they are not drawn.")
+        return line
+    return (f"{drawn['role']} is filled at large: one electorate, drawn below, and "
+            f"every voter inside it votes on all {seats}. The position numbers on "
+            "the ballot are labels, not places.")
+
+
 def _ratio(value):
     """One staff member per this many people, rounded to how well it is known."""
     if value is None:
@@ -983,13 +1001,35 @@ def answer_preset(preset_id, pid6=None, county=None):
     elif preset_id == "governance":
         add(T.get_offices(STORE, pid6))
         result = results[0]
+        # The seat count says a body has seven members. Only the boundary says
+        # which of the seven is the reader's, and that is the actionable half.
+        seat_map = T.render_office_map(STORE, pid6)
+        results.append(seat_map)
+        drawn = seat_map["data"]
+        if drawn.get("svg"):
+            blocks.append({"kind": "text", "text": _ballot_line(drawn)})
+            blocks.append({"kind": "map", "svg": drawn["svg"],
+                           "coverage": 1.0 if drawn["districts"] else None})
+        elif drawn.get("ballot") in ("by_district", "mixed"):
+            blocks.append({"kind": "text", "text": (
+                f"These {fmt.plural(drawn['seat_count'], 'seat')} are filled by "
+                "district, so a voter fills one of them rather than all. No boundary "
+                "for those districts is in this data — district assignments are "
+                "recorded per polygon for Multnomah County only — so the map is "
+                "missing rather than drawn as one electorate.")})
+
         if result["data"].get("roles"):
             blocks.append({"kind": "table", "rows": [
                 {"role": r["role"], "seats": r["seat_count"],
                  "filled by": (r["filled_by"] or "not recorded").lower(),
                  "term": (f"{r['term_length']} years"
                           if (r.get("term_length") or "").isdigit() else "not recorded"),
-                 "ballot": (r["partisan"] or "not recorded")}
+                 # "N/A" is what the source writes for a seat nobody votes on.
+                 # Printed as-is it reads like a gap in the data rather than the
+                 # consequence of the column beside it.
+                 "ballot": ("no ballot — appointed"
+                            if r["filled_by"] == "Appointment"
+                            else (r["partisan"] or "not recorded"))}
                 for r in result["data"]["roles"]]})
     elif preset_id == "ecosystem":
         name = county or (entity["host_county"] if entity else None)

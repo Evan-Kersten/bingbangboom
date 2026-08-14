@@ -225,6 +225,31 @@ def main():
     check("each role says how it is filled and for how long",
           all(r["filled by"] and r["term"] for r in rows))
 
+    print("\ngovernance draws the ground a seat answers to")
+    multnomah = pid("COUNTY OF MULTNOMAH")
+    gov = S.answer_preset("governance", multnomah)
+    text = " ".join(b.get("text", "") for b in gov["blocks"])
+    check("a districted body says a voter fills one seat, not all",
+          "covering their address rather than all of them" in text, text[-200:])
+    check("and the districts are drawn",
+          any(b["kind"] == "map" for b in gov["blocks"]))
+    check("it conforms to §15", gov["violations"] == [], str(gov["violations"]))
+
+    at_large = " ".join(b.get("text", "") for b in
+                        S.answer_preset("governance", baker)["blocks"])
+    check("an at-large body says every voter votes on all of them",
+          "every voter inside it votes on all" in at_large, at_large[-200:])
+    check("and its ballot numbers are called labels, not places",
+          "labels, not places" in at_large)
+
+    # §9 again: no boundary is a stated absence, not a jurisdiction drawn as if
+    # it were one electorate.
+    schools = " ".join(b.get("text", "") for b in
+                       S.answer_preset("governance", college)["blocks"])
+    check("a districted body with no boundary says the map is missing",
+          "map is missing rather than drawn as one electorate" in schools
+          or "filled by district" in schools, schools[-220:])
+
     print("\na search row says what its number counts")
     rows = [S._with_magnitude(store.row(
         "SELECT pid6, legal_name, common_name, gov_type_name, host_county "

@@ -20,6 +20,7 @@ run_sql exists as an escape hatch for questions these tools do not cover. It is
 read-only and every call is logged as a candidate for a new typed tool.
 """
 
+import json
 import os
 import re
 import sqlite3
@@ -1461,3 +1462,194 @@ def compare_normalized(store, pid6_list, service_area=None, basis="absolute"):
 
 TOOLS["compose_report"] = compose_report
 TOOLS["compare_normalized"] = compare_normalized
+
+
+# ------------------------------------------------------ electoral districts
+
+_DISTRICT_LAYER = {}
+
+
+def _district_features(build=None):
+    """The dissolved electoral districts, loaded once."""
+    import maps
+    root = build or maps.BUILD
+    if root not in _DISTRICT_LAYER:
+        path = os.path.join(root, "geo", "electoral_districts.geojson")
+        try:
+            with open(path) as handle:
+                _DISTRICT_LAYER[root] = json.load(handle)["features"]
+        except (OSError, ValueError):
+            _DISTRICT_LAYER[root] = []
+    return _DISTRICT_LAYER[root]
+
+
+def _seat_noun(role):
+    """What to call one holder of this role in a sentence.
+
+    The Census role names are already noun phrases and several end in "District",
+    so appending "districts" to them produces "community college district
+    director districts". Trimming the leading jurisdiction words leaves the job.
+    """
+    text = re.sub(r"^(Community College|Education Service|Fire Protection|"
+                  r"Water Supply Utility|Electric Power Utility|Parks and Recreation|"
+                  r"Soil and Water Conservation|Law Enforcement|Library|Irrigation|"
+                  r"Flood Control|Emergency Communications)\s+District\s+", "",
+                  role or "")
+    return (text or role or "seat").lower()
+
+
+def render_office_map(store, pid6, role=None, seat=None):
+    """Draw the ground that elects a seat on this government's governing body.
+
+    Two sources, and which one applies is decided by how the seat is filled
+    rather than by what happens to be available:
+
+        at large    the electorate is the whole jurisdiction, so the government's
+                    own boundary *is* the district. That covers 2,382 of the
+                    seats tied to an entity, statewide, from layers already here.
+
+        by district the seat answers to a ward, zone or board district inside the
+                    jurisdiction, and only a source that records assignments per
+                    polygon can recover it. The Multnomah precinct file is the
+                    only one of those in this repository, so a districted body
+                    outside that county is refused with the reason rather than
+                    drawn as though it were at large — which would tell a reader
+                    they elect every seat when they elect one.
+    """
+    import maps
+
+    entity = _entity(store, pid6)
+    if not entity:
+        return envelope("render_office_map", caveats=[{
+            "code": "entity_not_found", "rule": "§14",
+            "guidance": "This pid6 is not in the data."}])
+
+    offices = get_offices(store, pid6)
+    roles = offices["data"].get("roles") or []
+    if not roles:
+        return envelope("render_office_map", entity=entity, caveats=offices["caveats"])
+
+    chosen = next((r for r in roles if r["role"] == role), None) if role else None
+    if chosen is None:
+        # The body worth drawing is the one with seats to tell apart. A sheriff
+        # is one seat over the whole county and a map of it says only where the
+        # county is, which the reader already knows.
+        chosen = max(roles, key=lambda r: (r["seat_count"], r["ballot"] == BY_DISTRICT))
+
+    name = entity["common_name"] or entity["legal_name"]
+    caveats = [caveat("offices_have_no_holders")]
+
+    if chosen["ballot"] in (BY_DISTRICT, MIXED):
+        wanted = {s["ocd_id"] for s in chosen["seats"] if s["district"]}
+        by_ocd = {f["properties"]["ocd_id"]: f for f in _district_features()
+                  if f["properties"].get("ocd_id")}
+        features = []
+        for entry in chosen["seats"]:
+            match = by_ocd.get(entry["ocd_id"])
+            if match:
+                features.append({"label": (entry["district"] or "").split()[-1],
+                                 "name": f"{chosen['role']}, {entry['district']}",
+                                 "geometry": match["geometry"],
+                                 "outline": match.get("outline")})
+        if not features:
+            caveats.append({
+                "code": "no_district_geometry", "rule": "§9",
+                "guidance": f"{name} fills {chosen['role']} seats by district, and no "
+                            "boundary for those districts is in this data. District "
+                            "assignments are recorded per polygon only for Multnomah "
+                            "County here. Say the seats are districted and that the "
+                            "map is missing; do not draw the whole jurisdiction, which "
+                            "would say a reader elects every seat."})
+            return envelope(
+                "render_office_map", entity=entity,
+                data={"role": chosen["role"], "ballot": chosen["ballot"],
+                      "seat_count": chosen["seat_count"], "svg": None,
+                      "districts": 0, "source": None},
+                caveats=caveats)
+
+        drawn = maps.districts(
+            features,
+            f"{name}: who elects each {_seat_noun(chosen['role'])}",
+            f"{fmt.plural(chosen['seat_count'], 'seat')}, each elected by one district",
+            note="Each shape elects one seat. A reader votes in the one covering "
+                 "their address, not in all of them.",
+            coverage_note=("Boundaries are dissolved from Multnomah precinct splits "
+                           "and stop at the county line."
+                           if len(features) < len(wanted) else None))
+        caveats.append({
+            "code": "district_boundaries_are_approximate", "rule": "§8",
+            "guidance": "These edges are precinct edges recovered from a March 2024 "
+                        "precinct-split file, not the district's own filed boundary. "
+                        "They are close enough to show which district covers a "
+                        "neighbourhood and not close enough to settle an address."})
+        source = "multnomah_precinct_dissolve"
+    else:
+        placed = entity_layer(store, pid6)
+        if not placed:
+            caveats.append({
+                "code": "no_boundary", "rule": "§9",
+                "guidance": f"{name} has no boundary in this data, so the electorate "
+                            "for these seats cannot be drawn. Special districts have "
+                            "no boundaries here at all and school districts join by "
+                            "name at 156 of 223. Name the seats instead of drawing "
+                            "them; a missing outline is not a missing government."})
+            return envelope(
+                "render_office_map", entity=entity,
+                data={"role": chosen["role"], "ballot": chosen["ballot"],
+                      "seat_count": chosen["seat_count"], "svg": None,
+                      "districts": 0, "source": None},
+                caveats=caveats)
+
+        collection, key = maps.load_layer(placed["layer"])
+        feature = next((f for f in collection["features"]
+                        if f["properties"].get(key) == placed["geo_id"]), None)
+        if not feature or not feature.get("geometry"):
+            caveats.append({
+                "code": "no_boundary", "rule": "§9",
+                "guidance": f"{name} has no boundary in this data, so the electorate "
+                            "for these seats cannot be drawn. Special districts have "
+                            "no boundaries here at all and school districts join by "
+                            "name at 156 of 223. Name the seats instead of drawing "
+                            "them; a missing outline is not a missing government."})
+            return envelope(
+                "render_office_map", entity=entity,
+                data={"role": chosen["role"], "ballot": chosen["ballot"],
+                      "seat_count": chosen["seat_count"], "svg": None,
+                      "districts": 0, "source": None},
+                caveats=caveats)
+
+        # One shape, because one electorate. The seat count goes in the sentence
+        # rather than into shapes, since drawing five identical outlines for five
+        # at-large seats would invent five geographies that do not exist.
+        drawn = maps.districts(
+            [{"label": "", "name": name, "geometry": feature["geometry"]}],
+            f"{name}: who elects the {_seat_noun(chosen['role'])}",
+            f"{fmt.plural(chosen['seat_count'], 'seat')}, elected at large",
+            note=f"One electorate. Every voter inside this boundary votes on all "
+                 f"{fmt.plural(chosen['seat_count'], 'seat')}; the position numbers "
+                 "are ballot labels, not places.")
+        caveats.append({
+            "code": "at_large_is_one_electorate", "rule": "§7",
+            "guidance": f"These {chosen['seat_count']} seats are filled at large on the "
+                        "evidence here, so the map is the jurisdiction and the numbered "
+                        "positions are not geographies. Do not describe a position as "
+                        "covering part of the place."})
+        source = placed["layer"]
+
+    # The office caveats travel with this because the map is about those seats,
+    # but a code carried by both would be stated twice in one answer.
+    seen = {c["code"] for c in caveats}
+    caveats += [c for c in offices["caveats"] if c["code"] not in seen]
+
+    return envelope(
+        "render_office_map", entity=entity,
+        data={"role": chosen["role"], "ballot": chosen["ballot"],
+              "seat_count": chosen["seat_count"], "svg": drawn["svg"],
+              "districts": drawn["districts"], "source": source,
+              "districts_named": [f["label"] for f in
+                                  (features if chosen["ballot"] in (BY_DISTRICT, MIXED)
+                                   else [])]},
+        caveats=caveats)
+
+
+TOOLS["render_office_map"] = render_office_map

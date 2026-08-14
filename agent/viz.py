@@ -54,6 +54,17 @@ TOKENS = {
     "s3": ("#EB6834", "#D95926"),
     "s4": ("#4A3AA7", "#9085E9"),
     "dim": ("#B9D3C5", "#3D5C4E"),
+    # District tints. A district map encodes no quantity, so these are a cycle
+    # rather than a ramp: nothing here is more than anything else, and a
+    # sequential palette would invite a reader to rank pieces of ground. They
+    # only have to separate a district from its neighbours — the number at the
+    # centre carries identity — so they sit close in lightness and apart in hue.
+    "d1": ("#CFE8DA", "#1E4636"),
+    "d2": ("#B9DCEA", "#1B3E4E"),
+    "d3": ("#E8DAC2", "#463A2B"),
+    "d4": ("#D9D0EA", "#332B4E"),
+    "d5": ("#CBE4C1", "#2B4427"),
+    "d6": ("#EFD5CE", "#4A2F2B"),
     "good": ("#0CA30C", "#0CA30C"),
     "warning": ("#B8791B", "#D2963F"),
     "serious": ("#C4652F", "#E08A55"),

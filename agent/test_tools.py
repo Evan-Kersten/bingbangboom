@@ -175,6 +175,38 @@ def main():
     check("holders are still absent and the rule still says so",
           "offices_have_no_holders" in codes(result))
 
+    print("\na seat is drawn on the ground that elects it (§7, §9)")
+    multnomah = store.row("SELECT pid6 FROM entities WHERE legal_name='COUNTY OF MULTNOMAH'")["pid6"]
+    result = T.render_office_map(store, multnomah)
+    data = result["data"]
+    check("a districted body is drawn as its districts", data["districts"] == 4,
+          str(data["districts"]))
+    check("from the dissolved precinct source",
+          data["source"] == "multnomah_precinct_dissolve", str(data["source"]))
+    check("and the edges are declared approximate",
+          "district_boundaries_are_approximate" in codes(result))
+
+    # Baker County elects its commissioners at large, so the electorate is the
+    # county. Drawing three shapes there would invent three geographies.
+    result = T.render_office_map(store, baker_county)
+    data = result["data"]
+    check("an at-large body is drawn as one electorate", data["districts"] == 1,
+          str(data["districts"]))
+    check("from a boundary layer already here", data["source"] == "county",
+          str(data["source"]))
+    check("and the numbering is not presented as geography",
+          "at_large_is_one_electorate" in codes(result))
+
+    # §9: a districted body outside Multnomah has no district geometry, and
+    # drawing the whole jurisdiction would tell a reader they elect every seat.
+    schools = store.row("SELECT pid6 FROM entities WHERE legal_name='PORTLAND SCH DIST 1J'")["pid6"]
+    result = T.render_office_map(store, schools)
+    check("a districted body with no boundaries is refused, not approximated",
+          result["data"]["svg"] is None and "no_district_geometry" in codes(result))
+
+    check("the role name is not doubled into the title",
+          T._seat_noun("Community College District Director") == "director")
+
     print("\nrevenue_mix answers whose money it is (§9, §10, §12)")
     import explore
     schools = store.row("SELECT pid6 FROM entities WHERE legal_name='PORTLAND SCH DIST 1J'")["pid6"]

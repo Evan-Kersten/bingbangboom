@@ -263,6 +263,37 @@ SCHEMAS = [
         },
     },
     {
+        "name": "render_office_map",
+        "description": "Draw the ground that elects a seat on a government's governing "
+                       "body. Which source applies is decided by how the seat is "
+                       "filled, not by what is available: a seat elected at large has "
+                       "the whole jurisdiction as its electorate, so the government's "
+                       "own boundary is the district and every voter inside it votes "
+                       "on every seat — the position numbers are ballot labels, not "
+                       "places. A seat elected by ward, zone or board district answers "
+                       "to a piece of ground inside the jurisdiction, and a voter fills "
+                       "one seat rather than all of them. Those district boundaries are "
+                       "recovered from precinct assignments and exist for Multnomah "
+                       "County only; a districted body anywhere else is refused rather "
+                       "than drawn as one electorate, because drawing the jurisdiction "
+                       "would tell a reader they elect every seat. The recovered edges "
+                       "are precinct edges, close enough to show which district covers "
+                       "a neighbourhood and not close enough to settle an address. No "
+                       "holder names are in this data. " + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pid6": {"type": "string"},
+                "role": {"type": "string",
+                         "description": "Which body to draw. Defaults to the one with "
+                                        "the most seats, since a single office covers "
+                                        "the whole jurisdiction and its map says only "
+                                        "where the government is."},
+            },
+            "required": ["pid6"],
+        },
+    },
+    {
         "name": "staffing",
         "description": "Who a government employs, split into named jobs, with each job "
                        "expressed as a ratio against the population it serves: one sworn "
