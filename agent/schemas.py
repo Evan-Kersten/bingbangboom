@@ -614,6 +614,33 @@ SCHEMAS = [
         },
     },
     {
+        "name": "place_topic_brief",
+        "description": "One place and one issue: the governments with a claim on it, what "
+                       "each reports in the categories that stand in for the issue, the "
+                       "conditions residents report, and what to ask whom. Use this "
+                       "whenever a question names a place and a subject together, which is "
+                       "most questions people actually arrive with. It applies §12 in "
+                       "order: the gap between the topic and the Census categories comes "
+                       "first, then the proxy and how loose it is, then figures. It never "
+                       "totals across the governments (§9: the same dollar appears in two "
+                       "entities' expenditures) and never states an issue-level dollar "
+                       "figure. Ask it of a town rather than a district or a county. "
+                       + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pid6": PID,
+                "topic": {"type": "string",
+                          "description": "The subject in the reader's words: housing, "
+                                         "homelessness, wildfire, transit. Anything the "
+                                         "concordance does not cover returns the gap "
+                                         "statement with no categories, which is a "
+                                         "legitimate answer."},
+            },
+            "required": ["pid6", "topic"],
+        },
+    },
+    {
         "name": "render_function_map",
         "description": "Map one named function on the boundary layer that holds most of "
                        "the work, which is the right level below a service-area map. Police "

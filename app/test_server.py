@@ -470,6 +470,43 @@ def main():
           any(b["kind"] == "chart" and "no peer distribution" in b["svg"].lower()
               for b in result["blocks"]))
 
+    print("\nthe brief opens on the gap, not on a figure (§12, §5)")
+    estacada = pid("CITY OF ESTACADA")
+    brief = S.answer_brief(estacada, "wildfire")
+    kinds = [b["kind"] for b in brief["blocks"]]
+    check("a brief is composed as an issue answer", brief["question_type"] == "issue_or_topic")
+    check("and its blocks come back in §15.2 order", brief["violations"] == [],
+          str(brief["violations"]))
+    answer = next(b["text"] for b in brief["blocks"] if b["kind"] == "answer")
+    # §5 precedence: scope limits first. The sentence has to say the data does
+    # not record the subject before it names a single government, because a
+    # reader who sees the bodies first has already started attributing.
+    check("the first sentence says the data does not record the subject",
+          answer.index("Census functional categories") < answer.index("governments"),
+          answer[:120])
+    check("and no dollar figure appears in it at all",
+          "$" not in answer, answer)
+    check("the stack is named in the answer with a count",
+          "established to serve" in answer)
+
+    # The margin column exists so nobody quotes a figure the survey cannot
+    # support. Estacada is small enough that most of its estimates are soft.
+    conditions = [b for b in brief["blocks"] if b["kind"] == "table"
+                  and b["rows"] and "safe to quote" in b["rows"][0]]
+    check("conditions carry a verdict on whether they can be quoted",
+          bool(conditions) and any(r["safe to quote"].startswith("no")
+                                   for r in conditions[0]["rows"]),
+          str(conditions[:1])[:160])
+    asks = [b for b in brief["blocks"] if b["kind"] == "table"
+            and b["rows"] and "take this into the room" in b["rows"][0]]
+    check("and the brief ends with what to ask, not with a number", bool(asks))
+
+    # §15.1: never offer a question whose data is absent. The subject list is
+    # sent from one definition, the way the preset list is.
+    import brief as BR
+    check("the subject list has exactly one definition",
+          set(BR.topics()) == set(rules.TOPIC_CONCORDANCE))
+
     print("\nthe comparison tray is grounded in the tool layer")
     portland = pid("CITY OF PORTLAND")
     group, basis = S.peer_set(portland)
