@@ -299,6 +299,22 @@ def build_fiscal_tables(raw, type_counts):
                     "total": area.get("total"), "percentage": pct,
                 })
 
+            # The total those shares are computed against, over every year the
+            # source carries it. This was being dropped, and dropping it did two
+            # kinds of damage: it threw away a seven-year series for 312 entities
+            # and 1,391 with more than one year, and it left the interface
+            # drawing financialTrends.expenditure under the word "spending"
+            # while the percentages above were computed against this instead.
+            # The two disagree for 1,111 of 1,479 entities — Richland by an
+            # order of magnitude — so they are not one measure and are no longer
+            # stored as though they were.
+            for point in sba.get("history") or []:
+                out["service_area_totals"].append({
+                    "pid6": pid6, "year": point.get("year"),
+                    "total_expenditure": point.get("totalExpenditure"),
+                    "is_breakdown_year": 1 if point.get("year") == year else 0,
+                })
+
         # --- workforce --------------------------------------------------------
         wsa = record.get("workforceByServiceArea")
         wcp = record.get("workforceCompensationProfile")

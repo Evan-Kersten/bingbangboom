@@ -184,13 +184,43 @@ def main():
           one("SELECT COUNT(*) FROM dp03 WHERE moe IS NOT NULL") > 0)
 
     print("\nnot computable by construction")
-    # §8: prior-year figures exist only at entity total level, so there must be
-    # no per-service-area time series anywhere in the store to query by mistake.
+    # §8: an individual service area has one year and no prior-year figure, so
+    # there must be no per-area time series in the store to query by mistake.
     for table in ("spending_by_service_area", "workforce_by_service_area", "financial_functions"):
         years = one(f"SELECT COUNT(*) FROM (SELECT pid6 FROM {table} "
                     "GROUP BY pid6 HAVING COUNT(DISTINCT year) > 1)")
-        check(f"{table} holds a single year per entity, so no YoY can be computed",
+        check(f"{table} holds a single year per entity, so no per-area YoY exists",
               years == 0, f"{years} entities have multiple years")
+
+    print("\nbut the total those areas sum to does move")
+    # The counterpart, and the reason the rule above used to be read too widely:
+    # the breakdown is a snapshot inside a total that has a history, and that
+    # history was discarded at load time until it was noticed.
+    multi = one("SELECT COUNT(*) FROM (SELECT pid6 FROM service_area_totals "
+                "GROUP BY pid6 HAVING COUNT(DISTINCT year) > 1)")
+    check("service_area_totals carries more than one year for most entities",
+          multi > 1000, f"only {multi} entities have a history")
+    seven = one("SELECT COUNT(*) FROM (SELECT pid6 FROM service_area_totals "
+                "GROUP BY pid6 HAVING COUNT(DISTINCT year) >= 7)")
+    check("and a full seven years for several hundred", seven > 300,
+          f"only {seven} entities reach seven years")
+
+    # The two measures must stay distinguishable. If these ever agreed
+    # everywhere the separation would be pointless; they disagree for three
+    # quarters of the corpus, which is why one may never stand in for the other.
+    differ = one("""
+        SELECT COUNT(DISTINCT s.pid6) FROM service_area_totals s
+        JOIN financial_trends f ON f.pid6 = s.pid6 AND f.year = s.year
+        WHERE f.expenditure IS NOT NULL
+          AND ABS(f.expenditure - s.total_expenditure) > 1""")
+    check("the two expenditure measures are genuinely different series",
+          differ > 500, f"only {differ} entities disagree, so the split may be moot")
+    matched = one("""
+        SELECT COUNT(*) FROM service_area_totals s
+        JOIN operating_vs_capital o ON o.pid6 = s.pid6 AND o.year = s.year
+        WHERE ABS(o.total_expenditure - s.total_expenditure) > 1""")
+    check("and the service-area basis is operating plus capital, as its shares assume",
+          matched < 10, f"{matched} rows disagree with operating_vs_capital")
 
     print(f"\n{checks - len(failures)}/{checks} checks passed")
     if failures:

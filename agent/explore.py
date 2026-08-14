@@ -1353,6 +1353,13 @@ CHANGE_START, CHANGE_END = 2017, 2022
 MEASURE_COLUMNS = {"expenditure": "expenditure", "revenue": "revenue",
                    "debt": "total_debt"}
 
+# The fourth measure does not live in financial_trends. It is the total the
+# service-area shares are computed against — operating plus capital — and it is
+# a different series from financial_trends.expenditure for 1,111 of 1,479
+# entities. Kept separate at every level rather than folded in, because folding
+# it in is exactly how one came to stand in for the other.
+SERVICE_AREA_BASIS = "service_area_basis"
+
 
 def coverage_of(years, start, end):
     """What kind of series these observations are, inside a window."""
@@ -1368,6 +1375,24 @@ def coverage_of(years, start, end):
     return PARTIAL, inside
 
 
+def measure_series(store, pid6, measure, start, end):
+    """The year/value pairs for one government on one measure, inside a window.
+
+    Routes the service-area basis to its own table. Everything else comes from
+    financial_trends, and the two are never mixed in one series.
+    """
+    if measure == SERVICE_AREA_BASIS:
+        return [(r["year"], r["total_expenditure"]) for r in store.rows(
+            "SELECT year, total_expenditure FROM service_area_totals "
+            "WHERE pid6=? AND year BETWEEN ? AND ? AND total_expenditure IS NOT NULL "
+            "ORDER BY year", pid6, start, end)]
+    column = MEASURE_COLUMNS[measure]
+    return [(r["year"], r["value"]) for r in store.rows(
+        f"SELECT year, {column} AS value FROM financial_trends "
+        f"WHERE pid6=? AND year BETWEEN ? AND ? AND {column} IS NOT NULL "
+        "ORDER BY year", pid6, start, end)]
+
+
 def trend_panel(store, pid6_list, measure="expenditure",
                 start=PANEL_START, end=PANEL_END):
     """Several governments over a stated window, each labelled by how densely
@@ -1377,20 +1402,16 @@ def trend_panel(store, pid6_list, measure="expenditure",
     because a chart whose x-axis is decided by whichever entity reported longest
     is a chart about that entity's filing habits.
     """
-    column = MEASURE_COLUMNS.get(measure)
-    if not column:
+    if measure != SERVICE_AREA_BASIS and measure not in MEASURE_COLUMNS:
         return T.envelope("trend_panel", caveats=[{
             "code": "unknown_measure", "rule": "§4",
-            "guidance": f"Measure must be one of {', '.join(MEASURE_COLUMNS)}."}])
+            "guidance": f"Measure must be one of "
+                        f"{', '.join(list(MEASURE_COLUMNS) + [SERVICE_AREA_BASIS])}."}])
 
     found, unchartable, missing = partition(store, pid6_list)
     series, thin = [], []
     for entity in found:
-        rows = store.rows(
-            f"SELECT year, {column} AS value FROM financial_trends "
-            "WHERE pid6=? AND year BETWEEN ? AND ? AND " + column + " IS NOT NULL "
-            "ORDER BY year", entity["pid6"], start, end)
-        points = [(r["year"], r["value"]) for r in rows]
+        points = measure_series(store, entity["pid6"], measure, start, end)
         name = entity["common_name"] or entity["legal_name"]
         kind, years = coverage_of([p[0] for p in points], start, end)
         if kind in (None, SINGLE):
@@ -1476,27 +1497,23 @@ def compare_change(store, pid6_list, measure="expenditure",
     says "this much more, over five years", which is what two observations
     support and all they support.
     """
-    column = MEASURE_COLUMNS.get(measure)
-    if not column:
+    if measure != SERVICE_AREA_BASIS and measure not in MEASURE_COLUMNS:
         return T.envelope("compare_change", caveats=[{
             "code": "unknown_measure", "rule": "§4",
-            "guidance": f"Measure must be one of {', '.join(MEASURE_COLUMNS)}."}])
+            "guidance": f"Measure must be one of "
+                        f"{', '.join(list(MEASURE_COLUMNS) + [SERVICE_AREA_BASIS])}."}])
+    column = MEASURE_COLUMNS.get(measure)
 
     found, unchartable, missing = partition(store, pid6_list)
     rows, incomplete = [], []
     for entity in found:
         name = entity["common_name"] or entity["legal_name"]
-        ends = {r["year"]: r["value"] for r in store.rows(
-            f"SELECT year, {column} AS value FROM financial_trends "
-            "WHERE pid6=? AND year IN (?, ?) AND " + column + " IS NOT NULL",
-            entity["pid6"], start, end)}
+        span = measure_series(store, entity["pid6"], measure, start, end)
+        ends = dict(span)
         if start not in ends or end not in ends or not ends[start]:
             incomplete.append(name)
             continue
-        observed = store.row(
-            "SELECT COUNT(DISTINCT year) AS n FROM financial_trends "
-            f"WHERE pid6=? AND year BETWEEN ? AND ? AND {column} IS NOT NULL",
-            entity["pid6"], start, end)["n"]
+        observed = len(span)
         rows.append({
             "pid6": entity["pid6"], "label": name,
             "gov_type": entity["gov_type_name"],
@@ -1511,14 +1528,17 @@ def compare_change(store, pid6_list, measure="expenditure",
     # The peer median change, over the same two years and the same type, so the
     # band a reader compares against is built the way the bars are.
     peers = {}
+    source = ("service_area_totals" if measure == SERVICE_AREA_BASIS
+              else "financial_trends")
+    value = "total_expenditure" if measure == SERVICE_AREA_BASIS else column
     for gov_type in sorted({r["gov_type"] for r in rows}):
         changes = sorted(
             (r["e"] / r["s"] - 1) * 100 for r in store.rows(
-                f"SELECT a.{column} AS s, b.{column} AS e FROM financial_trends a "
-                "JOIN financial_trends b ON b.pid6 = a.pid6 AND b.year = ? "
+                f"SELECT a.{value} AS s, b.{value} AS e FROM {source} a "
+                f"JOIN {source} b ON b.pid6 = a.pid6 AND b.year = ? "
                 "JOIN entities x ON x.pid6 = a.pid6 "
-                f"WHERE a.year = ? AND x.gov_type_name = ? AND a.{column} > 0 "
-                f"AND b.{column} IS NOT NULL", end, start, gov_type))
+                f"WHERE a.year = ? AND x.gov_type_name = ? AND a.{value} > 0 "
+                f"AND b.{value} IS NOT NULL", end, start, gov_type))
         if len(changes) >= 4:
             peers[gov_type] = {"n": len(changes), "median": quantile(changes, 0.5),
                                "p25": quantile(changes, 0.25),

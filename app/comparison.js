@@ -1357,7 +1357,8 @@
               'Fewer than two entities can be drawn: an entity needs both a '
               + detail.unit + ' count in the data and two or more years of spending. '
               + 'One year is a point, not a trend.')
-          : refusal('Total spending over time',
+          : refusal((DATA.measureLabels[detail.measure] || 'Total spending')
+              + ' over time',
               'Fewer than two entities have two or more years of data, so there is '
               + 'nothing to compare. One year is a point, not a trend.');
       } else {
@@ -1378,7 +1379,8 @@
         svg = multiSeries(
           indexed ? 'Spending per ' + detail.unit + ', indexed'
             : (perResident ? 'Spending per ' + detail.unit
-              : 'Total spending: ' + plural(drawn.length, 'government') + ' compared'),
+              : (DATA.measureLabels[detail.measure] || 'Total spending') + ': '
+                + plural(drawn.length, 'government') + ' compared'),
           indexed ? years[0] + ' = 100, ' + drawn.length + ' governments compared'
             : years[0] + ' to ' + years[years.length - 1]
               + (perResident ? ', entity totals divided by ' + detail.unit + 's'
@@ -1399,6 +1401,23 @@
           return row;
         });
       }
+    }
+
+    /* Two totals in this data are both called expenditure and disagree for three
+       quarters of the corpus. Whenever one is drawn, the rule that says so
+       travels — mirrors the same block in tools.render_comparison. */
+    const measured = detail.measure || request.measure || 'expenditure';
+    if ((measured === 'expenditure' || measured === 'service_area_basis')
+        && ['five_year_panel', 'five_year_change', 'entities_over_time'].indexOf(form) >= 0) {
+      detail.caveats = detail.caveats.concat([{
+        code: 'two_expenditure_measures', rule: '§10',
+        guidance: 'This data carries two different totals both called expenditure, and '
+          + 'they are not interchangeable. financial_trends.expenditure is one measure; '
+          + 'service_area_totals.total_expenditure is operating plus capital, and it is '
+          + 'the denominator every service-area percentage is computed against. They '
+          + 'disagree for 1,111 of 1,479 entities and by an order of magnitude for some. '
+          + 'Name which one a figure came from whenever both could be meant, and never '
+          + 'put a share from one beside a total from the other.' }]);
     }
 
     const unchartable = detail.unchartable || [];

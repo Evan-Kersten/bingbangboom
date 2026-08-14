@@ -113,6 +113,19 @@ CREATE TABLE revenue_volatility_yoy (
     yoy_change       DOUBLE
 );
 
+-- The total the service-area shares are computed against, across every year
+-- the source reports it. Deliberately its own table rather than a column on
+-- financial_trends: they are different measures of "expenditure" and they
+-- disagree for three quarters of the corpus, so a schema that let one stand in
+-- for the other would rebuild the basis confusion this table exists to end.
+DROP TABLE IF EXISTS service_area_totals;
+CREATE TABLE service_area_totals (
+    pid6                TEXT,
+    year                INTEGER,
+    total_expenditure   REAL,
+    is_breakdown_year   INTEGER   -- 1 for the year the service-area split describes
+);
+
 DROP TABLE IF EXISTS spending_by_service_area;
 CREATE TABLE spending_by_service_area (
     pid6          TEXT,
@@ -266,6 +279,7 @@ CREATE TABLE data_availability (
 );
 
 CREATE INDEX idx_sba_pid ON spending_by_service_area(pid6);
+CREATE INDEX idx_sat_pid ON service_area_totals(pid6);
 CREATE INDEX idx_ff_pid  ON financial_functions(pid6);
 CREATE INDEX idx_ft_pid  ON financial_trends(pid6);
 CREATE INDEX idx_rs_pid  ON revenue_sources(pid6);

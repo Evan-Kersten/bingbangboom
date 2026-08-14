@@ -991,19 +991,36 @@ def render_chart(store, pid6, form):
             "SELECT year, revenue, expenditure FROM financial_trends WHERE pid6=? "
             "ORDER BY year", pid6)
         blocked = [not_computable("service_area_yoy")]
-        caveats = [caveat("inputs_not_outcomes")]
+        caveats = [caveat("inputs_not_outcomes"), caveat("two_expenditure_measures")]
+        # The spending breakdown elsewhere in this interface is computed against
+        # operating plus capital, which is not this number. Drawing that series
+        # alongside says so with a line rather than only in a rule.
+        basis = {r["year"]: r["total_expenditure"] for r in store.rows(
+            "SELECT year, total_expenditure FROM service_area_totals WHERE pid6=? "
+            "ORDER BY year", pid6)}
         if len(rows) < 2:
             svg = viz.refusal(f"{name}: revenue and spending over time",
                               "Fewer than two years are available, so there is no series to "
                               "draw. One year is a point, not a trend.")
         else:
+            series = [
+                {"label": "Revenue", "points": [(r["year"], r["revenue"]) for r in rows]},
+                {"label": "Reported expenditure",
+                 "points": [(r["year"], r["expenditure"]) for r in rows]}]
+            if len({basis.get(r["year"]) for r in rows} - {None}) > 1:
+                series.append({
+                    "label": "Operating and capital",
+                    "points": [(r["year"], basis.get(r["year"])) for r in rows]})
             svg = viz.time_series(
                 f"{name}: revenue and spending over time",
-                f"{rows[0]['year']} to {rows[-1]['year']}, entity totals",
-                [{"label": "Revenue", "points": [(r["year"], r["revenue"]) for r in rows]},
-                 {"label": "Spending", "points": [(r["year"], r["expenditure"]) for r in rows]}])
+                f"{rows[0]['year']} to {rows[-1]['year']}, entity totals on two "
+                "expenditure measures",
+                series)
             table = [{"year": r["year"], "revenue": fmt.money(r["revenue"]),
-                      "spending": fmt.money(r["expenditure"])} for r in rows]
+                      "reported expenditure": fmt.money(r["expenditure"]),
+                      "operating and capital": (fmt.money(basis[r["year"]])
+                                                if basis.get(r["year"]) else "—")}
+                     for r in rows]
 
     elif form == "workforce_composition":
         source = get_workforce(store, pid6)
@@ -1038,7 +1055,11 @@ COMPARISON_FORMS = ("entities_over_time", "service_area_across_entities",
                     # five-year comparison most of the corpus can answer.
                     "five_year_panel", "five_year_change")
 
-MEASURE_LABELS = {"expenditure": "Total spending", "revenue": "Total revenue",
+# Two of these are totals of expenditure and they are not the same number, so
+# neither may be called "total spending" alone. The label carries the basis.
+MEASURE_LABELS = {"expenditure": "Reported expenditure",
+                  "service_area_basis": "Operating and capital spending",
+                  "revenue": "Total revenue",
                   "debt": "Total debt"}
 
 
@@ -1281,6 +1302,13 @@ def render_comparison(store, pid6_list, form="entities_over_time",
     # A government the reader picked and the chart could not draw has to leave a
     # mark on the drawing, not only in the rules panel. Dropping it silently is
     # the defect this whole comparison path was rebuilt to prevent.
+    # Two totals in this data are both called expenditure and disagree for three
+    # quarters of the corpus. Whenever one is drawn, the rule that says so travels.
+    if measure in ("expenditure", "service_area_basis") and form in (
+            "five_year_panel", "five_year_change", "entities_over_time"):
+        source = dict(source, caveats=source["caveats"]
+                      + [caveat("two_expenditure_measures")])
+
     unchartable = source["data"].get("unchartable") or []
     if unchartable and svg:
         svg = viz.append_note(

@@ -425,7 +425,7 @@ def time_series(title, subtitle, series, formatter=fmt.money, width=680, height=
     # The bottom band has to hold the tick row and the legend row, or the two
     # land on each other. Sizing the plot around them is the fix; shrinking the
     # font is not.
-    left, right = 64, 92
+    left, right = 64, 150
     tick_band, legend_band = 24, 30
     plot_top = offset + 26
     plot_height = height - plot_top - tick_band - legend_band
@@ -467,8 +467,13 @@ def time_series(title, subtitle, series, formatter=fmt.money, width=680, height=
         body.append(text_el(px(year), plot_top + plot_height + 18, str(year),
                             size=10.5, fill="muted", anchor="middle", tabular=True))
 
+    # A slot each. Two series used to hard-code s1/s2, which drew a third in the
+    # same blue as the second — and the third here is a *different measure of
+    # expenditure*, so two indistinguishable lines was the one outcome this
+    # chart could not afford.
+    slots = ["s1", "s2", "s3", "s4"]
     for index, entry in enumerate(series):
-        colour = "s1" if index == 0 else "s2"
+        colour = slots[index % len(slots)]
         points = [(px(y), py(v)) for y, v in entry["points"] if v is not None]
         path = " ".join(f"{'M' if i == 0 else 'L'}{x:.1f},{y:.1f}"
                         for i, (x, y) in enumerate(points))
@@ -482,14 +487,15 @@ def time_series(title, subtitle, series, formatter=fmt.money, width=680, height=
         end_x, end_y = points[-1]
         body.append(f'<circle cx="{end_x:.1f}" cy="{end_y:.1f}" r="6" fill="{token("surface")}"/>')
         body.append(f'<circle cx="{end_x:.1f}" cy="{end_y:.1f}" r="4" fill="{token(colour)}"/>')
-        body.append(text_el(end_x + 10, end_y + 4, entry["label"], size=11, fill="ink-2"))
+        body.append(text_el(end_x + 10, end_y + 4, truncate(entry["label"], 20),
+                            size=11, fill="ink-2"))
 
     # A legend is always present for two or more series, on its own row below
     # the tick band.
     legend_y = plot_top + plot_height + tick_band + 14
     x = left
     for index, entry in enumerate(series):
-        colour = "s1" if index == 0 else "s2"
+        colour = slots[index % len(slots)]
         body.append(f'<rect x="{x}" y="{legend_y - 8}" width="10" height="10" rx="2" '
                     f'fill="{token(colour)}"/>')
         body.append(text_el(x + 16, legend_y + 1, entry["label"], size=11, fill="ink-2"))

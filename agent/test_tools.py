@@ -246,6 +246,45 @@ def main():
     check("the role name is not doubled into the title",
           T._seat_noun("Community College District Director") == "director")
 
+    print("\ntwo totals are both called expenditure and are not the same (§10)")
+    import explore
+    corvallis = store.row("SELECT pid6 FROM entities WHERE legal_name='CITY OF CORVALLIS'")["pid6"]
+    reported = dict(explore.measure_series(store, corvallis, "expenditure", 2017, 2023))
+    basis = dict(explore.measure_series(store, corvallis, explore.SERVICE_AREA_BASIS,
+                                        2017, 2023))
+    check("both measures have a series for the same entity",
+          len(reported) > 4 and len(basis) > 4)
+    check("and they are genuinely different numbers",
+          any(abs(reported[y] - basis[y]) > 1 for y in reported if y in basis),
+          f"{reported} vs {basis}")
+
+    # The service-area shares are computed against the second one, so the second
+    # one is what the breakdown's total must agree with.
+    row = store.row("SELECT total_expenditure FROM operating_vs_capital WHERE pid6=?",
+                    corvallis)
+    latest = max(basis)
+    check("the service-area basis is operating plus capital",
+          abs(basis[latest] - row["total_expenditure"]) < 1,
+          f"{basis[latest]} vs {row['total_expenditure']}")
+
+    # §8 still holds for an individual area: one year, no prior-year figure.
+    areas = store.rows("SELECT COUNT(DISTINCT year) y FROM spending_by_service_area "
+                       "WHERE pid6=? GROUP BY service_area", corvallis)
+    check("an individual service area still has no year-over-year",
+          all(a["y"] == 1 for a in areas))
+
+    drawn = T.render_comparison(store, [corvallis, portland], "five_year_change",
+                                measure=explore.SERVICE_AREA_BASIS)
+    check("a chart on either measure carries the rule that names it",
+          "two_expenditure_measures" in codes(drawn))
+    check("and the two measures are labelled apart",
+          T.MEASURE_LABELS["expenditure"] != T.MEASURE_LABELS["service_area_basis"])
+
+    chart = T.render_chart(store, corvallis, "finances_over_time")
+    check("the trend chart draws both measures rather than picking one",
+          any("operating and capital" in r for r in (chart["data"]["table"] or [{}])[0]),
+          str(list((chart["data"]["table"] or [{}])[0])))
+
     print("\nfive years is two panels, not one (§8)")
     # 1,005 governments filed 2017 and 2022 and nothing between; 313 filed every
     # year. Drawn as lines on one axis those are indistinguishable, and a reader

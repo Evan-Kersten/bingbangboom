@@ -10,6 +10,16 @@ and so a rule cannot be silently dropped by a model that skimmed section 8.
 """
 
 CAVEATS = {
+    "two_expenditure_measures": (
+        "10",
+        "This data carries two different totals both called expenditure, and they are "
+        "not interchangeable. financial_trends.expenditure is one measure; "
+        "service_area_totals.total_expenditure is operating plus capital, and it is the "
+        "denominator every service-area percentage is computed against. They disagree "
+        "for 1,111 of 1,479 entities and by an order of magnitude for some. Name which "
+        "one a figure came from whenever both could be meant, and never put a share "
+        "from one beside a total from the other."),
+
     # ---- section 8: finance and workforce -------------------------------
     "debt_capped": (
         "8",
@@ -166,9 +176,13 @@ CAVEATS = {
 NOT_COMPUTABLE = {
     "service_area_yoy": (
         "8",
-        "Per-service-area year-over-year change is not computable. Prior-year figures exist "
-        "only at the entity total level. Never state or estimate a growth rate for an "
-        "individual service area."),
+        "An individual service area has no year-over-year change: the source gives each "
+        "area a share and a total for one year only, with no prior-year figure of its "
+        "own, so never state or estimate a growth rate for Public Safety or any other "
+        "single area. The total those areas sum to is a different matter and does have "
+        "a history — see service_area_totals, which runs to seven years for 312 "
+        "entities. Say which of the two you are describing; the areas are a snapshot "
+        "inside a total that moves."),
     "per_capita_without_population": (
         "6",
         "Per-capita is not computable for an entity with no population or enrollment field."),
