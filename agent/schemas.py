@@ -360,6 +360,77 @@ SCHEMAS = [
         },
     },
     {
+        "name": "community_context",
+        "description": "The conditions of the place a government serves — median "
+                       "household income, poverty, unemployment, health insurance, "
+                       "commute — from the American Community Survey. Report these "
+                       "BESIDE a government's fiscal figures and never as a result of "
+                       "them. Nothing in either source says a budget produced a poverty "
+                       "rate or that a poverty rate produced a budget, so do not "
+                       "correlate them, rank places on the pair, or order a sentence so "
+                       "one reads as the cause of the other. Counties and cities join "
+                       "directly; a school or special district is not a Census "
+                       "geography and is described by its host county, which is stated. "
+                       "Every figure carries its margin of error and a reliability flag: "
+                       "an estimate marked soft has a margin wider than 30% of itself "
+                       "and must be reported with the margin or not at all. " + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pid6": {"type": "string"},
+                "vintage": {"type": "integer", "enum": [2024, 2023, 2019]},
+            },
+            "required": ["pid6"],
+        },
+    },
+    {
+        "name": "since_pandemic",
+        "description": "One community indicator at the 2019 release and the latest one. "
+                       "Two overlapping five-year windows set beside each other, never a "
+                       "trend and never a rate of change: the 2019 release covers 2015 "
+                       "to 2019 and the latest covers 2020 to 2024, each a five-year "
+                       "average. Dollar indicators are refused outright because each "
+                       "release is in its own dollars and no price index here can "
+                       "separate inflation from change. The result says whether the two "
+                       "estimates differ by more than their margins allow, using the "
+                       "Census significance test; where they do not, say the survey "
+                       "cannot separate them and never state a direction. " + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pid6": {"type": "string"},
+                "code": {"type": "string",
+                         "description": "A DP03 variable code. Rates and percentages "
+                                        "only; dollar variables are refused."},
+            },
+            "required": ["pid6"],
+        },
+    },
+    {
+        "name": "render_community_map",
+        "description": "A condition of Oregon's places, mapped at county or place level. "
+                       "Estimates whose margin of error exceeds 30% of the estimate are "
+                       "withheld and draw as no data, because binning a figure the "
+                       "survey cannot place puts a town in a colour band it has not been "
+                       "shown to belong in. Where fewer than half the geographies "
+                       "survive that test the map is refused entirely — at place level "
+                       "that is unemployment, poverty and health insurance, which would "
+                       "colour as few as 20 of 420 towns; counties are reliable for all "
+                       "indicators and are the grain to use instead. Never place this "
+                       "beside a spending map as cause and effect. " + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "code": {"type": "string"},
+                "vintage": {"type": "integer", "enum": [2024, 2023, 2019]},
+                "geo_level": {"type": "string", "enum": ["county", "place"]},
+                "county": {"type": "string",
+                           "description": "Scope a place-level map to one county."},
+            },
+            "required": [],
+        },
+    },
+    {
         "name": "staffing",
         "description": "Who a government employs, split into named jobs, with each job "
                        "expressed as a ratio against the population it serves: one sworn "

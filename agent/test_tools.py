@@ -246,6 +246,70 @@ def main():
     check("the role name is not doubled into the title",
           T._seat_noun("Community College District Director") == "director")
 
+    print("\nthe place beside the government, never joined to it (§4, §8)")
+    import community as C
+    sumpter = store.row("SELECT pid6 FROM entities WHERE legal_name='CITY OF SUMPTER'")["pid6"]
+
+    result = C.community_context(store, portland)
+    data = result["data"]
+    check("a city gets its own Census geography", data["basis"] == "own")
+    check("with every tracked indicator", len(data["indicators"]) >= 5)
+    check("and each estimate carries its margin",
+          all(i["moe"] is not None for i in data["indicators"]))
+    check("conditions are never presented as the government's results",
+          "conditions_are_not_outcomes" in codes(result))
+    check("and the survey is not called a count", "survey_not_census" in codes(result))
+
+    # A school district is not a Census geography. Standing its host county in
+    # for it is defensible; doing so silently is not.
+    schools = store.row("SELECT pid6 FROM entities WHERE legal_name='PORTLAND SCH DIST 1J'")["pid6"]
+    result = C.community_context(store, schools)
+    check("a district falls back to its host county and says so",
+          result["data"]["basis"] == "host_county"
+          and "context_is_the_county" in codes(result))
+
+    # Sumpter's unemployment estimate is 20% give or take 30 points. Reporting
+    # that as a figure is the failure this flag exists to prevent.
+    result = C.community_context(store, sumpter)
+    check("an estimate whose margin swamps it is marked unreliable",
+          any(i["reliability"] == "soft" for i in result["data"]["indicators"]))
+    check("and the answer is told to report the margin or nothing",
+          "margin_too_wide" in codes(result))
+
+    print("\ntwo ACS releases are compared by the Census test, not by eye (§8)")
+    # Portland's poverty rate moved 1.0 points against margins of 0.4 and 0.6.
+    # Summing those says no; the root sum of squares — which is the documented
+    # test — says yes. The wrong arithmetic hides a real finding.
+    moved = C.since_pandemic(store, portland, "DP03_0128P")
+    check("a difference outside the margins is reported as real",
+          moved["data"]["separated_from_margin"] is True,
+          str(moved["data"].get("margin_span")))
+    check("and the overlapping windows are declared",
+          "overlapping_windows" in codes(moved))
+
+    held = C.since_pandemic(store, sumpter, "DP03_0128P")
+    check("a difference inside the margins is not called a change",
+          held["data"]["separated_from_margin"] is False)
+    check("and the answer is forbidden a direction",
+          "within_the_margin" in codes(held))
+
+    dollars = C.since_pandemic(store, portland, "DP03_0062")
+    check("comparing dollar figures across releases is refused outright",
+          "vintage_dollars" in codes(dollars) and not dollars["data"].get("points"))
+
+    print("\na map the survey cannot support is refused, not drawn thin (§8)")
+    good = C.render_community_map(store, "DP03_0128P", geo_level="county")
+    check("counties carry a poverty map", bool(good["data"].get("svg")))
+    check("with the withheld geographies named, not silently grey",
+          "withheld_for_margin" in codes(good) or good["data"]["withheld"] == 0)
+
+    # 20 of 420 Oregon towns have an unemployment estimate tight enough to bin.
+    thin = C.render_community_map(store, "DP03_0009P", geo_level="place")
+    check("a place-level unemployment map is refused",
+          thin["data"].get("svg") is None and "too_thin_to_map" in codes(thin))
+    check("and the refusal points at the grain that works",
+          "county level" in " ".join(c["guidance"] for c in thin["caveats"]))
+
     print("\ntwo totals are both called expenditure and are not the same (§10)")
     import explore
     corvallis = store.row("SELECT pid6 FROM entities WHERE legal_name='CITY OF CORVALLIS'")["pid6"]
@@ -525,6 +589,7 @@ def main():
                               "form": "entities_over_time"},
         "who_spends_on": {"function_name": "Fire Protection"},
         "compare_change": {"pid6_list": [portland, baker_county]},
+        "render_community_map": {"code": "DP03_0128P", "geo_level": "county"},
         "trend_panel": {"pid6_list": [portland, baker_county]},
     }
     for name, tool in T.TOOLS.items():

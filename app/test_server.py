@@ -277,6 +277,34 @@ def main():
     ids = [s["id"] for s in entity_report["data"]["sections"]]
     check("the report says where the government is", "where" in ids, str(ids))
 
+    print("\nthe community sits beside the government, never inside it")
+    community = S.answer_preset("community", pid("CITY OF PORTLAND"))
+    text = " ".join(b.get("text", "") for b in community["blocks"])
+    check("the place is described in its own terms",
+          "American Community Survey" in text, text[:140])
+    check("and never as something the government achieved",
+          "not what the government" in text or "not what the governme" in text,
+          text[-160:])
+    check("it conforms to §15", community["violations"] == [],
+          str(community["violations"]))
+    rows = next(b for b in community["blocks"] if b["kind"] == "table")["rows"]
+    check("every figure shows what it can carry",
+          all(r["can it carry weight"] for r in rows))
+
+    # §8: where the two releases cannot be separated, the answer says the survey
+    # cannot tell rather than reporting a change of zero.
+    quiet = " ".join(b.get("text", "") for b in
+                     S.answer_preset("community", pid("CITY OF SUMPTER"))["blocks"])
+    check("a place the survey cannot separate is told so, not called unchanged",
+          "unable to separate" in quiet or "margin of error allows" in quiet,
+          quiet[-200:])
+
+    report = R.compose_report(store, kind="entity", pid6=baker)
+    ids = [x["id"] for x in report["data"]["sections"]]
+    check("the entity report carries a community section", "community" in ids, str(ids))
+    check("and places it after the fiscal ones, not among them",
+          ids.index("community") > ids.index("spending"), str(ids))
+
     print("\nfive years of data reaches the comparison and the report")
     keizer = pid("CITY OF KEIZER")
     portland = pid("CITY OF PORTLAND")

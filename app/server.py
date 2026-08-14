@@ -48,6 +48,7 @@ STORE = T.Store()
 QUESTION_TYPE = {
     "profile": "factual_lookup",
     "revenue_mix": "financial_interpretation",
+    "community": "place_or_cross_entity",
     "debt": "financial_interpretation",
     "scale": "financial_interpretation",
     "spending": "financial_interpretation",
@@ -86,6 +87,9 @@ PRESETS = [
      "has_operating_vs_capital", "scale"),
     ("debt", "What does it owe, and against how much a year?", "Where it comes from",
      "has_financial_trends", "debt"),
+
+    ("community", "What is this place like for the people who live here?",
+     "Where it comes from", "has_dp03", "community"),
 
     ("workforce", "Who does it employ, and how thinly are they spread?",
      "Who does the work", "has_workforce", "workforce"),
@@ -229,6 +233,8 @@ def _headline(entity, result):
                 + (f", at an average wage of {fmt.rate(wage)}" if wage else "") + ".")
     if tool == "staffing" and data.get("functions"):
         return _staffing_line(data)
+    if tool == "community_context" and data.get("indicators"):
+        return _community_line(data)
     if tool == "revenue_mix" and data.get("sources"):
         return _revenue_line(data)
     if tool == "debt_load" and data.get("ratio"):
@@ -430,6 +436,53 @@ TRANSFER_NOTABLE = 25.0
 # Past this much of a budget landing in "Other Revenue", the split between money
 # raised here and money sent here is not knowable from these lines.
 UNCLASSIFIED_DOMINANT = 40.0
+
+
+def _community_line(data):
+    """What the place is like, in the order a reader would ask it."""
+    import community as C
+    firm = [i for i in data["indicators"] if i["reliability"] == "firm"]
+    if not firm:
+        return ("Every community estimate for this place has a margin of error too "
+                "wide to report as a figure. The survey covers it, but not closely "
+                "enough to say what it found.")
+    lead = firm[0]
+    where = ("the county it sits in" if data["basis"] == "host_county"
+             else data["place_name"])
+    line = (f"In {where}, {lead['name'].lower()} is "
+            f"{C.format_value(lead['estimate'], lead['unit'])}")
+    rest = [i for i in firm[1:4]]
+    if rest:
+        line += ", with " + ", ".join(
+            f"{i['name'].lower()} at {C.format_value(i['estimate'], i['unit'])}"
+            for i in rest)
+    line += f". American Community Survey, {data['vintage'] - 4} to {data['vintage']}."
+    if data["basis"] == "host_county":
+        line += (" This government is not a Census geography, so these describe its "
+                 "host county rather than the area it serves.")
+    if data["soft"]:
+        line += (f" {fmt.plural(data['soft'], 'other estimate')} here "
+                 + ("has" if data["soft"] == 1 else "have")
+                 + " a margin too wide to report.")
+    return line + (" These describe the population, not what the government achieved.")
+
+
+def _pandemic_line(moved):
+    """Only what cleared the margin, and never with a cause attached."""
+    import community as C
+    parts = []
+    for detail in moved:
+        first, last = detail["points"][0], detail["points"][1]
+        direction = "higher" if detail["difference"] > 0 else "lower"
+        parts.append(
+            f"{detail['name'].lower()} is {direction} than in the 2019 release "
+            f"({C.format_value(first['estimate'], detail['unit'])} to "
+            f"{C.format_value(last['estimate'], detail['unit'])})")
+    return ("Set against the pre-pandemic release, " + "; ".join(parts)
+            + ". Both are five-year averages over windows that overlap, so this is "
+              "two periods beside each other rather than a change measured at two "
+              "moments — and nothing here says the government caused it or "
+              "responded to it.")
 
 
 def _revenue_line(data):
@@ -687,6 +740,9 @@ def _section_readout(section, entity=None):
 
     if section_id == "where":
         return _locator_line(data, name)
+
+    if section_id == "community":
+        return _community_line(data)
 
     if section_id == "five_year_change":
         direction = "more" if data["change"] > 0 else "less"
@@ -1104,6 +1160,48 @@ def answer_preset(preset_id, pid6=None, county=None):
                 for r in staff["data"]["functions"]]})
     elif preset_id == "trend":
         add(T.get_entity_profile(STORE, pid6), "finances_over_time")
+    elif preset_id == "community":
+        # Deliberately its own answer rather than a panel bolted onto a spending
+        # one. Putting a budget and a poverty rate in a single block is where a
+        # reader starts reading one as the other's cause, and §4 forbids exactly
+        # that. Adjacent, in the same thread, is as close as they get.
+        result = T.TOOLS["community_context"](STORE, pid6)
+        add(result)
+        data = result["data"]
+        if data.get("indicators"):
+            import community as C
+            blocks.append({"kind": "table", "rows": [
+                {"measure": i["name"],
+                 "figure": C.format_value(i["estimate"], i["unit"]),
+                 "give or take": (C.format_value(i["moe"], i["unit"])
+                                  if i["moe"] is not None else "not stated"),
+                 "can it carry weight": {
+                     "firm": "yes", "soft": "no — margin too wide",
+                     "unstated": "no margin given", "absent": "no estimate"
+                 }[i["reliability"]]}
+                for i in data["indicators"]]})
+
+            # The pre-pandemic comparison, on a rate rather than a dollar figure,
+            # and only where the two releases differ by more than the survey's
+            # own margin allows.
+            moved = []
+            for code, name, unit, _ in C.INDICATORS:
+                if unit == "dollars":
+                    continue
+                shift = T.TOOLS["since_pandemic"](STORE, pid6, code)
+                detail = shift["data"]
+                if detail.get("separated_from_margin"):
+                    moved.append(detail)
+                    results.append(shift)
+            if moved:
+                blocks.append({"kind": "text", "text": _pandemic_line(moved)})
+            else:
+                blocks.append({"kind": "text", "text": (
+                    "Against the 2019 release, none of these has moved by more than "
+                    "the survey's own margin of error allows. That is not a finding "
+                    "of no change; it is the survey being unable to separate the two "
+                    "estimates.")})
+
     elif preset_id == "revenue_mix":
         result = T.TOOLS["revenue_mix"](STORE, pid6)
         add(result)

@@ -1897,3 +1897,17 @@ def render_locator_map(store, pid6):
 
 
 TOOLS["render_locator_map"] = render_locator_map
+
+
+def _bind_community():
+    """Community context is its own module so it cannot see a fiscal figure.
+
+    Bound here rather than imported at the top for the same reason explore is:
+    community imports tools, and tools registers community's functions.
+    """
+    import community
+    for name in ("community_context", "since_pandemic", "render_community_map"):
+        TOOLS[name] = getattr(community, name)
+
+
+_bind_community()

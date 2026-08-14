@@ -342,6 +342,29 @@ def entity_report(store, pid6):
                       "observations": row["observations"]},
             caveats=change["caveats"], blocked=change["not_computable"]))
 
+    # The place, beside the government, never joined to it. Placed after the
+    # fiscal sections rather than among them so that no section reads as one
+    # explaining the other, and carrying its own §4 rule saying as much.
+    context = T.TOOLS["community_context"](store, pid6)
+    if context["data"].get("indicators"):
+        import community as C
+        sound = [i for i in context["data"]["indicators"] if i["reliability"] == "firm"]
+        sections.append(_section(
+            "community", "The place this government serves",
+            "Describe the population and stop. These are survey estimates about "
+            "residents, not results this government produced, and nothing in either "
+            "source connects them — do not order the sentences so that one explains "
+            "the other. Report each margin, and any estimate marked soft only with "
+            "its margin attached.",
+            110, data=context["data"],
+            table=[{"measure": i["name"],
+                    "figure": C.format_value(i["estimate"], i["unit"]),
+                    "give or take": (C.format_value(i["moe"], i["unit"])
+                                     if i["moe"] is not None else "not stated"),
+                    "reliable": "yes" if i["reliability"] == "firm" else "no"}
+                   for i in context["data"]["indicators"]] or None,
+            caveats=context["caveats"], blocked=context["not_computable"]))
+
     salient = T.find_salient(store, pid6)
     sections.append(_section(
         "salience", "What stands out",

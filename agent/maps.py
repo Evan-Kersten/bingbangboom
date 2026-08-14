@@ -241,9 +241,17 @@ def choropleth(layer, values, title, subtitle, formatter=fmt.percent,
                                 size=10.5, fill="muted"))
 
     coverage = f"{covered} of {len(features)} boundaries carry a value"
-    body.append(viz.text_el(0, height - 8, note or coverage, size=11, fill="muted"))
+    # Wrapped, with the frame grown to hold it. A note that runs off the right
+    # edge is worse than none: the half a reader can see reads as the whole, and
+    # this one carries the reason a geography is grey.
+    lines = viz.wrap(note or coverage, 92)
+    grown = height + max(0, len(lines) - 1) * 14
+    y = grown - 8 - (len(lines) - 1) * 14
+    for line in lines:
+        body.append(viz.text_el(0, y, line, size=11, fill="muted"))
+        y += 14
 
-    svg = viz.frame(width, height, top + "".join(body), f"{title}. {subtitle or ''} {coverage}")
+    svg = viz.frame(width, grown, top + "".join(body), f"{title}. {subtitle or ''} {coverage}")
     return {"svg": svg, "covered": covered, "polygons": len(features), "breaks": breaks}
 
 
