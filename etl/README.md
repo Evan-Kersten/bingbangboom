@@ -4,8 +4,8 @@ Builds the queryable store the insights agent runs against, from the source
 files in the repository root.
 
 ```
-python3 etl/build.py      # ~7 seconds, writes build/
-python3 etl/verify.py     # 45 assertions, exits non-zero on failure
+python3 etl/build.py      # ~20 seconds, writes build/
+python3 etl/verify.py     # 52 assertions, exits non-zero on failure
 ```
 
 No dependencies. Standard library only, so this runs anywhere Python 3 does.

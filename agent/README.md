@@ -1,12 +1,14 @@
 # The agent
 
-Twelve typed tools over the store built by `etl/`, the §4 formatter, and the
+Thirty-five typed tools over the store built by `etl/`, the §4 formatter, and the
 orchestrator that routes a question and runs the tool loop.
 
 ```
-python3 agent/test_tools.py         # 79 checks
+python3 agent/test_tools.py         # 201 checks
 python3 agent/test_orchestrator.py  # 44 checks, uses a scripted model
-python3 agent/test_viz.py           # 56 checks on the render layer
+python3 agent/test_viz.py           # 87 checks on the render layer
+python3 agent/test_reports.py       # 53 checks on report composition
+python3 agent/test_blocks.py        # 45 checks on §15 block order and gating
 python3 agent/gallery.py            # every chart form on one page, to look at
 ```
 
