@@ -299,11 +299,21 @@ def main():
     check("and draws far fewer polygons",
           0 < result["data"]["polygons"] < 60, str(result["data"]["polygons"]))
 
-    check("special districts cannot be mapped at all",
-          "unknown_layer" in codes(T.render_map(store, "special_district")))
-    check("and the refusal says to list them instead",
-          "list them" in " ".join(c["guidance"] for c in
-                                  T.render_map(store, "special_district")["caveats"]))
+    # The Multnomah pilot recovered 19 special district boundaries, so the layer
+    # exists — but 19 districts spanning fire, water, transit and community
+    # colleges are not a peer group, and a choropleth over them would invite a
+    # comparison none of them are in. Locating one is the honest form.
+    recovered = T.render_map(store, "special_district", "spending_per_resident")
+    check("the recovered special district layer is drawable at all",
+          "unknown_layer" not in codes(recovered), str(sorted(codes(recovered))))
+    check("but it falls under the coverage floor rather than posing as a peer map",
+          (recovered["data"].get("covered") or 0) < (recovered["data"].get("polygons") or 1),
+          f"{recovered['data'].get('covered')}/{recovered['data'].get('polygons')}")
+    located = T.render_locator_map(
+        store, store.row("SELECT pid6 FROM entities WHERE legal_name="
+                         "'TUALATIN VALLEY FIRE AND RESCUE DISTRICT'")["pid6"])
+    check("and one of them can be placed in Oregon on its own boundary",
+          located["data"]["basis"] == "own_boundary" and located["data"]["svg"])
     check("an unknown county is refused",
           "county_not_found" in codes(T.render_map(store, "place", county="Atlantis")))
 

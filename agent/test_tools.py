@@ -175,6 +175,45 @@ def main():
     check("holders are still absent and the rule still says so",
           "offices_have_no_holders" in codes(result))
 
+    print("\nevery government type gets a map (§9, §13)")
+    # Special districts are two thirds of Oregon's governments and 1,010 have no
+    # boundary anywhere here. "Cannot be put on a map" answered "where is this"
+    # with nothing.
+    tvfr = store.row("SELECT pid6 FROM entities WHERE legal_name="
+                     "'TUALATIN VALLEY FIRE AND RESCUE DISTRICT'")["pid6"]
+    result = T.render_locator_map(store, tvfr)
+    check("a recovered special district is drawn as itself",
+          result["data"]["basis"] == "own_boundary", str(result["data"]["basis"]))
+    check("and the recovered boundary declares that it is reconstructed",
+          "boundary_is_recovered" in codes(result))
+
+    result = T.render_locator_map(store, new_bridge)
+    check("a district with no boundary is still placed",
+          result["data"]["basis"] == "filed_county" and result["data"]["svg"],
+          str(result["data"]["basis"]))
+    check("as a filing, never as an extent",
+          "located_not_bounded" in codes(result))
+    check("and §13's host-county rule travels with it",
+          "host_county_is_a_filing" in codes(result))
+
+    for name in ("CITY OF PORTLAND", "COUNTY OF BAKER", "PORTLAND SCH DIST 1J"):
+        pid = store.row("SELECT pid6 FROM entities WHERE legal_name=?", name)["pid6"]
+        drawn = T.render_locator_map(store, pid)["data"]
+        check(f"{name.title()} is drawn as its own boundary",
+              drawn["basis"] == "own_boundary" and drawn["svg"], str(drawn["basis"]))
+
+    # The precinct source is state plane feet and every other layer is degrees.
+    # Mixed without conversion, Oregon shrinks to a dot and the district lands
+    # off frame — which is what happened the first time this was drawn.
+    import json as _json
+    with open(os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "build", "geo",
+            "special_district.geojson")) as fh:
+        recovered = _json.load(fh)["features"]
+    corner = recovered[0]["geometry"]["coordinates"][0][0][0]
+    check("recovered boundaries are stored in longitude and latitude",
+          -125 < corner[0] < -116 and 41 < corner[1] < 47, str(corner))
+
     print("\na seat is drawn on the ground that elects it (§7, §9)")
     multnomah = store.row("SELECT pid6 FROM entities WHERE legal_name='COUNTY OF MULTNOMAH'")["pid6"]
     result = T.render_office_map(store, multnomah)

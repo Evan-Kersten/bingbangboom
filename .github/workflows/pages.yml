@@ -59,6 +59,7 @@ jobs:
 
       - name: Run the test suites
         run: |
+          python3 etl/test_project.py
           python3 agent/test_tools.py
           python3 agent/test_orchestrator.py
           python3 agent/test_viz.py

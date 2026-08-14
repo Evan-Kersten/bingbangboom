@@ -522,6 +522,24 @@ def _ballot_line(drawn):
             "the ballot are labels, not places.")
 
 
+def _locator_line(data, name):
+    """One sentence saying what kind of placement this map is."""
+    if data["basis"] == "own_boundary":
+        return (f"Where {name} sits in Oregon."
+                + (" The boundary is recovered from precinct assignments rather than "
+                   "filed by the district, so it shows roughly where it is and stops "
+                   "at the Multnomah county line."
+                   if data.get("recovered") else ""))
+    if data["basis"] == "measured_extent":
+        return (f"{name} has no boundary in this data. Highlighted are the counties it "
+                "was measured to operate in, which is where it serves rather than its "
+                "edge.")
+    return (f"{name} has no boundary in this data — special districts, two thirds of "
+            "Oregon's governments, have none at all. Highlighted is the county it "
+            "files under, which published data assigns by where most of its assessed "
+            "value sits, so it locates the filing and not the service area.")
+
+
 def _ratio(value):
     """One staff member per this many people, rounded to how well it is known."""
     if value is None:
@@ -666,6 +684,9 @@ def _section_readout(section, entity=None):
                 f"{data['peer_group']} entities. The median is "
                 f"{fmt.rate(peers['median'])} and the middle half runs "
                 f"{fmt.rate(peers['p25'])} to {fmt.rate(peers['p75'])}.")
+
+    if section_id == "where":
+        return _locator_line(data, name)
 
     if section_id == "five_year_change":
         direction = "more" if data["change"] > 0 else "less"
@@ -915,6 +936,13 @@ def answer_preset(preset_id, pid6=None, county=None):
         # the map says where it sits in Oregon, on the same measure. A reader
         # arrives knowing which government is theirs and wanting both.
         placed = T.entity_layer(STORE, pid6)
+        coverage = None
+        # A choropleth needs a layer of peers to shade. The recovered special
+        # district layer is 19 boundaries spanning fire, water, transit and
+        # community colleges — not a peer group, and shading them on one measure
+        # would invite a comparison none of them are in. They go to the locator.
+        if placed and placed["layer"] == "special_district":
+            placed = None
         if placed:
             scoped = (entity["host_county"] if placed["layer"] == "place" else None)
             area_map = T.render_map(
@@ -935,11 +963,21 @@ def answer_preset(preset_id, pid6=None, county=None):
                        if scoped else
                        "This is one government type only; the others spend here too."))})
                 blocks.append({"kind": "map", "svg": data["svg"], "coverage": coverage})
-        else:
-            blocks.append({"kind": "text", "text": (
-                f"{_named(entity)} has no boundary in this data, so it cannot be put "
-                "on a map. Special districts, which are most of Oregon's governments, "
-                "have none at all.")})
+        # A choropleth needs a layer of peers to shade. A government without one
+        # still has a place, and "cannot be put on a map" answered the reader's
+        # actual question — where is this — with nothing.
+        if not placed or not (coverage or 0) >= B.MAP_COVERAGE_FLOOR:
+            located = T.render_locator_map(STORE, pid6)
+            results.append(located)
+            if located["data"].get("svg"):
+                blocks.append({"kind": "text", "text": _locator_line(located["data"],
+                                                                    _named(entity))})
+                blocks.append({"kind": "map", "svg": located["data"]["svg"],
+                               "coverage": 1.0})
+            else:
+                blocks.append({"kind": "text", "text": (
+                    f"{_named(entity)} has neither a boundary nor a county in this "
+                    "data, so it cannot be placed at all.")})
     elif preset_id == "spending":
         add(T.get_spending_breakdown(STORE, pid6), "spending_composition")
     elif preset_id == "unusual_areas":

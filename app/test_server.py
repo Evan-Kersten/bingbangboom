@@ -88,22 +88,23 @@ def main():
 
     print("\na government is placed on a map, not only described")
     # Maps used to appear in two place-scoped presets only, both in the last
-    # group, so a reader exploring one government never saw one.
-    for name, expect_map in (("COUNTY OF BAKER", True), ("CITY OF PORTLAND", True),
-                             ("NEW BRIDGE WATER SUPPLY DISTRICT", False)):
+    # group, so a reader exploring one government never saw one. A district with
+    # no boundary of its own used to get nothing at all; it now gets the county
+    # it files under, which is a placement rather than an extent.
+    for name in ("COUNTY OF BAKER", "CITY OF PORTLAND",
+                 "NEW BRIDGE WATER SUPPLY DISTRICT"):
         row = store.row("SELECT pid6 FROM entities WHERE legal_name=?", name)
         result = S.answer_preset("scale", row["pid6"])
-        has_map = any(b["kind"] == "map" for b in result["blocks"])
-        check(f"{name.title()}: map {'drawn' if expect_map else 'withheld'}",
-              has_map is expect_map)
+        check(f"{name.title()}: drawn on a map",
+              any(b["kind"] == "map" for b in result["blocks"]))
         check(f"{name.title()}: still conforms to §15", result["violations"] == [],
               str(result["violations"]))
     answer = " ".join(b.get("text", "") for b in
                       S.answer_preset("scale", store.row(
                           "SELECT pid6 FROM entities WHERE legal_name="
                           "'NEW BRIDGE WATER SUPPLY DISTRICT'")["pid6"])["blocks"])
-    check("and an entity with no boundary is told why, not left blank",
-          "no boundary in this data" in answer, answer[:100])
+    check("and an entity with no boundary of its own is told so, on the map",
+          "no boundary in this data" in answer, answer[:120])
 
     print("\na reader who cannot name a government can still find one")
     # Search over 1,529 names only finds what somebody already knew existed,
@@ -250,6 +251,31 @@ def main():
     check("a districted body with no boundary says the map is missing",
           "map is missing rather than drawn as one electorate" in schools
           or "filled by district" in schools, schools[-220:])
+
+    print("\nno government is left off the map")
+    # The interface used to say a special district "cannot be put on a map",
+    # which is two thirds of Oregon's governments answered with nothing.
+    import random
+    everyone = store.rows("SELECT pid6, gov_type_name FROM entities")
+    random.seed(11)
+    sample = random.sample(everyone, 60)
+    without = [r for r in sample
+               if not any(b["kind"] == "map"
+                          for b in S.answer_preset("scale", r["pid6"])["blocks"])]
+    check("a sample across all four types is placed, every one",
+          not without, str([r["gov_type_name"] for r in without][:4]))
+
+    district = " ".join(b.get("text", "") for b in
+                        S.answer_preset("scale", new_bridge)["blocks"])
+    check("a district with no boundary is placed by its filing",
+          "files under" in district, district[-200:])
+    check("and the filing is never called a service area",
+          "locates the filing" in district or "not the service area" in district,
+          district[-200:])
+
+    entity_report = R.compose_report(store, kind="entity", pid6=new_bridge)
+    ids = [s["id"] for s in entity_report["data"]["sections"]]
+    check("the report says where the government is", "where" in ids, str(ids))
 
     print("\nfive years of data reaches the comparison and the report")
     keizer = pid("CITY OF KEIZER")

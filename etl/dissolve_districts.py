@@ -35,6 +35,7 @@ import sys
 from collections import defaultdict
 
 import build as etl
+import project
 import shapefile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -321,6 +322,12 @@ def main(argv=None):
     geometries = shapefile.read_shp(base + ".shp")
     index, _ = dissolve_index(db_path)
     known, by_ocd = load_office_index(db_path)
+
+    # State plane feet in, longitude and latitude out, so a district can be
+    # drawn against the state rather than only against its own siblings.
+    to_lonlat = project.inverse()
+    geometries = [project.reproject_geometry(g, to_lonlat) if g else g
+                  for g in geometries]
 
     features, skipped = dissolve(rows, geometries, index, by_ocd, known)
     path = os.path.join(out_dir, "geo", "electoral_districts.geojson")

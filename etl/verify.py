@@ -147,9 +147,27 @@ def main():
           one("SELECT COUNT(*) FROM geo_entity WHERE layer='county'") == 36)
     check("all 240 places are mappable",
           one("SELECT COUNT(*) FROM geo_entity WHERE layer='place'") == 240)
-    check("no special district claims geometry",
+    # Special districts have no published boundaries anywhere. Nineteen were
+    # reconstructed from Multnomah precinct assignments, and the point of this
+    # check is that the number stays small and stays labelled: a recovered
+    # boundary must never be filed as though the Census had published it.
+    # The recovered layer and the Census government type do not describe the same
+    # set: five of the reconstructed districts are community colleges and
+    # education service districts, which the register files as School District.
+    # Both counts are checked rather than forced to agree.
+    reconstructed = one("SELECT COUNT(*) FROM geo_entity WHERE layer='special_district'")
+    check("special district geometry exists only where it was reconstructed",
+          0 < reconstructed < 40, str(reconstructed))
+    check("and every reconstructed boundary says how it was made",
+          one("SELECT COUNT(*) FROM geo_entity WHERE layer='special_district' "
+              "AND match_method='multnomah_precinct_dissolve'") == reconstructed)
+    check("some of them are filed under another government type, which is recorded",
           one("SELECT COUNT(*) FROM geo_entity g JOIN entities e ON e.pid6=g.pid6 "
-              "WHERE e.gov_type_name='Special District'") == 0)
+              "WHERE g.layer='special_district' "
+              "AND e.gov_type_name != 'Special District'") > 0)
+    check("with the other 1,010 still carrying no boundary at all",
+          one("SELECT COUNT(*) FROM entities e WHERE e.gov_type_name='Special District' "
+              "AND e.pid6 NOT IN (SELECT pid6 FROM geo_entity)") > 1000)
     school = one("SELECT COUNT(*) FROM geo_entity WHERE layer='school_district'")
     check("school district geometry is partial and marked below high confidence",
           0 < school < 223 and one("SELECT COUNT(*) FROM geo_entity WHERE "

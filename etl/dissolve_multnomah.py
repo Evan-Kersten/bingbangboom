@@ -37,6 +37,7 @@ import sys
 from collections import defaultdict
 
 import build as etl
+import project
 import shapefile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -153,6 +154,27 @@ def write_service_extent(db_path, features):
     return len(rows)
 
 
+def write_geo_entity(db_path, features):
+    """Register the recovered boundaries so entity_layer can find them.
+
+    geo_entity is built before this script runs, from the Census layers, which
+    have nothing for special districts. Appending here rather than rebuilding
+    keeps the Census join authoritative for the types it covers; the match
+    confidence travels so a low-confidence boundary can be said to be one.
+    """
+    import sqlite3
+    conn = sqlite3.connect(db_path)
+    conn.execute("DELETE FROM geo_entity WHERE layer = 'special_district'")
+    conn.executemany(
+        "INSERT INTO geo_entity (pid6, layer, geo_id, match_method, confidence) "
+        "VALUES (?,?,?,?,?)",
+        [(f["properties"]["pid6"], "special_district", f["properties"]["pid6"],
+          "multnomah_precinct_dissolve", f["properties"]["match_confidence"])
+         for f in features])
+    conn.commit()
+    conn.close()
+
+
 def main(argv=None):
     """`argv` lets build.py call this in-process as the last ETL step; the
     dissolved boundaries live in the same store, so they are rebuilt with it."""
@@ -167,6 +189,13 @@ def main(argv=None):
     _, rows = shapefile.read_dbf(base + ".dbf")
     geometries = shapefile.read_shp(base + ".shp")
     index, by_pid = load_entities(os.path.join(out_dir, "pf.sqlite"))
+
+    # The precinct file is Oregon State Plane North in feet; every other layer
+    # here is longitude and latitude. Converting at the source means nothing
+    # downstream has to know this file was ever projected.
+    to_lonlat = project.inverse()
+    geometries = [project.reproject_geometry(g, to_lonlat) if g else g
+                  for g in geometries]
 
     groups = dissolve(rows, geometries)
 
@@ -209,6 +238,27 @@ def main(argv=None):
         json.dump({"type": "FeatureCollection", "features": features}, fh)
 
     write_service_extent(os.path.join(out_dir, "pf.sqlite"), features)
+
+    # The whole point of the pilot was to find out whether special districts can
+    # be given boundaries. Nineteen of them can, from this file, and until now
+    # that answer sat in a report nobody read while the interface went on saying
+    # these governments cannot be put on a map. They become a real layer here.
+    recovered = [f for f in features if f["properties"]["pid6"]
+                 and f["properties"]["is_special_district"]]
+    layer_path = os.path.join(out_dir, "geo", "special_district.geojson")
+    with open(layer_path, "w") as fh:
+        json.dump({"type": "FeatureCollection", "features": [
+            {"type": "Feature",
+             "properties": {"pid6": f["properties"]["pid6"],
+                            "NAME": f["properties"]["name"],
+                            "kind": f["properties"]["kind"],
+                            "match_confidence": f["properties"]["match_confidence"],
+                            # Precinct edges, not the district's own filed
+                            # boundary, and the renderer says so.
+                            "source": "multnomah_precinct_dissolve"},
+             "geometry": f["geometry"]}
+            for f in recovered]}, fh)
+    write_geo_entity(os.path.join(out_dir, "pf.sqlite"), recovered)
 
     # What fraction of Multnomah's special districts in the fiscal data would a
     # layer like this cover? That is the number the licensing decision turns on.

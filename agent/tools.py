@@ -1723,3 +1723,149 @@ def render_office_map(store, pid6, role=None, seat=None):
 
 
 TOOLS["render_office_map"] = render_office_map
+
+
+def render_locator_map(store, pid6):
+    """Where in Oregon this government is, for every government.
+
+    Three cases, and the difference between them is the point rather than an
+    implementation detail:
+
+        own boundary        counties, cities, 156 school districts and the 19
+                            special districts the Multnomah pilot recovered.
+                            The shape drawn is the government.
+
+        measured extent     29 districts whose service area was established from
+                            precinct assignments. Drawn as the counties it was
+                            measured to operate in, which for several is not the
+                            county it files under.
+
+        filed county        everybody else, which is most of the corpus. Drawn as
+                            the county the fiscal data files it under, and said
+                            to be a filing — §13.11: published data assigns a
+                            district to the county holding most of its assessed
+                            value, so this locates the paperwork, not the service.
+
+    A reader looking at a rural fire district still wants to know where in Oregon
+    it is, and "no boundary in this data" answered that with nothing.
+    """
+    import maps
+
+    entity = _entity(store, pid6)
+    if not entity:
+        return envelope("render_locator_map", caveats=[{
+            "code": "entity_not_found", "rule": "§14",
+            "guidance": "This pid6 is not in the data."}])
+
+    name = entity["common_name"] or entity["legal_name"]
+    counties, county_key = maps.load_layer("county")
+    base = [f for f in counties["features"] if f["geometry"]]
+
+    placed = entity_layer(store, pid6)
+    if placed:
+        # A county's own boundary is one of the base shapes, so it is picked out
+        # of the same layer rather than treated as having no geometry.
+        collection, key = maps.load_layer(placed["layer"])
+        shape = next((f for f in collection["features"]
+                      if f["properties"].get(key) == placed["geo_id"]
+                      and f["geometry"]), None)
+        if shape:
+            recovered = placed["layer"] == "special_district"
+            note = (f"{name} drawn inside Oregon. "
+                    + ("The boundary is recovered from Multnomah precinct "
+                       "assignments rather than filed by the district, so the edges "
+                       "are precinct edges and stop at the county line."
+                       if recovered else
+                       "The boundary is the published one for this government type."))
+            # Its own outline against a base of itself carries no information, so
+            # the other counties stay as context and this one is picked out.
+            base_shapes = ([f for f in base if f["properties"].get(county_key)
+                            != placed["geo_id"]] if placed["layer"] == "county"
+                           else base)
+            drawn = maps.locator(base_shapes, [dict(shape, name=name)],
+                                 f"Where {name} is",
+                                 f"{entity['gov_type_name']}, drawn against Oregon's "
+                                 "36 counties", note=note)
+            return envelope(
+                "render_locator_map", entity=entity,
+                data={"basis": "own_boundary", "layer": placed["layer"],
+                      "recovered": recovered, "svg": drawn["svg"],
+                      "counties": [], "drawn": drawn["drawn"]},
+                caveats=([{
+                    "code": "boundary_is_recovered", "rule": "§8",
+                    "guidance": "This boundary was reconstructed from precinct "
+                                "assignments, not filed by the district. The edges "
+                                "are precinct edges and stop at the Multnomah county "
+                                "line, so it shows roughly where the district is and "
+                                "does not settle an address."}] if recovered else []))
+
+    # No boundary of its own. Fall back to the counties it touches, and say which
+    # kind of touching this is.
+    measured = [row["serves_county"] for row in store.rows(
+        "SELECT DISTINCT serves_county FROM service_extent WHERE pid6=?", pid6)]
+    filed = (entity["host_county"] or "").upper()
+    wanted = {c.upper() for c in measured} | ({filed} if filed else set())
+    if not wanted:
+        return envelope(
+            "render_locator_map", entity=entity,
+            data={"basis": None, "svg": None, "counties": [], "drawn": 0},
+            caveats=[{
+                "code": "no_location", "rule": "§9",
+                "guidance": f"{name} has neither a boundary nor a county in this data, "
+                            "so it cannot be placed at all. Say that rather than "
+                            "implying it is nowhere."}])
+
+    shapes = [dict(f, name=f["properties"].get("NAME", ""))
+              for f in base
+              if (f["properties"].get("NAME") or "").upper() in wanted]
+    if not shapes:
+        return envelope(
+            "render_locator_map", entity=entity,
+            data={"basis": None, "svg": None, "counties": sorted(wanted), "drawn": 0},
+            caveats=[{
+                "code": "no_location", "rule": "§9",
+                "guidance": f"The county named for {name} does not match a boundary "
+                            "here, so it cannot be placed."}])
+
+    if measured:
+        note = (f"{name} has no boundary in this data. Highlighted are the counties it "
+                "was measured to operate in, established from precinct assignments "
+                "rather than from its filing. This is where it serves, not its edge.")
+        basis = "measured_extent"
+    else:
+        note = (f"{name} has no boundary in this data. Highlighted is the county it "
+                "files under, which published data assigns by where most of its "
+                "assessed value sits — so this locates the filing and may be smaller "
+                "or larger than where the district actually operates.")
+        basis = "filed_county"
+
+    drawn = maps.locator(
+        base, shapes, f"Where {name} is filed" if basis == "filed_county"
+        else f"Where {name} operates",
+        f"{entity['gov_type_name']}, located by "
+        + ("measured service extent" if measured else "county of filing"),
+        note=note)
+
+    caveats = [{
+        "code": "located_not_bounded", "rule": "§9",
+        "guidance": "This map places the government; it is not the government's "
+                    "boundary. Never describe the highlighted county as the district's "
+                    "extent, and never read area off it."}]
+    if basis == "filed_county":
+        caveats.append({
+            "code": "host_county_is_a_filing", "rule": "§13",
+            "guidance": "Published data files a special district under the county "
+                        "holding most of its assessed value, so a district serving "
+                        "several counties appears in one. The Multnomah pilot found "
+                        "districts serving that county from a Washington County "
+                        "filing. Do not treat the host county as the service area."})
+
+    return envelope(
+        "render_locator_map", entity=entity,
+        data={"basis": basis, "layer": None, "recovered": False,
+              "svg": drawn["svg"], "counties": sorted(wanted),
+              "drawn": drawn["drawn"]},
+        caveats=caveats)
+
+
+TOOLS["render_locator_map"] = render_locator_map

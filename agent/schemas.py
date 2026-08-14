@@ -263,6 +263,27 @@ SCHEMAS = [
         },
     },
     {
+        "name": "render_locator_map",
+        "description": "Where in Oregon a government is, for every government. Three "
+                       "cases and the difference between them is the point: a "
+                       "government with its own boundary is drawn as itself; the 29 "
+                       "districts whose service extent was measured from precinct "
+                       "assignments are drawn as the counties they operate in; and "
+                       "everybody else — most of the corpus, since 1,010 special "
+                       "districts have no boundary anywhere in this data — is drawn as "
+                       "the county it files under. That last one locates the paperwork "
+                       "and not the service: §13.11, published data assigns a district "
+                       "to the county holding most of its assessed value, so the host "
+                       "county under-captures where a district operates. Never describe "
+                       "a highlighted county as the district's extent and never read "
+                       "area off one. " + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {"pid6": {"type": "string"}},
+            "required": ["pid6"],
+        },
+    },
+    {
         "name": "render_office_map",
         "description": "Draw the ground that elects a seat on a government's governing "
                        "body. Which source applies is decided by how the seat is "

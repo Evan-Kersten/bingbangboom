@@ -311,6 +311,19 @@ def entity_report(store, pid6):
             80, chart=trend_chart["data"]["svg"], table=trend_chart["data"]["table"],
             caveats=trend_chart["caveats"], blocked=trend_chart["not_computable"]))
 
+    # Every government has a place, including the two thirds that have no
+    # boundary. A report that describes a district's budget without ever saying
+    # where it is has left out the first thing a reader wants.
+    located = T.render_locator_map(store, pid6)
+    if located["data"].get("svg"):
+        sections.append(_section(
+            "where", "Where it is",
+            "Say where this government sits and, if the map is the county it files "
+            "under rather than its own boundary, say that too — a filing is not a "
+            "service area and the map cannot be read as one.",
+            60, chart=located["data"]["svg"], data=located["data"],
+            caveats=located["caveats"]))
+
     # Where this government's own five-year change sits against its type. The
     # trend chart above says what it did; this says whether that was unusual.
     change = _explore().compare_change(store, [pid6])

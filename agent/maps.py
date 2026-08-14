@@ -25,6 +25,9 @@ LAYERS = {
     "county": ("geo/county.geojson", "GEOID"),
     "place": ("geo/place.geojson", "GEOID"),
     "school_district": ("geo/school_district.geojson", "GEOID"),
+    # Recovered from precinct assignments rather than published by the Census,
+    # so this layer is keyed on pid6 and covers only what the pilot reached.
+    "special_district": ("geo/special_district.geojson", "pid6"),
 }
 
 BINS = ["bin-1", "bin-2", "bin-3", "bin-4", "bin-5"]
@@ -358,3 +361,132 @@ def districts(features, title, subtitle, width=680, height=460, note=None,
     svg = viz.frame(width, grown, top + "".join(body), f"{title}. {subtitle or ''} {line}")
     return {"svg": svg, "districts": len(drawn),
             "highlighted": found["label"] if found else None}
+
+
+# ------------------------------------------------------------------ locator
+
+# Two thirds of Oregon's governments are special districts and 1,010 of them
+# have no boundary anywhere in this data. Until now the interface said so and
+# stopped, which is honest and useless: a reader looking at a rural fire district
+# still wants to know where in Oregon it is.
+#
+# So the fallback is not a blank. It is the state with the county the district
+# files under picked out, said plainly as a filing rather than as a service area
+# — §13.11 is explicit that published data assigns a district to the county
+# holding most of its assessed value, so the host county under-captures where a
+# district actually operates, and the pilot found districts serving Multnomah
+# from a Washington County filing. Where service_extent measured the difference,
+# both counties are drawn and the sentence says which is which.
+LOCATOR_BAND = 46
+
+# Below this many pixels across, a shape is drawn true and then ringed, because
+# a one-pixel mark on a state map answers "where" with nothing.
+MARKER_FLOOR = 18
+
+# The state behind a locator is scenery, and it is inlined into every one of
+# these — at the ordinary 0.6px tolerance that is 80 KB a page and 224 MB across
+# the corpus, for coastline nobody reads at 680 pixels wide. Simplified this far
+# Oregon is still unmistakably Oregon and costs a quarter of that.
+BASE_TOLERANCE = 6.0
+
+
+_BASE_MARKUP = {}
+
+
+def _base_markup(base, project, width, height, dim_base):
+    """The state behind a locator, rendered once and reused.
+
+    Identical on every one of these and 35 KB of path data each time. Cached on
+    the frame it was drawn for, which is the only thing that varies.
+    """
+    key = (width, height, dim_base, len(base))
+    if key not in _BASE_MARKUP:
+        fill = viz.token("track" if dim_base else "nodata")
+        parts = []
+        for feature in base:
+            path = _path(feature["geometry"], project, tolerance=BASE_TOLERANCE)
+            if path:
+                parts.append(f'<path d="{path}" fill="{fill}" '
+                             f'stroke="{viz.token("surface")}" stroke-width="0.6"/>')
+        _BASE_MARKUP[key] = "".join(parts)
+    return _BASE_MARKUP[key]
+
+
+def _extent(geometry, project):
+    """The projected bounding box of a geometry, or None if it has no points."""
+    xs, ys = [], []
+    for polygon in geometry["coordinates"]:
+        for ring in polygon:
+            for lon, lat in ring:
+                x, y = project(lon, lat)
+                xs.append(x)
+                ys.append(y)
+    return (min(xs), min(ys), max(xs), max(ys)) if xs else None
+
+
+def locator(base, subject, title, subtitle, width=680, height=420,
+            note=None, dim_base=True):
+    """Draw one government inside Oregon.
+
+    `base` is the state's counties, drawn quietly for orientation. `subject` is
+    what the reader came for: the government's own boundary where one exists,
+    or the counties it is filed under where one does not. The difference between
+    those two is the whole honesty of the picture, so the caller states it in
+    `note` and this function never guesses.
+    """
+    drawn = [f for f in subject if f.get("geometry")]
+    if not drawn:
+        return {"svg": viz.refusal(title, note or "No boundary to draw."),
+                "drawn": 0}
+
+    top, offset = viz.header(title, subtitle, width)
+    map_height = height - offset - LOCATOR_BAND
+    # Projected over the base alone, not over base plus subject. Every subject is
+    # inside Oregon, so including it cannot widen the frame — but it does make
+    # the projection depend on which government is being drawn, which stops the
+    # base from being computed once. Held constant, the state is rendered a
+    # single time for the whole corpus instead of 1,529 times.
+    project = _project([{"geometry": f["geometry"]} for f in base],
+                       width, map_height)
+    body = [f'<g transform="translate(0,{offset + 4})">']
+
+    # The base is context, not measurement, and it is identical on all 1,529 of
+    # these. Drawn at the ordinary tolerance it is 80 KB of path data per page
+    # and 224 MB across the corpus, for detail nobody reads at state scale: the
+    # reader is looking at which county is filled, not at the shape of its
+    # riverbank. Simplified hard, it is a tenth of that and looks the same.
+    body.append(_base_markup(base, project, width, map_height, dim_base))
+
+    # A water district is a few hundred metres across and Oregon is 640 km. Drawn
+    # honestly at state scale it is one pixel, which locates nothing. So the shape
+    # is drawn true and a ring is added around anything too small to find, which
+    # is what a locator map is for — the reader is asking where, not how big.
+    marks = []
+    for feature in drawn:
+        path = _path(feature["geometry"], project)
+        if not path:
+            continue
+        body.append(
+            f'<path d="{path}" fill="{viz.token("s1")}" stroke="{viz.token("s1")}" '
+            f'stroke-width="0.8"><title>{viz.esc(feature.get("name", ""))}</title></path>')
+        box = _extent(feature["geometry"], project)
+        if box and max(box[2] - box[0], box[3] - box[1]) < MARKER_FLOOR:
+            marks.append(((box[0] + box[2]) / 2, (box[1] + box[3]) / 2))
+
+    for cx, cy in marks:
+        body.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="11" fill="none" '
+                    f'stroke="{viz.token("s1")}" stroke-width="1.6"/>')
+        body.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="16" fill="none" '
+                    f'stroke="{viz.token("s1")}" stroke-width="0.8" opacity="0.45"/>')
+    body.append("</g>")
+
+    lines = viz.wrap(note, 92) if note else []
+    grown = height + max(0, len(lines) - 1) * 14
+    y = grown - 12 - (len(lines) - 1) * 14
+    for line in lines:
+        body.append(viz.text_el(0, y, line, size=11, fill="muted"))
+        y += 14
+
+    svg = viz.frame(width, grown, top + "".join(body),
+                    f"{title}. {subtitle or ''} {note or ''}")
+    return {"svg": svg, "drawn": len(drawn)}
