@@ -165,6 +165,66 @@ def main():
           "per student" in district_answer and "per resident" not in district_answer,
           district_answer[:110])
 
+    print("\nthe presets open on money a reader recognises as theirs")
+    # The set is ordered for somebody standing outside the building, not for
+    # somebody who already reads municipal finance.
+    first_group = S.PRESETS[0][2]
+    check("the first group is where the money comes from",
+          first_group == "Where it comes from", first_group)
+    check("and it opens on the revenue split",
+          S.PRESETS[0][0] == "revenue_mix", S.PRESETS[0][0])
+
+    revenue = S.answer_preset("revenue_mix", baker)
+    text = " ".join(b.get("text", "") for b in revenue["blocks"])
+    check("the revenue answer names property tax in the reader's terms",
+          "property tax" in text.lower(), text[:120])
+    check("and says how much of the budget is decided elsewhere",
+          "transferred in" in text, text[:200])
+    check("it conforms to §15", revenue["violations"] == [], str(revenue["violations"]))
+    table = next(b for b in revenue["blocks"] if b["kind"] == "table")
+    check("every revenue line says what it is",
+          all(r["what it is"] for r in table["rows"]))
+
+    debt = S.answer_preset("debt", baker)
+    text = " ".join(b.get("text", "") for b in debt["blocks"])
+    check("debt is expressed against a year of revenue",
+          "times what it takes in" in text, text[:160])
+    check("and is never called a shortfall",
+          "balance, not an annual shortfall" in text)
+    check("it conforms to §15", debt["violations"] == [], str(debt["violations"]))
+
+    print("\nthe payroll is split into jobs a community would name")
+    staff = S.answer_preset("workforce", pid("CITY OF PORTLAND"))
+    text = " ".join(b.get("text", "") for b in staff["blocks"])
+    check("a city's answer names sworn officers, not a headcount alone",
+          "sworn police officers" in text, text[:200])
+    check("and gives the ratio against the people served",
+          "one for every" in text and "residents" in text, text[:240])
+    school_staff = " ".join(b.get("text", "") for b in
+                            S.answer_preset("workforce", college)["blocks"])
+    check("a school district's ratio is per student, not per resident",
+          "students" in school_staff and "one for every" in school_staff,
+          school_staff[:200])
+
+    # §9: a government that reports zero staff has arranged the work differently.
+    # "average wage of None" is not a description of that.
+    zero = S.answer_preset("workforce", new_bridge)
+    text = " ".join(b.get("text", "") for b in zero["blocks"])
+    check("a reported zero payroll is explained rather than printed",
+          "reported zero" in text and "None" not in text, text[:180])
+
+    print("\ngovernance says how a seat is filled, not just that it exists")
+    gov = S.answer_preset("governance", baker)
+    text = " ".join(b.get("text", "") for b in gov["blocks"])
+    check("the answer counts the seats a reader can vote on",
+          "filled by election" in text, text[:160])
+    check("and states the term length", "Terms run" in text, text[:160])
+    check("holders are still absent and said to be",
+          "No holder names" in text)
+    rows = next(b for b in gov["blocks"] if b["kind"] == "table")["rows"]
+    check("each role says how it is filled and for how long",
+          all(r["filled by"] and r["term"] for r in rows))
+
     print("\na search row says what its number counts")
     rows = [S._with_magnitude(store.row(
         "SELECT pid6, legal_name, common_name, gov_type_name, host_county "

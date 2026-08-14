@@ -56,6 +56,10 @@ BLOCK_ORDER = {
 # actually purchasable. A follow-up that opens a new topic is offered after the
 # ones that go deeper into this one.
 NEXT_QUESTIONS = [
+    # Money the reader recognises as their own leads, because it is the one
+    # follow-up that does not require already caring about municipal finance.
+    ("has_revenue_sources", "Whose money is this — your tax bill, or the state's?"),
+    ("has_workforce", "Who does it employ, and how thinly are they spread?"),
     ("has_spending_breakdown", "Where does the money actually go?"),
     ("has_spending_breakdown", "Which service areas is it unusual on?"),
     ("has_financial_functions", "Take me inside its largest service area"),
@@ -63,8 +67,8 @@ NEXT_QUESTIONS = [
     ("has_operating_vs_capital", "Is this budget large or small for its type?"),
     ("has_spending_breakdown", "How does its public safety spending compare, head for head?"),
     ("has_financial_trends", "Has its spending outgrown its peers?"),
-    ("has_workforce", "How is the workforce distributed?"),
-    ("has_offices", "Who governs this entity?"),
+    ("has_financial_trends", "What does it owe, and against how much a year?"),
+    ("has_offices", "Who runs it, and do you elect them?"),
     (None, "Which governments serve this place?"),
     (None, "What can this data not tell me?"),
 ]

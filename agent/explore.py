@@ -933,3 +933,345 @@ def service_area_over_time_refusal(service_area):
                         "totals over time, or this area compared across entities, and say "
                         "which was substituted."}],
         blocked=[not_computable("service_area_yoy")])
+
+
+# ------------------------------------------------------ staffing in ratios
+
+# A headcount is a number about an organisation. A ratio against the population
+# it serves is a number about a community: one firefighter per 1,140 residents
+# says something a reader can picture, and 688 firefighters does not. The
+# function split is what makes this possible, since the payroll is broken out
+# into named jobs rather than left as one total.
+#
+# The unit follows the government type, so a school district's teachers are
+# counted per student and a city's officers per resident. Ratios are only
+# built where a denominator exists; a special district gets the split and the
+# wages without a ratio, rather than a ratio against a population it has none of.
+STAFF_ROLES = {
+    "Education - Elementary and Secondary Instructional": "teaching and instructional staff",
+    "Education - Higher Education Instructional": "instructional staff",
+    "Police Protection - Persons with Power of Arrest": "sworn police officers",
+    "Fire Protection - Firefighters": "firefighters",
+    "Libraries": "library staff",
+    "Parks and Recreation": "parks and recreation staff",
+    "Corrections": "corrections staff",
+    "Health": "health staff",
+    "Water Supply": "water supply staff",
+    "Highways": "road and highway staff",
+    "Sewerage": "sewerage staff",
+    "Transit": "transit staff",
+}
+
+
+def staff_role(function_name):
+    """What a reader would call the people in this function."""
+    return STAFF_ROLES.get(function_name)
+
+
+def _staff_ratio_stats(store, gov_type, function_name):
+    """Median people-per-staff-member across one type, for one function.
+
+    Built over entities that have both the function and a denominator, because a
+    median taken over a pool that includes entities missing either side is a
+    median of a different quantity (§8).
+    """
+    ratios = sorted(
+        row["population"] / row["headcount"]
+        for row in store.rows(
+            "SELECT f.headcount, w.population FROM workforce_top_functions f "
+            "JOIN entities e ON e.pid6 = f.pid6 "
+            "JOIN workforce_profile w ON w.pid6 = f.pid6 "
+            "WHERE e.gov_type_name = ? AND f.function_name = ? "
+            "  AND f.headcount > 0 AND w.population > 0",
+            gov_type, function_name))
+    if len(ratios) < 4:
+        return None
+    return {"n": len(ratios), "median": quantile(ratios, 0.5),
+            "p25": quantile(ratios, 0.25), "p75": quantile(ratios, 0.75),
+            "degenerate": 1 if quantile(ratios, 0.25) == quantile(ratios, 0.75) else 0}
+
+
+def staffing(store, pid6):
+    """Who a government employs, split by job, and how thinly that is spread.
+
+    The listed functions do not cover every employee, so shares are stated as
+    shares of the entity total rather than of the listed rows (§8): the payload
+    gives pct_of_total against the whole payroll, and the gap between the listed
+    rows and the total is named rather than left for a reader to discover by
+    adding the column up.
+    """
+    entity = T._entity(store, pid6)
+    if not entity:
+        return T.envelope("staffing", caveats=[{
+            "code": "unknown_entity", "rule": "§2",
+            "guidance": f"No entity {pid6} in the data."}])
+
+    profile = store.row("SELECT * FROM workforce_profile WHERE pid6=?", pid6)
+    functions = store.rows(
+        "SELECT function_name, headcount, headcount_yoy, average_wage, pct_of_total, "
+        "total_payroll FROM workforce_top_functions WHERE pid6=? AND headcount > 0 "
+        "ORDER BY headcount DESC", pid6)
+
+    if not profile or not functions:
+        return T.envelope("staffing", entity=entity, caveats=[{
+            "code": "no_staff_split", "rule": "§9",
+            "guidance": "This government's payroll is not broken out into named jobs. "
+                        "That is an absence of detail, not a report of no staff."}])
+
+    gov_type = entity["gov_type_name"]
+    unit_one = denominator(gov_type, plural=False)
+    unit_many = denominator(gov_type)
+    population = profile["population"]
+    total = profile["total_employees"]
+
+    rows = []
+    for record in functions:
+        row = dict(record)
+        row["role"] = staff_role(record["function_name"])
+        row["per_staff"] = (population / record["headcount"]
+                            if population and record["headcount"] else None)
+        stats = (_cached(store, ("staff_ratio", gov_type, record["function_name"]),
+                         lambda f=record["function_name"]:
+                         _staff_ratio_stats(store, gov_type, f))
+                 if population else None)
+        row["peer_median_per_staff"] = (
+            stats["median"] if stats and not stats["degenerate"] else None)
+        row["peer_n"] = stats["n"] if stats else None
+        rows.append(row)
+
+    listed = sum(r["headcount"] for r in rows)
+    covered = (listed / total * 100) if total else None
+
+    caveats = [
+        caveat("inputs_not_outcomes"),
+        {"code": "headcount_is_not_service", "rule": "§4",
+         "guidance": "A staffing ratio is a count of people employed against a count of "
+                     "people served. It is not a measure of coverage, response time or "
+                     "quality, and a thinner ratio is not a worse service."},
+        {"code": "workforce_partial", "rule": "§8",
+         "guidance": f"The named jobs cover {fmt.count(listed)} of "
+                     f"{fmt.count(total)} employees"
+                     + (f" ({covered:.0f}%)" if covered else "")
+                     + ". Shares are of the whole payroll, but the rows do not add to "
+                       "it; the remainder is staff in functions this payload does not "
+                       "break out."},
+    ]
+    if population:
+        caveats.append({
+            "code": "ratio_denominator", "rule": "§10",
+            "guidance": f"Ratios here are {unit_many} per staff member, on a single "
+                        f"{unit_one} estimate held constant. Say the unit: a school "
+                        "district's is students and a city's is residents."})
+    else:
+        caveats.append({
+            "code": "no_population_denominator", "rule": "§10",
+            "guidance": "This government has no denominator in the data, so the split is "
+                        "reported without ratios rather than against a population it "
+                        "does not have."})
+    if any(r["role"] is None for r in rows):
+        caveats.append({
+            "code": "census_job_labels", "rule": "§12",
+            "guidance": "Some rows carry the Census function label rather than a plain "
+                        "job name. Quote the label; do not invent a job title for it."})
+
+    return T.envelope(
+        "staffing", entity=entity,
+        data={"total_employees": total, "population": population,
+              "unit": unit_one, "units": unit_many, "gov_type": gov_type,
+              "functions": rows, "listed": listed, "covered_pct": covered,
+              "average_annual_wage": profile["average_annual_wage"]},
+        caveats=caveats,
+        blocked=[not_computable("outcome_or_performance")],
+        vintage={"workforce": profile["year"]})
+
+
+# --------------------------------------------------------- whose money it is
+
+# The question a resident actually has about a budget is not where it goes but
+# where it came from, because one of the answers is their own tax bill. Every
+# entity in the data has a revenue split and nothing was using it.
+#
+# Reported as shares with the dollars alongside. A share is what makes two
+# governments comparable and a dollar figure is what makes one concrete, and
+# §10 wants the basis said either way.
+REVENUE_MEANING = {
+    "Property Tax": "levied on property inside its boundary",
+    "Charges & Fees": "charged to the people who use the service",
+    "State Aid": "transferred from the state",
+    "Federal Aid": "transferred from the federal government",
+    "Sales Tax": "a local levy; Oregon has no statewide sales tax",
+    "Income Tax": "a local levy; most Oregon governments do not have one",
+    "Other Taxes": "lodging, franchise and similar levies",
+    "Other Revenue": "interest, sales of property, and everything unclassified",
+}
+
+# Money the government raises from inside its own boundary, as against money
+# handed to it. §12: the distinction is structural, not a judgement.
+OWN_SOURCE = {"Property Tax", "Charges & Fees", "Sales Tax", "Income Tax", "Other Taxes"}
+TRANSFERS = {"State Aid", "Federal Aid"}
+
+
+def _revenue_share_stats(store, gov_type, category):
+    shares = sorted(
+        row["percentage"] for row in store.rows(
+            "SELECT r.percentage FROM revenue_sources r "
+            "JOIN entities e ON e.pid6 = r.pid6 "
+            "WHERE e.gov_type_name = ? AND r.category = ? AND r.percentage IS NOT NULL",
+            gov_type, category))
+    if len(shares) < 4:
+        return None
+    p25, p75 = quantile(shares, 0.25), quantile(shares, 0.75)
+    return {"n": len(shares), "median": quantile(shares, 0.5),
+            "p25": p25, "p75": p75, "degenerate": 1 if p25 == p75 else 0}
+
+
+def revenue_mix(store, pid6):
+    """Where a government's money comes from, and how much of it is the reader's.
+
+    Two structural facts ride on this and both are stated: the split between
+    money raised inside the boundary and money transferred in, because a
+    government funded by transfers is exposed to a decision made elsewhere; and
+    the peer share for each category, because 28% property tax means nothing
+    until you know what a typical Oregon county of that kind reports.
+    """
+    entity = T._entity(store, pid6)
+    if not entity:
+        return T.envelope("revenue_mix", caveats=[{
+            "code": "unknown_entity", "rule": "§2",
+            "guidance": f"No entity {pid6} in the data."}])
+
+    rows = store.rows(
+        "SELECT category, amount, percentage, year FROM revenue_sources "
+        "WHERE pid6=? AND COALESCE(amount, 0) > 0 ORDER BY percentage DESC", pid6)
+    if not rows:
+        return T.envelope("revenue_mix", entity=entity, caveats=[{
+            "code": "no_revenue_split", "rule": "§9",
+            "guidance": "This government's revenue is not broken into sources here. That "
+                        "is an absence of detail, not a report of no revenue."}])
+
+    gov_type = entity["gov_type_name"]
+    for row in rows:
+        row["meaning"] = REVENUE_MEANING.get(row["category"])
+        row["own_source"] = 1 if row["category"] in OWN_SOURCE else 0
+        stats = _cached(store, ("rev_share", gov_type, row["category"]),
+                        lambda c=row["category"]: _revenue_share_stats(store, gov_type, c))
+        row["peer_median_share"] = (
+            stats["median"] if stats and not stats["degenerate"] else None)
+        row["peer_n"] = stats["n"] if stats else None
+
+    total = sum(r["amount"] for r in rows)
+    own = sum(r["amount"] for r in rows if r["category"] in OWN_SOURCE)
+    transferred = sum(r["amount"] for r in rows if r["category"] in TRANSFERS)
+    years = sorted({r["year"] for r in rows if r["year"]})
+
+    caveats = [
+        {"code": "revenue_not_spending", "rule": "§10",
+         "guidance": "These are revenue shares, not spending. A government's largest "
+                     "revenue source and its largest spending area are different "
+                     "questions and must not be run together in one sentence."},
+        {"code": "absent_category_is_not_zero", "rule": "§9",
+         "guidance": "A category missing here usually means this government does not "
+                     "levy or receive it, not that it collected nothing it expected. "
+                     "Oregon has no statewide sales tax, so a sales or income tax line "
+                     "is a local levy and most governments have none."},
+        {"code": "transfer_exposure", "rule": "§12",
+         "guidance": f"{transferred / total * 100:.0f}% of this revenue is transferred "
+                     "in from the state or federal government rather than raised inside "
+                     "the boundary. Say so where it is large: that share is exposed to a "
+                     "decision made somewhere else. It is a structural fact, not a "
+                     "weakness."},
+    ]
+    if len(years) > 1:
+        caveats.append({
+            "code": "years_differ", "rule": "§8",
+            "guidance": f"These lines span {years[0]} to {years[-1]}. Say so; they are "
+                        "not all the same moment."})
+    if gov_type == "School District":
+        caveats.append(caveat("oregon_school_state_funded"))
+
+    return T.envelope(
+        "revenue_mix", entity=entity,
+        data={"sources": rows, "total": total, "own_source": own,
+              "own_source_pct": own / total * 100 if total else None,
+              "transferred": transferred,
+              "transferred_pct": transferred / total * 100 if total else None,
+              "gov_type": gov_type, "years": years,
+              "largest": rows[0]["category"]},
+        caveats=caveats,
+        blocked=[not_computable("outcome_or_performance")],
+        vintage={"revenue": years[-1] if years else None})
+
+
+def debt_load(store, pid6):
+    """What a government owes, set against what it takes in each year.
+
+    Debt alone ranks by government size. Against annual revenue it becomes a
+    number a reader can hold: 1.75 times revenue means the whole year's income
+    would not clear it. Reported at the latest year both figures exist, because
+    a debt from one year over a revenue from another is not a ratio.
+    """
+    entity = T._entity(store, pid6)
+    if not entity:
+        return T.envelope("debt_load", caveats=[{
+            "code": "unknown_entity", "rule": "§2",
+            "guidance": f"No entity {pid6} in the data."}])
+
+    row = store.row(
+        "SELECT year, total_debt, revenue FROM financial_trends "
+        "WHERE pid6=? AND total_debt > 0 AND revenue > 0 ORDER BY year DESC LIMIT 1", pid6)
+    if not row:
+        return T.envelope("debt_load", entity=entity, caveats=[{
+            "code": "no_debt_reported", "rule": "§9",
+            "guidance": "This government reports no outstanding debt in the data. That "
+                        "may mean it carries none, or that debt is not reported here. "
+                        "Do not present it as a government that has paid everything off."}])
+
+    series = store.rows(
+        "SELECT year, total_debt FROM financial_trends WHERE pid6=? AND total_debt > 0 "
+        "ORDER BY year", pid6)
+    gov_type = entity["gov_type_name"]
+    ratios = sorted(
+        r["total_debt"] / r["revenue"] for r in store.rows(
+            "SELECT f.total_debt, f.revenue FROM financial_trends f "
+            "JOIN entities e ON e.pid6 = f.pid6 "
+            "WHERE e.gov_type_name = ? AND f.total_debt > 0 AND f.revenue > 0 "
+            "  AND f.year = ?", gov_type, row["year"]))
+    peers = ({"n": len(ratios), "median": quantile(ratios, 0.5),
+              "p25": quantile(ratios, 0.25), "p75": quantile(ratios, 0.75)}
+             if len(ratios) >= 4 else None)
+
+    ratio = row["total_debt"] / row["revenue"]
+    flags = T._flags(store, pid6)
+    caveats = [
+        {"code": "debt_is_not_a_deficit", "rule": "§8",
+         "guidance": "Outstanding debt is a balance, not an annual shortfall. Most of it "
+                     "is borrowing against capital assets a government intends to hold "
+                     "for decades. Do not describe it as overspending."},
+        {"code": "debt_over_revenue_basis", "rule": "§10",
+         "guidance": f"The ratio is debt at {row['year']} over revenue in the same year. "
+                     "Say the basis; against spending or against assessed value it would "
+                     "be a different number."},
+    ]
+    if peers:
+        caveats.append({
+            "code": "peer_group_stated", "rule": "§8",
+            "guidance": f"The peer group is {peers['n']} Oregon {gov_type} entities "
+                        f"reporting both figures in {row['year']}. State the group and "
+                        "the count; a median without its pool is not a benchmark."})
+    else:
+        caveats.append({
+            "code": "no_peer_distribution", "rule": "§8",
+            "guidance": "Too few peers report both debt and revenue in this year for a "
+                        "median. Report the ratio without a comparison."})
+    if flags.get("debt_capped"):
+        caveats.append(caveat("debt_capped"))
+
+    return T.envelope(
+        "debt_load", entity=entity,
+        data={"year": row["year"], "total_debt": row["total_debt"],
+              "revenue": row["revenue"], "ratio": ratio, "peers": peers,
+              "gov_type": gov_type,
+              "series": [(r["year"], r["total_debt"]) for r in series]},
+        caveats=caveats,
+        blocked=[not_computable("outcome_or_performance")],
+        vintage={"finance": row["year"]})

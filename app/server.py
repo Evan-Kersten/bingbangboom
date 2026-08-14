@@ -47,6 +47,8 @@ STORE = T.Store()
 # preset id -> §5 question type, which §15.2 turns into a block order
 QUESTION_TYPE = {
     "profile": "factual_lookup",
+    "revenue_mix": "financial_interpretation",
+    "debt": "financial_interpretation",
     "scale": "financial_interpretation",
     "spending": "financial_interpretation",
     "inside": "financial_interpretation",
@@ -70,12 +72,30 @@ QUESTION_TYPE = {
 # is answerable without it.
 PRESETS = [
     # (id, label, group, required availability key, handler)
-    ("profile", "What kind of government is this?", "Orientation", None, "profile"),
-    ("scale", "Is this budget large or small for its type?", "Orientation",
+    #
+    # Ordered by what a reader standing outside the building would want to know
+    # first, not by how the data is filed. The first group is money that came
+    # from them and people they might meet; the abstractions come after.
+    #
+    # Labels name the stake rather than the table. "How is the workforce
+    # distributed?" is a column heading. "How many teachers, officers or
+    # firefighters, and how thinly spread?" is a question somebody has.
+    ("revenue_mix", "Whose money is this — your tax bill, or the state's?",
+     "Where it comes from", "has_revenue_sources", "revenue_mix"),
+    ("scale", "Is this a lot to spend for a place this size?", "Where it comes from",
      "has_operating_vs_capital", "scale"),
-    ("spending", "Where does the money actually go?", "Orientation",
-     "has_spending_breakdown", "spending"),
+    ("debt", "What does it owe, and against how much a year?", "Where it comes from",
+     "has_financial_trends", "debt"),
 
+    ("workforce", "Who does it employ, and how thinly are they spread?",
+     "Who does the work", "has_workforce", "workforce"),
+    ("governance", "Who runs it, and do you elect them?", "Who does the work",
+     "has_offices", "governance"),
+    ("salient", "What stands out about this government?", "Who does the work",
+     "has_operating_vs_capital", "salient"),
+
+    ("spending", "Where does the money actually go?", "Follow the money",
+     "has_spending_breakdown", "spending"),
     ("unusual_areas", "Which service areas is it unusual on?", "Follow the money",
      "has_spending_breakdown", "unusual_areas"),
     ("inside", "Take me inside its largest service area", "Follow the money",
@@ -92,15 +112,10 @@ PRESETS = [
     ("trend", "How have revenue and spending moved?", "Against other governments",
      "has_financial_trends", "trend"),
 
-    ("workforce", "How is the workforce distributed?", "Workforce",
-     "has_workforce", "workforce"),
-    ("salient", "What stands out about this government?", "Workforce",
-     "has_operating_vs_capital", "salient"),
-
-    ("ecosystem", "Which governments serve this place?", "Place", None, "ecosystem"),
+    ("ecosystem", "Which other governments serve this place?", "Place", None, "ecosystem"),
     ("map_area", "Map public safety spending across Oregon", "Place", None, "map_area"),
-    ("governance", "Who governs this entity?", "Place", "has_offices", "governance"),
 
+    ("profile", "What kind of government is this?", "Reports", None, "profile"),
     ("report", "Give me the full report", "Reports", None, "report"),
     ("limits", "What can this data not tell me?", "Reports", None, "limits"),
 ]
@@ -202,16 +217,41 @@ def _headline(entity, result):
         return (f"Largest reported area is {top['service_area']} at "
                 f"{fmt.money(top['total'])}, {fmt.percent(top['percentage'])} of spending.")
     if tool == "get_workforce" and data.get("total_employees") is not None:
-        return (f"{fmt.count(data['total_employees'])} employees, average wage "
-                f"{fmt.money(data.get('average_annual_wage'))}.")
+        # §9: a reported zero is a fact about how the work is arranged, not a
+        # payroll of zero people to describe. "Average wage of None" is neither.
+        if not data["total_employees"]:
+            return ("This government reports no employees and no payroll. That is a "
+                    "reported zero rather than missing data, and it usually means the "
+                    "work is contracted out or another government performs it.")
+        wage = data.get("average_annual_wage")
+        return (f"{fmt.count(data['total_employees'])} employees on the payroll"
+                + (f", at an average wage of {fmt.rate(wage)}" if wage else "") + ".")
+    if tool == "staffing" and data.get("functions"):
+        return _staffing_line(data)
+    if tool == "revenue_mix" and data.get("sources"):
+        return _revenue_line(data)
+    if tool == "debt_load" and data.get("ratio"):
+        return _debt_line(data)
     if tool == "find_salient":
         if data.get("nothing_unusual"):
             return "Nothing in this profile clears an attention threshold."
         lead = data["lead"]
         return f"Most unusual: {lead['finding']}."
     if tool == "get_offices" and data.get("total_seats"):
-        return (f"{data['total_seats']} seats recorded across "
-                f"{len(data['roles'])} roles. No holder names are in this data.")
+        roles = len(data["roles"])
+        line = (f"{data['total_seats']} seats recorded across "
+                f"{roles} role{'' if roles == 1 else 's'}")
+        elected, appointed = data.get("elected_seats"), data.get("appointed_seats")
+        if elected:
+            line += f", {elected} of them filled by election"
+            if appointed:
+                line += f" and {appointed} by appointment"
+        terms = sorted({int(r["term_length"]) for r in data["roles"]
+                        if (r.get("term_length") or "").isdigit()})
+        if terms:
+            line += (f". Terms run {terms[0]} years" if len(terms) == 1
+                     else f". Terms run {terms[0]} to {terms[-1]} years")
+        return line + ". No holder names are in this data."
     if tool == "list_ecosystem":
         return (f"{data['total']} governments are filed under {data['county']}, "
                 f"of which {data['mappable']} have boundaries.")
@@ -299,6 +339,141 @@ def _compare_headline(result):
 
 def _named(entity):
     return entity["common_name"] or entity["legal_name"]
+
+
+# A staffing ratio rests on one population estimate and one headcount, so a gap
+# this size is inside the noise and is reported as no gap at all.
+RATIO_FLAT_LOW, RATIO_FLAT_HIGH = 0.9, 1.1
+
+# §11: name the gap only when it is one. A revenue share a few points off the
+# median is how governments differ, not a finding about this one.
+SHARE_GAP_NOTABLE = 8.0
+
+# Past this much of a budget arriving from elsewhere, where the money comes from
+# is a fact about the government's exposure and belongs in the answer.
+TRANSFER_NOTABLE = 25.0
+
+# Past this much of a budget landing in "Other Revenue", the split between money
+# raised here and money sent here is not knowable from these lines.
+UNCLASSIFIED_DOMINANT = 40.0
+
+
+def _revenue_line(data):
+    """Where the money came from, led by the share a resident paid directly.
+
+    Property tax leads when it is there, ahead of larger categories, because it
+    is the only line on this list a reader recognises as their own money. The
+    rest of the sentence is what a share cannot say on its own: whether this
+    government raises its money or is handed it.
+    """
+    sources = {r["category"]: r for r in data["sources"]}
+    top = data["sources"][0]
+    own = sources.get("Property Tax")
+
+    if own and own is not top:
+        line = (f"{fmt.percent(own['percentage'])} comes from property tax, "
+                f"{fmt.money(own['amount'])}, behind {top['category']} at "
+                f"{fmt.percent(top['percentage'])}.")
+    elif own:
+        line = (f"{fmt.percent(own['percentage'])} of this revenue is property tax, "
+                f"{fmt.money(own['amount'])} — the largest single source.")
+    else:
+        line = (f"The largest source is {top['category']} at "
+                f"{fmt.percent(top['percentage'])}, {fmt.money(top['amount'])}. "
+                "No property tax is reported here.")
+
+    lead = own or top
+    if lead.get("peer_median_share"):
+        gap = lead["percentage"] - lead["peer_median_share"]
+        if abs(gap) >= SHARE_GAP_NOTABLE:
+            line += (f" That is {abs(gap):.0f} points "
+                     f"{'above' if gap > 0 else 'below'} the median "
+                     f"{fmt.percent(lead['peer_median_share'])} across "
+                     f"{fmt.count(lead['peer_n'])} Oregon {data['gov_type']} entities.")
+
+    transferred = data.get("transferred_pct") or 0
+    own = data.get("own_source_pct") or 0
+    # Property tax, fees and levies are raised here; aid is sent here; everything
+    # else is neither. Where the unclassified remainder is the bulk of a budget,
+    # saying "0% is raised inside the boundary" describes the classification
+    # rather than the government, so the sentence names the remainder instead.
+    unclassified = max(0.0, 100 - own - transferred)
+    if transferred >= TRANSFER_NOTABLE:
+        line += (f" {transferred:.0f}% of the total is transferred in from the state or "
+                 "federal government rather than raised inside the boundary, so that "
+                 "much of this budget turns on a decision made elsewhere.")
+    elif unclassified >= UNCLASSIFIED_DOMINANT:
+        line += (f" {unclassified:.0f}% of the total sits in unclassified categories, "
+                 "so how much of this is raised inside the boundary cannot be read "
+                 "off these lines.")
+    else:
+        line += f" {own:.0f}% is raised inside the boundary."
+    return line
+
+
+def _debt_line(data):
+    """Debt against a year of revenue, which is the only form of it a reader can hold."""
+    line = (f"{fmt.money(data['total_debt'])} outstanding at {data['year']}, against "
+            f"{fmt.money(data['revenue'])} of revenue that year — "
+            f"{data['ratio']:.2f} times what it takes in.")
+    peers = data.get("peers")
+    if peers and peers["median"]:
+        line += (f" The median across {fmt.count(peers['n'])} Oregon {data['gov_type']} "
+                 f"entities reporting both is {peers['median']:.2f} times.")
+    line += (" This is a balance, not an annual shortfall: most of it is borrowed "
+             "against assets meant to last decades.")
+    return line
+
+
+def data_units(result):
+    """The plural noun this government's population is counted in."""
+    return result["data"].get("units") or "people"
+
+
+def _ratio(value):
+    """One staff member per this many people, rounded to how well it is known."""
+    if value is None:
+        return None
+    return f"{value:,.0f}" if value >= 10 else f"{value:.1f}"
+
+
+def _staffing_line(data):
+    """The staff split as a community would say it.
+
+    A headcount is a fact about an organisation. The same figure against the
+    population it serves is a fact about a place, and it is the one worth
+    leading with: 688 firefighters means nothing without the city behind it.
+    """
+    rows = data["functions"]
+    lead = max(rows, key=lambda r: r["headcount"])
+    name = lead["role"] or lead["function_name"]
+    line = (f"{fmt.count(lead['headcount'])} of them are {name}, "
+            f"{fmt.percent(lead['pct_of_total'])} of the payroll.")
+
+    if lead.get("per_staff"):
+        line += f" That is one for every {_ratio(lead['per_staff'])} {data['units']}"
+        peer = lead.get("peer_median_per_staff")
+        if peer:
+            # §11: a gap inside the band is not a finding, and calling a 1%
+            # difference "thinner than most" invents one. Direction is only named
+            # once the gap is large enough to survive the estimate underneath it.
+            gap = lead["per_staff"] / peer
+            where = ("in line with" if RATIO_FLAT_LOW <= gap <= RATIO_FLAT_HIGH
+                     else ("thinner than" if gap > 1 else "thicker than"))
+            line += (f", against a median of {_ratio(peer)} across "
+                     f"{fmt.count(lead['peer_n'])} Oregon {data['gov_type']} entities, "
+                     f"so this payroll is spread {where} most")
+        line += "."
+
+    others = [r for r in rows if r is not lead and r.get("role")]
+    if others:
+        line += " Also named: " + ", ".join(
+            f"{fmt.count(r['headcount'])} {r['role']}" for r in others[:2]) + "."
+
+    if data.get("covered_pct") and data["covered_pct"] < 95:
+        line += (f" These named jobs are {data['covered_pct']:.0f}% of the payroll; "
+                 "the rest is in functions this data does not break out.")
+    return line
 
 
 def _with_magnitude(match):
@@ -751,17 +926,55 @@ def answer_preset(preset_id, pid6=None, county=None):
                 for r in (data.get("table") or [])[:10]]})
     elif preset_id == "workforce":
         add(T.get_workforce(STORE, pid6), "workforce_composition")
+        # The split into named jobs is what turns a payroll into a picture of a
+        # place, so it follows the composition chart rather than replacing it.
+        staff = T.TOOLS["staffing"](STORE, pid6)
+        if staff["data"].get("functions"):
+            add(staff)
+            blocks.append({"kind": "table", "rows": [
+                {"job": r["role"] or r["function_name"],
+                 "staff": fmt.count(r["headcount"]),
+                 "share of payroll": fmt.percent(r["pct_of_total"]),
+                 f"{data_units(staff)} per staff member": _ratio(r["per_staff"]) or "no denominator",
+                 "type median": _ratio(r["peer_median_per_staff"]) or "not comparable",
+                 "average wage": fmt.rate(r["average_wage"])}
+                for r in staff["data"]["functions"]]})
     elif preset_id == "trend":
         add(T.get_entity_profile(STORE, pid6), "finances_over_time")
+    elif preset_id == "revenue_mix":
+        result = T.TOOLS["revenue_mix"](STORE, pid6)
+        add(result)
+        data = result["data"]
+        if data.get("sources"):
+            blocks.append({"kind": "table", "rows": [
+                {"source": r["category"],
+                 "share": fmt.percent(r["percentage"]),
+                 "amount": fmt.money(r["amount"]),
+                 "type median share": (fmt.percent(r["peer_median_share"])
+                                       if r["peer_median_share"] else "not comparable"),
+                 "what it is": r["meaning"] or "unclassified"}
+                for r in data["sources"]]})
+    elif preset_id == "debt":
+        result = T.TOOLS["debt_load"](STORE, pid6)
+        add(result)
+        series = result["data"].get("series") or []
+        if len(series) > 1:
+            blocks.append({"kind": "table", "rows": [
+                {"year": year, "outstanding debt": fmt.money(value)}
+                for year, value in series]})
     elif preset_id == "salient":
         add(T.find_salient(STORE, pid6))
     elif preset_id == "governance":
         add(T.get_offices(STORE, pid6))
         result = results[0]
         if result["data"].get("roles"):
-            blocks.append({"kind": "table",
-                           "rows": [{"role": r["role"], "seats": r["seat_count"]}
-                                    for r in result["data"]["roles"]]})
+            blocks.append({"kind": "table", "rows": [
+                {"role": r["role"], "seats": r["seat_count"],
+                 "filled by": (r["filled_by"] or "not recorded").lower(),
+                 "term": (f"{r['term_length']} years"
+                          if (r.get("term_length") or "").isdigit() else "not recorded"),
+                 "ballot": (r["partisan"] or "not recorded")}
+                for r in result["data"]["roles"]]})
     elif preset_id == "ecosystem":
         name = county or (entity["host_county"] if entity else None)
         result = T.list_ecosystem(STORE, county_name=name)

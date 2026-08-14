@@ -136,6 +136,90 @@ def main():
     check("and an entity with real staff is not flagged that way",
           "reported_zero_workforce" not in codes(T.get_workforce(store, baker_county)))
 
+    print("\nrevenue_mix answers whose money it is (§9, §10, §12)")
+    import explore
+    schools = store.row("SELECT pid6 FROM entities WHERE legal_name='PORTLAND SCH DIST 1J'")["pid6"]
+    result = explore.revenue_mix(store, baker_county)
+    data = result["data"]
+    sources = {r["category"]: r for r in data["sources"]}
+    check("the split names property tax separately", "Property Tax" in sources,
+          str(list(sources)))
+    check("each source carries the median share for its type",
+          sources["Property Tax"]["peer_median_share"] is not None)
+    # Baker County takes more than half its revenue from other governments, which
+    # is a structural fact about a rural county and the reason this preset exists.
+    check("money raised here is separated from money sent here",
+          data["transferred_pct"] > 50, str(data["transferred_pct"]))
+    check("shares of revenue are never confused with shares of spending",
+          "revenue_not_spending" in codes(result))
+    check("a missing category is not reported as a collection of zero",
+          "absent_category_is_not_zero" in codes(result))
+    check("and exposure to a decision made elsewhere is stated",
+          "transfer_exposure" in codes(result))
+
+    result = explore.revenue_mix(store, schools)
+    check("an Oregon school district carries the state-funding rule",
+          "oregon_school_state_funded" in codes(result))
+
+    print("\ndebt is reported against a year of revenue (§8, §10)")
+    result = explore.debt_load(store, schools)
+    data = result["data"]
+    check("debt and revenue come from the same year",
+          data["ratio"] and data["total_debt"] and data["revenue"])
+    check("the ratio is debt over that year's revenue",
+          abs(data["ratio"] - data["total_debt"] / data["revenue"]) < 1e-9)
+    check("with the median across the same type in the same year",
+          data["peers"] and data["peers"]["n"] > 4)
+    check("a balance is never presented as an annual shortfall",
+          "debt_is_not_a_deficit" in codes(result))
+    check("and the basis of the ratio is stated",
+          "debt_over_revenue_basis" in codes(result))
+
+    # §9 again: nothing reported is not the same as nothing owed.
+    silent = store.row(
+        "SELECT pid6 FROM entities WHERE pid6 NOT IN "
+        "(SELECT pid6 FROM financial_trends WHERE total_debt > 0) LIMIT 1")["pid6"]
+    result = explore.debt_load(store, silent)
+    check("a government reporting no debt is not called debt-free",
+          "no_debt_reported" in codes(result))
+
+    print("\nstaffing splits the payroll into jobs (§4, §8)")
+    import explore
+    schools = store.row("SELECT pid6 FROM entities WHERE legal_name='PORTLAND SCH DIST 1J'")["pid6"]
+    result = explore.staffing(store, schools)
+    data = result["data"]
+    jobs = {r["role"] or r["function_name"]: r for r in data["functions"]}
+    check("the split names instructional staff separately from the rest",
+          "teaching and instructional staff" in jobs, str(list(jobs)))
+    teaching = jobs["teaching and instructional staff"]
+    check("with a headcount below the payroll total",
+          0 < teaching["headcount"] < data["total_employees"])
+    # The ratio is the point: 5,710 teachers is a fact about an organisation,
+    # one per 8.5 students is a fact about a community.
+    check("and a ratio against the students it serves",
+          teaching["per_staff"] and 4 < teaching["per_staff"] < 40, str(teaching["per_staff"]))
+    check("the unit follows the government type", data["units"] == "students")
+    check("the ratio carries the median for the same job across the same type",
+          teaching["peer_median_per_staff"] and teaching["peer_n"] > 4)
+    check("a headcount is never presented as a service level",
+          "headcount_is_not_service" in codes(result))
+    check("and the payroll the named jobs do not reach is declared",
+          "workforce_partial" in codes(result))
+
+    result = explore.staffing(store, portland)
+    jobs = {r["role"]: r for r in result["data"]["functions"] if r["role"]}
+    check("a city's split names sworn officers and firefighters",
+          "sworn police officers" in jobs and "firefighters" in jobs, str(list(jobs)))
+    check("counted per resident, not per student", result["data"]["units"] == "residents")
+    check("the named jobs are a minority of a city payroll and say so",
+          result["data"]["covered_pct"] < 50, str(result["data"]["covered_pct"]))
+
+    # No denominator means no ratio, rather than a ratio against a population
+    # this government does not have.
+    result = explore.staffing(store, new_bridge)
+    check("a government with no staff split says so rather than inventing one",
+          "no_staff_split" in codes(result) or not result["data"].get("functions"))
+
     print("\nper-capita refusal (§6)")
     no_pop = store.row("SELECT pid6 FROM entity_flags WHERE no_population_denominator=1")
     result = T.get_entity_profile(store, no_pop["pid6"])

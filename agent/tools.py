@@ -623,9 +623,12 @@ def get_offices(store, pid6):
              "guidance": "The data includes no office records for this entity. Say the data "
                          "does not include them, not that the entity has no governing body."}])
 
+    # How a seat is filled and for how long is the part of this a reader can act
+    # on, and it was being queried and then dropped. A seat you elect every two
+    # years is a different fact about a government than one filled by appointment.
     by_role = {}
     for row in rows:
-        by_role.setdefault(row["role"], []).append(row["office_position"])
+        by_role.setdefault(row["role"], []).append(row)
 
     caveats = [caveat("offices_have_no_holders"), caveat("office_coverage_uneven")]
     confidences = {r["confidence"] for r in rows}
@@ -637,11 +640,35 @@ def get_offices(store, pid6):
             "guidance": "Multi-member bodies have many seats of the same role. Never present "
                         "a seat as a role or imply the body has one member."})
 
+    def _one(values):
+        """The single value shared by every seat in a role, or None if they differ."""
+        distinct = {v for v in values if v}
+        return distinct.pop() if len(distinct) == 1 else None
+
+    roles = []
+    for role, seats in sorted(by_role.items()):
+        roles.append({
+            "role": role,
+            "seats": [s["office_position"] for s in seats],
+            "seat_count": len(seats),
+            "filled_by": _one(s["occupation_method"] for s in seats),
+            "partisan": _one(s["partisan_election"] for s in seats),
+            "term_length": _one(s["term_length"] for s in seats)})
+
+    elected = sum(r["seat_count"] for r in roles if r["filled_by"] == "Election")
+    appointed = sum(r["seat_count"] for r in roles if r["filled_by"] == "Appointment")
+    if elected or appointed:
+        caveats.append({
+            "code": "how_seats_are_filled", "rule": "§7",
+            "guidance": f"{elected} of these seats are filled by election and "
+                        f"{appointed} by appointment. That distinction is what a reader "
+                        "can act on, so state it. It describes the seat, not who holds "
+                        "it; no holder names are in this data."})
+
     return envelope(
         "get_offices", entity=entity,
-        data={"roles": [{"role": role, "seats": seats, "seat_count": len(seats)}
-                        for role, seats in sorted(by_role.items())],
-              "total_seats": len(rows),
+        data={"roles": roles, "total_seats": len(rows),
+              "elected_seats": elected, "appointed_seats": appointed,
               "match_confidence": sorted(confidences)},
         caveats=caveats)
 
@@ -1295,7 +1322,8 @@ def _bind_explore():
     import explore
     for name in ("drill", "compare_to_peer_group", "compare_entities_over_time",
                  "compare_service_area", "per_capita_by_service_area",
-                 "per_capita_over_time", "who_spends_on"):
+                 "per_capita_over_time", "who_spends_on", "staffing",
+                 "revenue_mix", "debt_load"):
         TOOLS[name] = getattr(explore, name)
 
 

@@ -225,6 +225,66 @@ SCHEMAS = [
         },
     },
     {
+        "name": "revenue_mix",
+        "description": "Where a government's money comes from, split into property tax, "
+                       "charges and fees, state aid, federal aid and the rest, each with "
+                       "the median share for the same government type. This is the "
+                       "question a resident actually has about a budget, because one of "
+                       "the answers is their own tax bill. Two structural facts come "
+                       "back with it: how much is raised inside the boundary against how "
+                       "much is transferred in, since a government funded by transfers "
+                       "is exposed to a decision made elsewhere; and what each category "
+                       "means. A missing category means this government does not levy or "
+                       "receive it, not that it collected nothing — Oregon has no "
+                       "statewide sales tax, so a sales or income tax line is a local "
+                       "levy that most governments do not have. Revenue shares and "
+                       "spending areas are different questions; never run them together "
+                       "in one sentence. " + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {"pid6": {"type": "string"}},
+            "required": ["pid6"],
+        },
+    },
+    {
+        "name": "debt_load",
+        "description": "What a government owes, set against what it takes in that same "
+                       "year, with the median ratio across its type. Debt alone ranks by "
+                       "government size; against annual revenue it becomes a figure a "
+                       "reader can hold. Outstanding debt is a balance and not an annual "
+                       "shortfall — most of it is borrowing against capital assets meant "
+                       "to last decades — so never describe it as overspending or as a "
+                       "deficit. A government with nothing here may carry no debt or may "
+                       "not report it, and the two are not the same. " + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {"pid6": {"type": "string"}},
+            "required": ["pid6"],
+        },
+    },
+    {
+        "name": "staffing",
+        "description": "Who a government employs, split into named jobs, with each job "
+                       "expressed as a ratio against the population it serves: one sworn "
+                       "officer per so many residents, one teacher per so many students. "
+                       "This is the workforce question a headcount cannot answer, because "
+                       "688 firefighters means nothing without the city behind it. Each "
+                       "ratio carries the median for the same job across the same "
+                       "government type, so a reader can see whether a place is staffed "
+                       "thinly or thickly for Oregon. The unit follows the type: students "
+                       "for a school district, residents for a city or county, and a "
+                       "government with no denominator gets the split and the wages "
+                       "without ratios. Never read a ratio as coverage, response time or "
+                       "quality; it counts people employed, not service delivered. The "
+                       "named jobs do not cover the whole payroll and the shortfall is "
+                       "stated. " + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {"pid6": {"type": "string"}},
+            "required": ["pid6"],
+        },
+    },
+    {
         "name": "who_spends_on",
         "description": "Which governments report spending on one named function, ranked "
                        "by what they spend, with a per-unit figure alongside. That figure carries its "

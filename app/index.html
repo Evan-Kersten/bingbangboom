@@ -775,20 +775,22 @@ async function staticApi(path, body) {
 /* Before an entity is chosen there is nothing to gate on, so the shell is
    rendered disabled and the real availability arrives with the entity. */
 const STATIC_PRESET_SHELL = [
-  ['profile', 'What kind of government is this?', 'Orientation'],
-  ['scale', 'Is this budget large or small for its type?', 'Orientation'],
-  ['spending', 'Where does the money actually go?', 'Orientation'],
+  ['revenue_mix', 'Whose money is this — your tax bill, or the state\'s?', 'Where it comes from'],
+  ['scale', 'Is this a lot to spend for a place this size?', 'Where it comes from'],
+  ['debt', 'What does it owe, and against how much a year?', 'Where it comes from'],
+  ['workforce', 'Who does it employ, and how thinly are they spread?', 'Who does the work'],
+  ['governance', 'Who runs it, and do you elect them?', 'Who does the work'],
+  ['salient', 'What stands out about this government?', 'Who does the work'],
+  ['spending', 'Where does the money actually go?', 'Follow the money'],
   ['unusual_areas', 'Which service areas is it unusual on?', 'Follow the money'],
   ['inside', 'Take me inside its largest service area', 'Follow the money'],
   ['purchasable', 'What in its biggest function is actually purchasable?', 'Follow the money'],
   ['vs_peers_area', 'How does its public safety spending compare, head for head?', 'Against other governments'],
   ['vs_peers_time', 'Has its spending outgrown its peers?', 'Against other governments'],
   ['trend', 'How have revenue and spending moved?', 'Against other governments'],
-  ['workforce', 'How is the workforce distributed?', 'Workforce'],
-  ['salient', 'What stands out about this government?', 'Workforce'],
-  ['ecosystem', 'Which governments serve this place?', 'Place'],
+  ['ecosystem', 'Which other governments serve this place?', 'Place'],
   ['map_area', 'Map public safety spending across Oregon', 'Place'],
-  ['governance', 'Who governs this entity?', 'Place'],
+  ['profile', 'What kind of government is this?', 'Reports'],
   ['report', 'Give me the full report', 'Reports'],
   ['limits', 'What can this data not tell me?', 'Reports'],
 ].map(([id, label, group]) => ({ id, label, group, available: false }));
@@ -1037,8 +1039,10 @@ function entityName() {
 function choose(match) {
   entity = match;
   const colour = colourFor(match.pid6);
-  const population = match.population
-    ? `pop. ${match.population.toLocaleString('en-US')}` : null;
+  /* "pop. 48,601" for a school district is a count of students. The server
+     already labelled this figure for the search row; the header uses the same
+     label rather than reintroducing the bare count it was fixing. */
+  const population = match.magnitude || null;
   $('chosen').hidden = false;
   $('chosen').innerHTML = `
     <div class="nm">${colour ? `<span class="dot" style="background:${colour}"></span>` : ''}
@@ -1064,6 +1068,11 @@ async function loadPresets() {
   }
   const { presets } = await api('/api/presets?pid6=' + entity.pid6);
   PRESETS_CACHE = presets;
+  /* The panel is hidden while a search term is open and no entity is chosen,
+     since browse under a live query is noise. Choosing an entity is what turns
+     it back into the question list, and nothing was doing that: typing a name
+     and then clicking the result left the presets built but invisible. */
+  $('presets').hidden = false;
   const groups = {};
   presets.forEach((p) => { (groups[p.group] ||= []).push(p); });
   $('presets').innerHTML = Object.entries(groups).map(([group, items]) => `
