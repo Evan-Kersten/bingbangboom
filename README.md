@@ -40,7 +40,8 @@ Details in `app/DEPLOY.md`.
 | `agent/` | 35 typed tools, the caveat catalogue, the renderers, the orchestrator |
 | `app/` | the interface, served and static |
 | `evals/` | trap questions — the ones a fluent model gets wrong |
-| root `*.jsonl`, `*.csv`, `cb_2018_*`, `March_2026_*` | the sources, committed so the build reproduces from a clone |
+| root `*.jsonl`, `*.csv`, `*.json`, `cb_2018_*`, `March_2026_*`, `cnty_voterprecincts/` | the sources, committed so the build reproduces from a clone |
+| `PF Chat Bot Architecture.png`, `Handbook_-_Chapter_1_Nature_of_Cities.pdf` | background reading, not build inputs — nothing reads them |
 
 Each directory has its own README.
 
