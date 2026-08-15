@@ -360,36 +360,58 @@ main { display: flex; flex-direction: column; overflow: hidden; }
 
 /* Three lines of what the thing actually does, in the product's own register. */
 /* The opener is the front door: one sentence with two blanks in it, because
-   that sentence is what somebody actually arrives with. The slots read as text
-   rather than as form controls so the line stays a sentence. */
-.opener { margin-top: 24px; max-width: 62ch; }
+   that sentence is what somebody actually arrives with. It is boxed and the
+   blanks are pills rather than dashed text, because as plain body copy it read
+   as one line among four and the capability grid below it took the eye. The
+   thing to do should look like the thing to do. */
+.opener {
+  margin-top: 24px; max-width: 62ch; padding: 20px 22px;
+  background: var(--pf-track); border: 1px solid var(--edge); border-radius: 12px;
+}
 .opener-line {
-  font-size: 19px; line-height: 1.9; color: var(--pf-ink); font-weight: 500;
+  font-size: 21px; line-height: 1.85; color: var(--pf-ink); font-weight: 500;
 }
 .opener-slot {
-  font: inherit; color: var(--pf-s1); background: none; cursor: pointer;
-  border: 0; border-bottom: 2px dashed var(--pf-s1); padding: 0 2px;
-  border-radius: 0;
+  font: inherit; font-size: 17px; font-weight: 600; cursor: pointer;
+  color: var(--pf-s1); background: var(--pf-panel);
+  border: 1px solid var(--pf-bin-1); border-radius: 999px; padding: 4px 14px;
+  transition: background .12s, color .12s;
 }
-.opener-slot:hover, .opener-slot:focus-visible { background: var(--pf-track); }
-.opener-slot[data-set="1"] { border-bottom-style: solid; }
+.opener-slot:hover, .opener-slot:focus-visible {
+  background: var(--pf-s1); color: var(--pf-panel); border-color: var(--pf-s1);
+}
+/* Filled slots stop looking like an invitation, so the eye lands on the one
+   still empty rather than scanning both every time. */
+.opener-slot[data-set="1"] {
+  background: var(--pf-s1); color: var(--pf-panel); border-color: var(--pf-s1);
+}
 .opener-choices { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
 .opener-choices:empty { margin: 0; }
 .opener-choice {
   font: inherit; font-size: 13px; cursor: pointer; padding: 5px 11px;
-  border: 1px solid var(--edge); border-radius: 999px; background: var(--pf-surface);
+  border: 1px solid var(--edge); border-radius: 999px; background: var(--pf-panel);
   color: var(--pf-ink);
 }
 .opener-choice:hover { border-color: var(--pf-s1); color: var(--pf-s1); }
+.opener-note {
+  margin: 12px 0 0; font-size: 12.5px; color: var(--pf-muted); line-height: 1.5;
+}
+.opener-note:empty { margin: 0; }
 .opener-go {
-  margin-top: 16px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
-  padding: 9px 18px; border-radius: 8px; border: 0;
+  margin-top: 14px; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+  padding: 10px 20px; border-radius: 8px; border: 0;
   background: var(--pf-s1); color: var(--pf-panel);
 }
-.capabilities { display: grid; gap: 14px; margin-top: 26px; max-width: 62ch; }
-.capability { display: flex; gap: 12px; align-items: baseline; font-size: 14px; }
+/* Not a darker token: the ramp inverts in dark mode, so bin-5 is a pale
+   green there and the label would vanish into it. */
+.opener-go:hover { filter: brightness(1.12); }
+/* Supporting text, deliberately quieter than the box above it: it explains the
+   product to somebody who wants explaining, and gets out of the way of somebody
+   who wants to start. */
+.capabilities { display: grid; gap: 11px; margin-top: 30px; max-width: 62ch; }
+.capability { display: flex; gap: 12px; align-items: baseline; font-size: 13px; }
 .capability b {
-  font-weight: 600; color: var(--pf-ink); flex: 0 0 128px; font-size: 13px;
+  font-weight: 600; color: var(--pf-ink-2); flex: 0 0 128px; font-size: 12px;
 }
 .capability span { color: var(--pf-ink-2); }
 #welcome-mode {
@@ -621,17 +643,18 @@ tr:last-child td { border-bottom: 0; }
       <div class="inner" id="inner">
         <div class="welcome">
           <h2>Who would have to act?</h2>
-          <p>Start with the place you are working in and the thing you are working on.
-          You get the governments with a claim on it, what each one reports in the
-          nearest category, and a plain account of what this data cannot say about
-          your subject &mdash; before any figure, not after it.</p>
+          <p>Name the town you are working in and the subject you are working on. You
+          get the governments with a claim on it, what each reports in the nearest
+          category, and a plain account of what this data cannot say about your
+          subject &mdash; before any figure rather than after it.</p>
           <div class="opener">
             <div class="opener-line">I am working in
-              <button class="opener-slot" id="opener-place">choose a place</button>
+              <button class="opener-slot" id="opener-place">a town</button>
               on
-              <button class="opener-slot" id="opener-topic">choose a subject</button>
+              <button class="opener-slot" id="opener-topic">a subject</button>
             </div>
             <div class="opener-choices" id="opener-choices"></div>
+            <p class="opener-note" id="opener-note"></p>
           </div>
           <div class="capabilities">
             <div class="capability"><b>The subject first</b>
@@ -641,13 +664,14 @@ tr:last-child td { border-bottom: 0; }
               as what they are.</span></div>
             <div class="capability"><b>Who is at the table</b>
               <span>A typical Oregon address sits inside about ten governments and most
-              people can name two. Every one is listed with what established it, and the
-              bodies that do the work but cannot be placed are listed separately rather
-              than dropped.</span></div>
+              people can name two. Each one is listed with what established it, and the
+              bodies that do the work but have no boundary to place them are listed
+              separately rather than dropped.</span></div>
             <div class="capability"><b>Safe to quote</b>
-              <span>Community conditions carry their margin and a verdict on whether
-              the figure will hold weight. A poverty rate of 24% give or take 17 is
-              marked as one you should not say out loud.</span></div>
+              <span>Every condition figure carries its margin of error and a plain
+              verdict on whether it will hold weight. Estacada's poverty rate is 24%
+              give or take 17, and the table says so rather than leaving you to do
+              that division in front of a room.</span></div>
             <div class="capability"><b>Questions, not just figures</b>
               <span>Every brief ends with what to ask and who to ask it of, because the
               gap between a category and a programme closes in a budget document this
@@ -855,10 +879,20 @@ async function loadOpener() {
 function paintOpener() {
   const place = $('opener-place'), topic = $('opener-topic');
   if (!place) return;
-  place.textContent = openerPlace ? openerPlace.name : 'choose a place';
+  place.textContent = openerPlace ? openerPlace.name : 'a town';
   place.dataset.set = openerPlace ? '1' : '0';
-  topic.textContent = openerTopic || 'choose a subject';
+  topic.textContent = openerTopic || 'a subject';
   topic.dataset.set = openerTopic ? '1' : '0';
+  /* The honest scope of the sentence. A stack is established for a town, and
+     the boundary files reach 240 of them, so promising "any place" would be
+     promising something the next click cannot deliver. */
+  const note = $('opener-note');
+  if (note) {
+    note.textContent = openerPlace && openerTopic ? ''
+      : `${(BROWSE?.places || []).length || 240} Oregon towns have a stack of `
+        + `governments established for them. Any of Oregon's 1,529 governments `
+        + `can be searched by name.`;
+  }
 }
 
 /* Towns rather than all 1,529. The stack is established for a place, and asking
@@ -1144,6 +1178,19 @@ function entityName() {
 
 function choose(match) {
   entity = match;
+  /* Selecting a government anywhere completes the opener sentence. Without
+     this, "search by name instead" focused the search box and abandoned the
+     sentence half-written, and a subject clicked before a place was never
+     consumed unless the place came from the town list. */
+  openerPlace = { pid6: match.pid6, name: match.common_name || match.legal_name };
+  paintOpener();
+  if (pendingSubject) {
+    const subject = pendingSubject;
+    pendingSubject = null;
+    setTimeout(() => askBrief(openerPlace, subject), 0);
+  } else {
+    openerReady();
+  }
   const colour = colourFor(match.pid6);
   /* "pop. 48,601" for a school district is a count of students. The server
      already labelled this figure for the search row; the header uses the same
@@ -1223,13 +1270,14 @@ async function drawBrowse() {
     <b>ten</b> of them, and they are the ones who would have to act.</div>
     <div class="browse">
       <h3>What you are working on</h3>
+      ${entity ? '' : `<p class="none">Pick a subject, then a town below. You get the
+        governments with a claim on it and what this data cannot say.</p>`}
       <div class="tags">${(TOPICS || []).map((t) => `
         <button class="tag" data-subject="${esc(t)}"
-                title="${entity ? 'Brief for ' + esc(entityName()) : 'Pick a place first'}"
+                title="${entity ? 'Brief for ' + esc(entityName())
+                                : 'Pick this, then a town'}"
                 >${esc(t)}</button>`).join('')}
       </div>
-      ${entity ? '' : `<p class="none">Pick a town below, then a subject, and you get
-        the governments with a claim on it and what this data cannot say.</p>`}
 
       <h3>Where you live</h3>
       <input class="filter" id="place-filter" type="search" placeholder="Your town"
