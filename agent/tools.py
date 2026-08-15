@@ -2393,3 +2393,12 @@ def _bind_community():
 
 
 _bind_community()
+
+
+def _bind_brief():
+    """The place-and-issue brief composes the tools above, so it binds last."""
+    import brief
+    TOOLS["place_topic_brief"] = brief.place_topic_brief
+
+
+_bind_brief()

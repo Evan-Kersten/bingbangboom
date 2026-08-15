@@ -167,14 +167,24 @@ def main():
           "per student" in district_answer and "per resident" not in district_answer,
           district_answer[:110])
 
-    print("\nthe presets open on money a reader recognises as theirs")
-    # The set is ordered for somebody standing outside the building, not for
-    # somebody who already reads municipal finance.
+    print("\nthe presets open on who would have to act")
+    # Ordered for somebody preparing for a meeting, not for somebody who already
+    # reads municipal finance. Appendix A: keep the serving question prominent,
+    # because it is the one this platform answers better than the alternatives
+    # and most users do not know the ecosystem exists until they see it.
     first_group = S.PRESETS[0][2]
-    check("the first group is where the money comes from",
-          first_group == "Where it comes from", first_group)
-    check("and it opens on the revenue split",
-          S.PRESETS[0][0] == "revenue_mix", S.PRESETS[0][0])
+    check("the first group is who has a claim on the place",
+          first_group == "Who is at the table", first_group)
+    check("and it opens on which governments serve here",
+          S.PRESETS[0][0] == "serving", S.PRESETS[0][0])
+    # Appendix A again: the limits group stays visible and phrased as real
+    # questions. Losing it in a regroup is the easy mistake.
+    groups = [group for _, _, group, _, _ in S.PRESETS]
+    check("and the limits group survives the grouping",
+          "What this cannot settle" in groups, str(sorted(set(groups))))
+    check("every group is named for a job rather than a table",
+          not ({"Where it comes from", "Follow the money", "Reports"} & set(groups)),
+          str(sorted(set(groups))))
 
     revenue = S.answer_preset("revenue_mix", baker)
     text = " ".join(b.get("text", "") for b in revenue["blocks"])
@@ -469,6 +479,43 @@ def main():
     check("and the refusal is drawn rather than dropped",
           any(b["kind"] == "chart" and "no peer distribution" in b["svg"].lower()
               for b in result["blocks"]))
+
+    print("\nthe brief opens on the gap, not on a figure (§12, §5)")
+    estacada = pid("CITY OF ESTACADA")
+    brief = S.answer_brief(estacada, "wildfire")
+    kinds = [b["kind"] for b in brief["blocks"]]
+    check("a brief is composed as an issue answer", brief["question_type"] == "issue_or_topic")
+    check("and its blocks come back in §15.2 order", brief["violations"] == [],
+          str(brief["violations"]))
+    answer = next(b["text"] for b in brief["blocks"] if b["kind"] == "answer")
+    # §5 precedence: scope limits first. The sentence has to say the data does
+    # not record the subject before it names a single government, because a
+    # reader who sees the bodies first has already started attributing.
+    check("the first sentence says the data does not record the subject",
+          answer.index("Census functional categories") < answer.index("governments"),
+          answer[:120])
+    check("and no dollar figure appears in it at all",
+          "$" not in answer, answer)
+    check("the stack is named in the answer with a count",
+          "established to serve" in answer)
+
+    # The margin column exists so nobody quotes a figure the survey cannot
+    # support. Estacada is small enough that most of its estimates are soft.
+    conditions = [b for b in brief["blocks"] if b["kind"] == "table"
+                  and b["rows"] and "safe to quote" in b["rows"][0]]
+    check("conditions carry a verdict on whether they can be quoted",
+          bool(conditions) and any(r["safe to quote"].startswith("no")
+                                   for r in conditions[0]["rows"]),
+          str(conditions[:1])[:160])
+    asks = [b for b in brief["blocks"] if b["kind"] == "table"
+            and b["rows"] and "take this into the room" in b["rows"][0]]
+    check("and the brief ends with what to ask, not with a number", bool(asks))
+
+    # §15.1: never offer a question whose data is absent. The subject list is
+    # sent from one definition, the way the preset list is.
+    import brief as BR
+    check("the subject list has exactly one definition",
+          set(BR.topics()) == set(rules.TOPIC_CONCORDANCE))
 
     print("\nthe comparison tray is grounded in the tool layer")
     portland = pid("CITY OF PORTLAND")

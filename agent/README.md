@@ -1,10 +1,10 @@
 # The agent
 
-Thirty-six typed tools over the store built by `etl/`, the §4 formatter, and the
+Thirty-seven typed tools over the store built by `etl/`, the §4 formatter, and the
 orchestrator that routes a question and runs the tool loop.
 
 ```
-python3 agent/test_tools.py         # 222 checks
+python3 agent/test_tools.py         # 235 checks
 python3 agent/test_orchestrator.py  # 44 checks, uses a scripted model
 python3 agent/test_viz.py           # 88 checks on the render layer
 python3 agent/test_reports.py       # 53 checks on report composition
@@ -53,6 +53,7 @@ circumstance under which a per-service-area growth rate is legitimate.
 | `list_ecosystem` | which governments serve this place | §9 basis, no summing, partial geometry |
 | `get_offices` | who governs | §7 seats vs roles, confidence, no holders |
 | `map_topic_to_categories` | issue questions | §12 name the gap, offer the proxy |
+| `place_topic_brief` | a place and an issue together | §12 gap before figures, §9 no summing |
 | `render_function_map` | where one function is done | §15.1 coverage gate, §12 layer that does the work |
 | `run_sql` | anything else | read-only, logged, carries a standing caveat |
 

@@ -359,6 +359,33 @@ main { display: flex; flex-direction: column; overflow: hidden; }
 .welcome p { margin: 0 0 10px; color: var(--pf-ink-2); font-size: 15px; max-width: 62ch; }
 
 /* Three lines of what the thing actually does, in the product's own register. */
+/* The opener is the front door: one sentence with two blanks in it, because
+   that sentence is what somebody actually arrives with. The slots read as text
+   rather than as form controls so the line stays a sentence. */
+.opener { margin-top: 24px; max-width: 62ch; }
+.opener-line {
+  font-size: 19px; line-height: 1.9; color: var(--pf-ink); font-weight: 500;
+}
+.opener-slot {
+  font: inherit; color: var(--pf-s1); background: none; cursor: pointer;
+  border: 0; border-bottom: 2px dashed var(--pf-s1); padding: 0 2px;
+  border-radius: 0;
+}
+.opener-slot:hover, .opener-slot:focus-visible { background: var(--pf-track); }
+.opener-slot[data-set="1"] { border-bottom-style: solid; }
+.opener-choices { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.opener-choices:empty { margin: 0; }
+.opener-choice {
+  font: inherit; font-size: 13px; cursor: pointer; padding: 5px 11px;
+  border: 1px solid var(--edge); border-radius: 999px; background: var(--pf-surface);
+  color: var(--pf-ink);
+}
+.opener-choice:hover { border-color: var(--pf-s1); color: var(--pf-s1); }
+.opener-go {
+  margin-top: 16px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+  padding: 9px 18px; border-radius: 8px; border: 0;
+  background: var(--pf-s1); color: var(--pf-panel);
+}
 .capabilities { display: grid; gap: 14px; margin-top: 26px; max-width: 62ch; }
 .capability { display: flex; gap: 12px; align-items: baseline; font-size: 14px; }
 .capability b {
@@ -555,7 +582,7 @@ tr:last-child td { border-bottom: 0; }
     <div class="brand"><h1>Public Foundry</h1><span class="mode" id="mode">…</span></div>
 
     <div class="search">
-      <input id="q" type="search" placeholder="Search 1,529 governments"
+      <input id="q" type="search" placeholder="A place, a subject, or a government"
              autocomplete="off" spellcheck="false" role="combobox"
              aria-expanded="false" aria-controls="results" aria-autocomplete="list"
              aria-label="Search governments and questions">
@@ -570,7 +597,8 @@ tr:last-child td { border-bottom: 0; }
     <div class="tray">
       <h2>Compare governments <span class="of" id="tray-count"></span></h2>
       <div class="picked" id="picked"></div>
-      <p class="empty" id="tray-empty">Add up to four and chart them side by side.
+      <p class="empty" id="tray-empty">The places in one engagement, side by side.
+      Add up to four.
       Press <kbd>+</kbd> on a search result, or <kbd>⌘</kbd><kbd>↵</kbd> while it is
       highlighted.</p>
       <div id="tray-controls" hidden>
@@ -592,28 +620,38 @@ tr:last-child td { border-bottom: 0; }
     <div class="thread" id="thread">
       <div class="inner" id="inner">
         <div class="welcome">
-          <h2>Follow the money to the <em>line item</em>.</h2>
-          <p>Start from where you live and see the governments with a claim on that
-          address, or search any of Oregon's 1,529 by name. Then go from a whole budget
-          down to one function inside one service area, and out to who else does that
-          function across the state &mdash; with every figure placed against its peers.</p>
+          <h2>Who would have to act?</h2>
+          <p>Start with the place you are working in and the thing you are working on.
+          You get the governments with a claim on it, what each one reports in the
+          nearest category, and a plain account of what this data cannot say about
+          your subject &mdash; before any figure, not after it.</p>
+          <div class="opener">
+            <div class="opener-line">I am working in
+              <button class="opener-slot" id="opener-place">choose a place</button>
+              on
+              <button class="opener-slot" id="opener-topic">choose a subject</button>
+            </div>
+            <div class="opener-choices" id="opener-choices"></div>
+          </div>
           <div class="capabilities">
-            <div class="capability"><b>Start from a place</b>
+            <div class="capability"><b>The subject first</b>
+              <span>This data records Census functional categories, not programmes.
+              Ask about homelessness and the first thing you get is which categories
+              stand in for it and how loosely &mdash; then the real figures, labelled
+              as what they are.</span></div>
+            <div class="capability"><b>Who is at the table</b>
               <span>A typical Oregon address sits inside about ten governments and most
-              people can name two. Pick your town and the rest are listed, each saying
-              what established it &mdash; a precinct record, a boundary, the register.</span></div>
-            <div class="capability"><b>Three levels deep</b>
-              <span>Service area, then the functions inside it, then how one function's
-              total splits between operating and capital &mdash; every level on the same
-              basis, so the numbers stack.</span></div>
-            <div class="capability"><b>Against peers</b>
-              <span>Low, median and high across governments of the same type, computed
-              over the whole set. Where most of a peer group reports nothing, the
-              comparison is refused rather than faked.</span></div>
-            <div class="capability"><b>Side by side</b>
-              <span>Put up to four governments on one axis &mdash; per resident, or per
-              student for school districts &mdash; within a service area or across
-              seven years.</span></div>
+              people can name two. Every one is listed with what established it, and the
+              bodies that do the work but cannot be placed are listed separately rather
+              than dropped.</span></div>
+            <div class="capability"><b>Safe to quote</b>
+              <span>Community conditions carry their margin and a verdict on whether
+              the figure will hold weight. A poverty rate of 24% give or take 17 is
+              marked as one you should not say out loud.</span></div>
+            <div class="capability"><b>Questions, not just figures</b>
+              <span>Every brief ends with what to ask and who to ask it of, because the
+              gap between a category and a programme closes in a budget document this
+              data does not contain.</span></div>
           </div>
           <p id="welcome-mode"></p>
         </div>
@@ -731,6 +769,23 @@ async function staticApi(path, body) {
     }
   }
 
+  /* Briefs are pre-rendered per town and subject, so the exported build opens
+     on the same question the served one does. Where a town has no stack
+     established, the file is absent and the reader is told which, rather than
+     being handed an empty brief. */
+  if (path === '/api/topics') return readJson('data/topics.json');
+
+  if (path === '/api/brief') {
+    try {
+      return await readJson(`data/${body.pid6}/brief-${encodeURIComponent(body.topic)}.json`);
+    } catch (error) {
+      return { blocks: [{ kind: 'answer', text:
+        'No brief was pre-rendered for that place and subject. Briefs are built '
+        + 'for towns with an established stack of governments; run the server for '
+        + 'any place in the data.' }], trace: [] };
+    }
+  }
+
   if (path === '/api/ask') {
     return { blocks: [{ kind: 'answer', text:
       'This is the pre-rendered version, so free text is not available here. ' +
@@ -753,7 +808,7 @@ let MODE = {};
   MODE = info;
   $('mode').textContent = info.mode;
   $('mode').classList.toggle('full', info.mode === 'full');
-  $('q').placeholder = `Search ${info.entities.toLocaleString()} governments`;
+  $('q').placeholder = 'A place, a subject, or a government';
   // Charts arrive as SVG using the same custom properties, so the palette is
   // defined once on the server and shared.
   const style = document.createElement('style');
@@ -770,11 +825,84 @@ let MODE = {};
         ? `Pre-rendered ${info.built || ''}. Presets work; free text needs the server.`
         : 'Free text needs ANTHROPIC_API_KEY. Presets work now.');
   if (!hasModel) $('input').placeholder = 'Pick a question on the left…';
+  // The subject list has to be in hand before the rail draws, or the rail
+  // draws its subject section empty and the front door is a heading with
+  // nothing under it.
+  await loadOpener();
   loadPresets();
   loadAreas();
   drawTray();
   $('q').focus();
 })();
+
+/* ---------- the opener ----------
+   One sentence with two blanks. The subject list comes from the server for the
+   same reason the preset list does: a copy of a list in the page is a list that
+   goes stale, and the concordance is edited in rules.py. */
+let TOPICS = null, openerPlace = null, openerTopic = null;
+/* A subject clicked before a place is remembered, so choosing the town
+   next completes the sentence instead of starting it again. */
+let pendingSubject = null;
+
+async function loadOpener() {
+  const info = await api('/api/topics');
+  TOPICS = info.topics || [];
+  $('opener-place').onclick = () => openerPick('place');
+  $('opener-topic').onclick = () => openerPick('topic');
+  paintOpener();
+}
+
+function paintOpener() {
+  const place = $('opener-place'), topic = $('opener-topic');
+  if (!place) return;
+  place.textContent = openerPlace ? openerPlace.name : 'choose a place';
+  place.dataset.set = openerPlace ? '1' : '0';
+  topic.textContent = openerTopic || 'choose a subject';
+  topic.dataset.set = openerTopic ? '1' : '0';
+}
+
+/* Towns rather than all 1,529. The stack is established for a place, and asking
+   a fire district which governments serve it is the question answering itself. */
+function openerPlaces() {
+  return (BROWSE?.places || []).slice(0, 12);
+}
+
+async function openerPick(which) {
+  const box = $('opener-choices');
+  if (which === 'place' && !BROWSE) { BROWSE = await api('/api/browse'); }
+  const options = which === 'place'
+    ? openerPlaces().map((p) => ({ label: p.name, value: p }))
+    : (TOPICS || []).map((t) => ({ label: t, value: t }));
+  box.innerHTML = options.map((o, i) =>
+    `<button class="opener-choice" data-i="${i}">${esc(o.label)}</button>`).join('')
+    + (which === 'place'
+        ? '<button class="opener-choice" data-i="-1">search by name instead</button>'
+        : '');
+  box.querySelectorAll('.opener-choice').forEach((node) => {
+    node.onclick = () => {
+      const at = Number(node.dataset.i);
+      if (at < 0) { box.innerHTML = ''; $('q').focus(); return; }
+      if (which === 'place') openerPlace = options[at].value;
+      else openerTopic = options[at].value;
+      box.innerHTML = '';
+      paintOpener();
+      openerReady();
+    };
+  });
+}
+
+function openerReady() {
+  const box = $('opener-choices');
+  if (!openerPlace || !openerTopic) return;
+  box.innerHTML = `<button class="opener-go" id="opener-go">Who would have to act on `
+    + `${esc(openerTopic)} in ${esc(openerPlace.name)}?</button>`;
+  $('opener-go').onclick = () => askBrief(openerPlace, openerTopic);
+}
+
+function askBrief(place, topic) {
+  ask(`Working in ${place.name} on ${topic}`,
+      { brief: { pid6: place.pid6, topic } });
+}
 
 /* ---------- search ----------
    The ARIA combobox contract: arrow keys move a pointer inside the listbox
@@ -813,7 +941,8 @@ function splitMatch(name, term) {
 
 function drawResults(term) {
   const box = $('results');
-  if (!matches.length && !functionsMatching(term).length && !countiesMatching(term).length) {
+  if (!matches.length && !functionsMatching(term).length
+      && !countiesMatching(term).length && !topicsMatching(term).length) {
     box.innerHTML = '';
     $('facets').hidden = true;
     $('q').setAttribute('aria-expanded', 'false');
@@ -827,6 +956,8 @@ function drawResults(term) {
   const countyCount = countiesMatching(term).length;
   if (fnCount) facets.push(`${fnCount} function${fnCount === 1 ? '' : 's'}`);
   if (countyCount) facets.push(`${countyCount} place${countyCount === 1 ? '' : 's'}`);
+  const topicCount = topicsMatching(term).length;
+  if (topicCount) facets.push(`${topicCount} subject${topicCount === 1 ? '' : 's'}`);
   if (presetHits.length) facets.push(
     `${presetHits.length} question${presetHits.length === 1 ? '' : 's'}`);
   $('facets').textContent = facets.join(' · ');
@@ -870,7 +1001,14 @@ function drawResults(term) {
     <button class="preset" data-county="${esc(c.name)}" data-pid6="${esc(c.pid6)}">
       Which governments serve ${esc(c.name)}?</button>`).join('');
 
-  box.innerHTML = (doings ? `<div class="rgroup">What they do</div>${doings}` : '')
+  const topicHits = topicsMatching(term);
+  const subjects = topicHits.map((t) => `
+    <button class="preset" data-topic="${esc(t)}" ${entity ? '' : 'disabled'}>
+      ${entity ? `Working in ${esc(entityName())} on ${esc(t)}`
+               : `${esc(t)} · pick a place first`}</button>`).join('');
+
+  box.innerHTML = (subjects ? `<div class="rgroup">Subjects</div>${subjects}` : '')
+    + (doings ? `<div class="rgroup">What they do</div>${doings}` : '')
     + (places ? `<div class="rgroup">Places</div>${places}` : '')
     + (rows ? `<div class="rgroup">Governments</div>${rows}` : '')
     + (questions ? `<div class="rgroup">Questions about ${esc(entityName())}</div>${questions}` : '');
@@ -890,6 +1028,11 @@ function drawResults(term) {
   });
   box.querySelectorAll('[data-question]').forEach((node) => {
     node.onclick = () => ask(node.dataset.label, { id: node.dataset.id });
+  });
+  box.querySelectorAll('[data-topic]').forEach((node) => {
+    if (node.disabled) return;
+    node.onclick = () => askBrief({ pid6: entity.pid6, name: entityName() },
+                                  node.dataset.topic);
   });
   box.querySelectorAll('[data-fn]').forEach((node) => {
     node.onclick = () => ask(`Who spends on ${node.dataset.fn}?`, { fn: node.dataset.fn });
@@ -917,6 +1060,15 @@ function functionsMatching(term) {
   return BROWSE.functions.filter(
     (f) => f.name.toLowerCase().includes(needle) || f.area.toLowerCase().includes(needle))
     .slice(0, 6);
+}
+
+/* A subject typed into the search box is a brief waiting for a place. Athena's
+   people arrive knowing the issue and the town, not the name of the fire
+   district, and this is the row that turns "housing" into an answer. */
+function topicsMatching(term) {
+  if (!term || term.length < 3 || !TOPICS) return [];
+  const needle = term.toLowerCase();
+  return TOPICS.filter((t) => t.includes(needle) || needle.includes(t)).slice(0, 4);
 }
 
 function countiesMatching(term) {
@@ -1065,10 +1217,20 @@ async function drawBrowse() {
   const places = (browseAll.places || term) ? hits.slice(0, 60) : hits.slice(0, 8);
 
   $('presets').innerHTML = `
-    <div class="empty-hint">Nobody arrives able to name a rural fire district, and
-    districts are <b>two thirds</b> of Oregon's governments. So start from the one
-    thing you do know &mdash; a typical address sits inside about <b>ten</b> of them.</div>
+    <div class="empty-hint">Start with what you are working on and where. Nobody
+    arrives able to name a rural fire district, and districts are <b>two thirds</b>
+    of Oregon's governments &mdash; but a typical address sits inside about
+    <b>ten</b> of them, and they are the ones who would have to act.</div>
     <div class="browse">
+      <h3>What you are working on</h3>
+      <div class="tags">${(TOPICS || []).map((t) => `
+        <button class="tag" data-subject="${esc(t)}"
+                title="${entity ? 'Brief for ' + esc(entityName()) : 'Pick a place first'}"
+                >${esc(t)}</button>`).join('')}
+      </div>
+      ${entity ? '' : `<p class="none">Pick a town below, then a subject, and you get
+        the governments with a claim on it and what this data cannot say.</p>`}
+
       <h3>Where you live</h3>
       <input class="filter" id="place-filter" type="search" placeholder="Your town"
              autocomplete="off" spellcheck="false" aria-label="Filter towns">
@@ -1128,8 +1290,14 @@ async function drawBrowse() {
      the session, not the end of it. */
   $('presets').querySelectorAll('[data-place]').forEach((node) => {
     node.onclick = async () => {
-      await ask(`Which governments serve ${node.dataset.name}?`,
-                { id: 'serving', pid6: node.dataset.place });
+      if (pendingSubject) {
+        const subject = pendingSubject;
+        pendingSubject = null;
+        await askBrief({ pid6: node.dataset.place, name: node.dataset.name }, subject);
+      } else {
+        await ask(`Which governments serve ${node.dataset.name}?`,
+                  { id: 'serving', pid6: node.dataset.place });
+      }
       const match = (ENTITIES || []).find((e) => e.pid6 === node.dataset.place)
         || await api('/api/presets?pid6=' + node.dataset.place).then((r) => r.entity);
       if (match) choose(match);
@@ -1137,6 +1305,21 @@ async function drawBrowse() {
   });
   $('presets').querySelectorAll('[data-shared]').forEach((node) => {
     node.onclick = () => ask(node.dataset.label, { id: node.dataset.shared });
+  });
+  /* A subject with a place already chosen is a brief. Without one it scrolls to
+     the town list rather than doing nothing, because a disabled chip that never
+     says why is the same as a broken one. */
+  $('presets').querySelectorAll('[data-subject]').forEach((node) => {
+    node.onclick = () => {
+      const subject = node.dataset.subject;
+      if (entity) {
+        askBrief({ pid6: entity.pid6, name: entityName() }, subject);
+      } else {
+        pendingSubject = subject;
+        $('place-filter')?.focus();
+        $('place-filter')?.scrollIntoView({ block: 'nearest' });
+      }
+    };
   });
   $('presets').querySelectorAll('[data-fn]').forEach((node) => {
     node.onclick = () => ask(`Who spends on ${node.dataset.fn}?`,
@@ -1243,7 +1426,9 @@ async function ask(label, payload) {
 
   const result = payload.compare
     ? await api('/api/compare', payload.compare)
-    : payload.fn
+    : payload.brief
+      ? await api('/api/brief', payload.brief)
+      : payload.fn
       ? await api('/api/function', { name: payload.fn })
       /* A door names its own subject. The browse panel asks about a town or a
          county nobody has selected yet, and reading the selection instead sent

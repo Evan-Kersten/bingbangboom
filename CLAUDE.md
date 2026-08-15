@@ -37,7 +37,7 @@ No dependencies. Standard library only, so there is nothing to install.
 python3 etl/build.py          # ~20s, writes build/ from the files in the root
 python3 etl/verify.py         # 52 assertions about the built store
 python3 app/server.py         # http://localhost:8000
-python3 app/export_static.py --out site --clean   # ~70s, ~344 MB
+python3 app/export_static.py --out site --clean   # ~50s, ~382 MB
 ```
 
 `build/` and `site/` are gitignored and reproducible; never commit either.
@@ -45,7 +45,7 @@ python3 app/export_static.py --out site --clean   # ~70s, ~344 MB
 The full suite, all of which must pass before a push:
 
 ```
-python3 agent/test_tools.py        # 222    python3 app/test_server.py    # 169
+python3 agent/test_tools.py        # 235    python3 app/test_server.py    # 177
 python3 agent/test_orchestrator.py #  44    python3 app/test_parity.py    # 452
 python3 agent/test_viz.py          #  88    python3 evals/run.py          #  22
 python3 agent/test_reports.py      #  53    python3 etl/verify.py         #  52
@@ -90,6 +90,20 @@ against the same dict.
 **Absence is not zero.** §9. An entity reporting nothing in a category is
 usually evidence that another government holds that responsibility. A blank must
 never render as `$0`, and a reported zero must be said to be a reported zero.
+
+**An issue question opens on the gap, never on a figure.** §12. `brief.py` is
+the front door and it exists to make the §12 sequence structural: the gap
+between the topic and the Census categories, then the proxy and how loosely it
+fits, then figures, in that order, because §5 puts scope limits before
+everything. `answer_brief` asserts the order in a test rather than trusting the
+prose, and no dollar figure appears in the opening sentence at all. The
+concordance in `rules.TOPIC_CONCORDANCE` is the one definition of the subject
+list and is sent to the page at runtime, like the preset list.
+
+The brief never totals across the governments serving a place. §9: the same
+dollar appears in two entities' expenditures, so the sum has no referent. The
+guarantee is that the key is never computed, because a renderer cannot print
+what does not exist.
 
 **A map is drawn by measurement, not by request.** §15.1. `render_map` measures
 two things before drawing: how many boundaries in the extent carry a value, and
@@ -173,7 +187,8 @@ never share an axis or a legend with a spending figure.
 public_foundry_system_prompt_v2.md   the specification
 etl/          build.py, verify.py, schema.sql, plus the shapefile and
               dissolve work. Reads the loose files in the repository root.
-agent/        rules.py (the caveat catalogue), tools.py (36 tools), explore.py,
+agent/        rules.py (the caveat catalogue), tools.py (37 tools), explore.py,
+              brief.py (place + issue, the §12 front door),
               community.py (DP03, structurally unable to see a fiscal figure),
               viz.py + maps.py (hand-authored SVG), blocks.py (§15 block order),
               reports.py, orchestrator.py, schemas.py (what the model sees)

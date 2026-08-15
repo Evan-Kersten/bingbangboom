@@ -74,6 +74,8 @@ def export(out_dir):
         "areas": [r["service_area"] for r in store.rows(
             "SELECT service_area, COUNT(*) AS n FROM spending_by_service_area "
             "WHERE total > 0 GROUP BY service_area ORDER BY n DESC")]})
+    import brief as BR
+    write(os.path.join(data_dir, "topics.json"), {"topics": BR.topics()})
     write(os.path.join(data_dir, "mode.json"), {
         "mode": "static",
         "entities": len(entities),
@@ -107,6 +109,21 @@ def export(out_dir):
 
         if index % 250 == 0:
             print(f"  {index}/{len(entities)} entities, {total/1e6:.0f} MB so far")
+
+    # Briefs, for every town with an established stack crossed with every
+    # subject. A brief is the front door, so leaving it to the server would mean
+    # the exported build opens on a question it cannot answer. Only towns: the
+    # stack is established for a place, and asking a fire district which
+    # governments serve it is the question answering itself.
+    stacked = [row["place_pid6"] for row in store.rows(
+        "SELECT DISTINCT place_pid6 FROM serves_place")]
+    for place_pid6 in stacked:
+        for topic in BR.topics():
+            total += write(
+                os.path.join(data_dir, place_pid6, f"brief-{topic}.json"),
+                S.answer_brief(place_pid6, topic))
+            written += 1
+    print(f"  {len(stacked)} towns x {len(BR.topics())} subjects, {total/1e6:.0f} MB so far")
 
     for preset_id in sorted(S.ENTITY_INDEPENDENT):
         total += write(os.path.join(data_dir, "shared", f"{preset_id}.json"),

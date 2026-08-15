@@ -76,64 +76,79 @@ QUESTION_TYPE = {
 PRESETS = [
     # (id, label, group, required availability key, handler)
     #
-    # Ordered by what a reader standing outside the building would want to know
-    # first, not by how the data is filed. The first group is money that came
-    # from them and people they might meet; the abstractions come after.
+    # Grouped by the job somebody has, not by how the data is filed. The old
+    # groups named the tables underneath — where money comes from, who does the
+    # work, follow the money — which reads as a schema tour. These name the four
+    # things a person preparing for a meeting is actually trying to establish:
+    # who has to be in the room, what they are able to do, what the people there
+    # are living with, and what nobody should claim from this data.
+    #
+    # "Who is at the table" leads because Appendix A says to keep the serving
+    # question prominent, and because every question below it assumes you
+    # already knew which government to ask about.
     #
     # Labels name the stake rather than the table. "How is the workforce
-    # distributed?" is a column heading. "How many teachers, officers or
-    # firefighters, and how thinly spread?" is a question somebody has.
-    ("revenue_mix", "Whose money is this — your tax bill, or the state's?",
-     "Where it comes from", "has_revenue_sources", "revenue_mix"),
-    ("scale", "Is this a lot to spend for a place this size?", "Where it comes from",
-     "has_operating_vs_capital", "scale"),
-    ("debt", "What does it owe, and against how much a year?", "Where it comes from",
-     "has_financial_trends", "debt"),
-
-    ("community", "What is this place like for the people who live here?",
-     "Where it comes from", "has_dp03", "community"),
-
-    ("workforce", "Who does it employ, and how thinly are they spread?",
-     "Who does the work", "has_workforce", "workforce"),
-    ("governance", "Who runs it, and do you elect them?", "Who does the work",
+    # distributed?" is a column heading. "Who does it employ, and how thinly are
+    # they spread?" is a question somebody has.
+    ("serving", "Which governments serve you here?", "Who is at the table",
+     "has_serving", "serving"),
+    ("governance", "Who runs it, and do you elect them?", "Who is at the table",
      "has_offices", "governance"),
-    ("salient", "What stands out about this government?", "Who does the work",
-     "has_operating_vs_capital", "salient"),
+    ("ecosystem", "What else is filed under this county?", "Who is at the table",
+     None, "ecosystem"),
 
-    ("spending", "Where does the money actually go?", "Follow the money",
+    # Descending, per Appendix A: the whole budget, then the areas it splits
+    # into, then the functions inside one, then how that function splits.
+    ("revenue_mix", "Whose money is this — your tax bill, or the state's?",
+     "What they can do here", "has_revenue_sources", "revenue_mix"),
+    ("scale", "Is this a lot to spend for a place this size?",
+     "What they can do here", "has_operating_vs_capital", "scale"),
+    ("debt", "What does it owe, and against how much a year?",
+     "What they can do here", "has_financial_trends", "debt"),
+    ("spending", "Where does the money actually go?", "What they can do here",
      "has_spending_breakdown", "spending"),
-    ("unusual_areas", "Which service areas is it unusual on?", "Follow the money",
-     "has_spending_breakdown", "unusual_areas"),
-    ("inside", "Take me inside its largest service area", "Follow the money",
+    ("unusual_areas", "Which service areas is it unusual on?",
+     "What they can do here", "has_spending_breakdown", "unusual_areas"),
+    ("inside", "Take me inside its largest service area", "What they can do here",
      "has_financial_functions", "inside"),
     # Level three of the drill. The split is the §11 signal at this depth:
     # capital share says whether a government is mid-construction on the thing it
     # spends most on, which is a fact about the year rather than a preference.
     ("function_split", "Is its biggest function running costs or construction?",
-     "Follow the money", "has_financial_functions", "function_split"),
+     "What they can do here", "has_financial_functions", "function_split"),
+    ("workforce", "Who does it employ, and how thinly are they spread?",
+     "What they can do here", "has_workforce", "workforce"),
 
     # The denominator is left out of these two labels on purpose: it is residents
     # for a city and students for a school district, and the answer states which.
     ("vs_peers_area", "How does its public safety spending compare, head for head?",
-     "Against other governments", "has_spending_breakdown", "vs_peers_area"),
+     "How it compares", "has_spending_breakdown", "vs_peers_area"),
     ("vs_peers_time", "Has its spending outgrown its peers?",
-     "Against other governments", "has_financial_trends", "vs_peers_time"),
-    ("trend", "How have revenue and spending moved?", "Against other governments",
+     "How it compares", "has_financial_trends", "vs_peers_time"),
+    ("trend", "How have revenue and spending moved?", "How it compares",
      "has_financial_trends", "trend"),
+    ("salient", "What stands out about this government?", "How it compares",
+     "has_operating_vs_capital", "salient"),
 
-    # The first question a resident actually has, and the reason it leads the
-    # group: everything above assumes you already knew which government to ask
-    # about. This one starts from the only thing anybody knows for certain,
-    # which is where they live.
-    ("serving", "Which governments serve you here?", "Place", "has_serving", "serving"),
-    ("ecosystem", "What else is filed under this county?", "Place", None, "ecosystem"),
-    ("map_area", "Map public safety spending across Oregon", "Place", None, "map_area"),
-    ("map_community", "Map how Oregon is doing, county by county", "Place", None,
-     "map_community"),
+    # §4 keeps this apart from every spending question above it. Conditions are
+    # not a government's record, and a group heading that mixed them with
+    # budgets would invite exactly the reading §4 forbids.
+    ("community", "What are people here living with?",
+     "What people here are facing", "has_dp03", "community"),
+    ("map_community", "Map how Oregon is doing, county by county",
+     "What people here are facing", None, "map_community"),
+    ("map_area", "Map public safety spending across Oregon",
+     "What people here are facing", None, "map_area"),
 
-    ("profile", "What kind of government is this?", "Reports", None, "profile"),
-    ("report", "Give me the full report", "Reports", None, "report"),
-    ("limits", "What can this data not tell me?", "Reports", None, "limits"),
+    # Appendix A: keep the data-limits group visible and phrased as real
+    # questions. A user who asks what the data cannot do and gets a competent
+    # answer trusts every other answer more, and for anyone taking a figure into
+    # a public room that trust is the product.
+    ("limits", "What can this data not settle?", "What this cannot settle",
+     None, "limits"),
+    ("profile", "What kind of government is this?", "What this cannot settle",
+     None, "profile"),
+    ("report", "Give me the full report", "What this cannot settle", None, "report"),
 ]
 
 # The service area the two comparison presets open on. Public safety is the one
@@ -1012,6 +1027,114 @@ def _map_blocks(result, intro):
             {"kind": "map", "svg": data["svg"], "coverage": coverage}]
 
 
+def answer_brief(pid6, topic):
+    """One place, one issue: the answer somebody arrives with a job to do.
+
+    §15.2 gives an issue question Interpretation, Answer, Table, Limits, Next,
+    and §5 orders what goes inside the Answer: scope limits first, ecosystem
+    second, proxy third, figures last. So the first sentence a reader sees says
+    what this data does not record, before a single government is named. That
+    reads as an odd way to open until you watch somebody quote an issue-level
+    dollar figure to a room that lives the issue, and then it reads as the whole
+    product.
+    """
+    import brief as BR
+    result = BR.place_topic_brief(STORE, pid6, topic)
+    data = result["data"]
+    if not data:
+        return {"blocks": [{"kind": "text", "text": "That place is not in the data."}],
+                "question_type": "issue_or_topic", "rules": [], "trace": []}
+
+    entity = T._entity(STORE, pid6)
+    blocks = [B.interpretation(STORE, entity, result.get("vintage"))]
+
+    # The gap, then the proxy, then the count of bodies. Figures come in the
+    # table below, never in this sentence: a topic and a dollar amount in one
+    # sentence is the §12 violation however carefully the sentence is hedged.
+    if data["categories"]:
+        opening = (f"This data records Census functional categories, not programmes, so "
+                   f"there is no figure for {data['topic']} in it. The closest categories "
+                   f"are {' and '.join(data['categories'])}. {data['fit_meaning']}")
+    else:
+        opening = (f"No category in this data corresponds to {data['topic']}, so nothing "
+                   "here measures it. What follows is the stack of governments serving "
+                   "this place, which is what the data can tell you.")
+    stack = data["stack"]
+    opening += (f" {fmt.count(len(stack))} governments are established to serve "
+                f"{data['place']}, and {fmt.count(data['reporting'])} of them report "
+                "spending in those categories.")
+    if data["elsewhere"]:
+        opening += (f" A further {fmt.count(len(data['elsewhere']))} special districts "
+                    "filed under this county report in them and cannot be tied to this "
+                    "place or ruled out of it.")
+    blocks.append({"kind": "answer", "text": opening})
+
+    # Who has a claim. Reporting bodies first, because the reader is looking for
+    # somebody to talk to, and the silent ones are grouped rather than listed at
+    # length: seven school districts each reporting nothing on homelessness is a
+    # fact about school districts, not seven facts.
+    rows = []
+    for row in stack:
+        if not row["reports"]:
+            continue
+        rows.append({
+            "government": row["name"], "type": row["gov_type_name"],
+            "reports in these categories": "; ".join(
+                f"{r['service_area']} {fmt.money(r['total'])}" for r in row["reports"]),
+            "established by": row["basis_label"]})
+    silent = [row for row in stack if not row["reports"]]
+    for row in silent:
+        rows.append({
+            "government": row["name"], "type": row["gov_type_name"],
+            "reports in these categories": "nothing, which usually means another "
+                                           "government holds this here",
+            "established by": row["basis_label"]})
+    if rows:
+        blocks.append({"kind": "table", "rows": rows})
+
+    if data["elsewhere"]:
+        blocks.append({"kind": "table", "rows": [
+            {"government": row["name"], "type": row["gov_type_name"],
+             "reports in": row["service_area"],
+             "why it is not in the list above": "filed under this county, with no "
+                                                "boundary to place it"}
+            for row in data["elsewhere"]]})
+
+    # Conditions get their own table and never share a row with a budget figure.
+    if data["conditions"]:
+        import community as C
+        # The margin column is not decoration. Estacada's poverty rate is 24%
+        # give or take 17, and a facilitator who quotes the 24 to a room has
+        # said something the survey does not support. The verdict column is
+        # there so nobody has to do that division in their head.
+        where = {"own": "this place", "host_county": "the county, standing in for "
+                 "this place"}.get(data["conditions_basis"], data["conditions_basis"])
+        blocks.append({"kind": "table", "rows": [
+            {"what residents report": i["name"],
+             "figure": C.format_value(i["estimate"], i["unit"]),
+             "give or take": (C.format_value(i["moe"], i["unit"])
+                              if i["moe"] is not None else "not stated"),
+             "safe to quote": {"firm": "yes",
+                               "soft": "no, the margin is too wide",
+                               "unstated": "no margin given",
+                               "absent": "no estimate"}[i["reliability"]],
+             "measured over": where}
+            for i in data["conditions"]]})
+
+    # The deliverable is usually a conversation, so the last table is the one a
+    # reader takes into the room.
+    blocks.append({"kind": "table", "rows": [
+        {"take this into the room": q} for q in data["questions"]]})
+
+    blocks.append(B.limits([result]))
+    blocks.append(B.next_questions(STORE, pid6))
+    ordered = B.compose("issue_or_topic", [b for b in blocks if b])
+    return {"blocks": ordered, "question_type": "issue_or_topic",
+            "rules": result["caveats"],
+            "violations": B.validate("issue_or_topic", ordered),
+            "trace": [result["tool"]]}
+
+
 def answer_function(function_name):
     """Who does this? The answer a name search cannot give.
 
@@ -1655,6 +1778,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                                "ambiguous": any(c["code"] == "ambiguous_name"
                                                 for c in result["caveats"])})
 
+        if parsed.path == "/api/topics":
+            # One definition, sent at runtime, for the same reason the preset
+            # list is: a second copy in the page drifts the moment a topic is
+            # added to the concordance.
+            import brief as BR
+            return self._json({"topics": BR.topics()})
+
         if parsed.path == "/api/browse":
             import browse_data
             return self._json(browse_data.build(STORE))
@@ -1693,6 +1823,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if parsed.path == "/api/preset":
             return self._json(answer_preset(payload.get("id"), payload.get("pid6"),
                                             payload.get("county")))
+
+        if parsed.path == "/api/brief":
+            pid6 = payload.get("pid6")
+            topic = (payload.get("topic") or "").strip()
+            if not pid6 or not topic:
+                return self._json({"error": "pid6 and topic required"}, 400)
+            return self._json(answer_brief(pid6, topic))
 
         if parsed.path == "/api/function":
             name = (payload.get("name") or "").strip()

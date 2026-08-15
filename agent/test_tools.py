@@ -202,6 +202,59 @@ def main():
         check(f"{name.title()} is drawn as its own boundary",
               drawn["basis"] == "own_boundary" and drawn["svg"], str(drawn["basis"]))
 
+    print("\nthe brief answers a place and an issue together (§12, §9)")
+    estacada = pid_for(store, "CITY OF ESTACADA")
+    fire = T.TOOLS["place_topic_brief"](store, estacada, "wildfire")
+    data = fire["data"]
+    # §12: the gap is not a footnote. Nothing downstream is allowed to read as a
+    # measure of the topic, so the fit rides on the result rather than in prose.
+    check("the brief states how loosely the categories fit",
+          data["fit"] == "weak" and data["fit_meaning"], str(data["fit"]))
+    check("and forbids an issue-level dollar figure outright",
+          "issue_level_spending" in blocked_codes(fire))
+    check("the topic gap caveat leads the rules",
+          fire["caveats"][0]["code"] == "topic_gap", str(fire["caveats"][0]["code"]))
+    # §9: the same dollar appears in two entities' expenditures, so a total
+    # across a stack is a number with no referent. The absence of the key is
+    # the guarantee; a renderer cannot print what was never computed.
+    check("no total is computed across the stack",
+          not any(k in data for k in ("total", "combined", "sum")), str(list(data)))
+    # The point of the whole thing: fire is district work, the districts have no
+    # boundary, and a stack that quietly omitted them would say the city and the
+    # county are all there is.
+    check("districts that do the work but cannot be placed are still surfaced",
+          any("Fire" in row["name"] for row in data["elsewhere"]),
+          str([r["name"] for r in data["elsewhere"]][:3]))
+    check("and are marked as a filing rather than a location",
+          "districts_filed_not_placed" in codes(fire))
+    check("the stack itself is never presented as complete",
+          "serving_stack_incomplete" in codes(fire))
+
+    # A topic the concordance does not cover is answered, not refused: §12 says
+    # a bare refusal is less useful than a labelled approximation, and the stack
+    # is still the honest half of the answer.
+    unknown = T.TOOLS["place_topic_brief"](store, estacada, "broadband")
+    check("an uncovered topic returns the gap and still names the governments",
+          unknown["data"]["fit"] == "none" and not unknown["data"]["categories"]
+          and unknown["data"]["stack"], str(unknown["data"]["fit"]))
+
+    # §4: conditions are not the government's record, and a figure whose margin
+    # swamps it must not be quotable.
+    check("conditions arrive with a reliability verdict on each figure",
+          all("reliability" in i for i in data["conditions"]))
+    check("and are marked as not being anybody's results",
+          "conditions_are_not_a_record" in codes(fire))
+    wide = [i for i in data["conditions"] if i["reliability"] == "soft"]
+    check("a small town's estimates are mostly too wide to quote", bool(wide),
+          str([(i["name"], i["moe"]) for i in data["conditions"]]))
+
+    # Asked of a district, "which governments serve you" is the question
+    # answering itself, and the brief inherits that refusal rather than
+    # inventing a stack.
+    district = T.TOOLS["place_topic_brief"](store, new_bridge, "water")
+    check("asked of a district rather than a town, the stack is refused",
+          "not_a_place" in codes(district), str(codes(district)))
+
     print("\nthe drill from service area to function reaches the map (§15.1)")
     # The case this gate exists for. Fire protection is done by 243 special
     # districts and 83 cities; one of those districts has a boundary anywhere in
@@ -719,6 +772,7 @@ def main():
                               "form": "entities_over_time"},
         "who_spends_on": {"function_name": "Fire Protection"},
         "render_function_map": {"function": "Police Protection"},
+        "place_topic_brief": {"pid6": portland, "topic": "housing"},
         "compare_change": {"pid6_list": [portland, baker_county]},
         "render_community_map": {"code": "DP03_0128P", "geo_level": "county"},
         "trend_panel": {"pid6_list": [portland, baker_county]},
