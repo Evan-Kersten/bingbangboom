@@ -204,7 +204,7 @@ never share an axis or a legend with a spending figure.
 public_foundry_system_prompt_v2.md   the specification
 etl/          build.py, verify.py, schema.sql, plus the shapefile and
               dissolve work. Reads the loose files in the repository root.
-agent/        rules.py (the caveat catalogue), tools.py (37 tools), explore.py,
+agent/        rules.py (the caveat catalogue), tools.py (41 tools), explore.py,
               atlas.py (every mappable measure, and whether it should be),
               brief.py (place + issue, the §12 front door),
               community.py (DP03, structurally unable to see a fiscal figure),

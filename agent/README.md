@@ -1,6 +1,6 @@
 # The agent
 
-Thirty-seven typed tools over the store built by `etl/`, the §4 formatter, and the
+Forty-one typed tools over the store built by `etl/`, the §4 formatter, and the
 orchestrator that routes a question and runs the tool loop.
 
 ```
@@ -55,6 +55,8 @@ circumstance under which a per-service-area growth rate is legitimate.
 | `map_topic_to_categories` | issue questions | §12 name the gap, offer the proxy |
 | `place_topic_brief` | a place and an issue together | §12 gap before figures, §9 no summing |
 | `render_function_map` | where one function is done | §15.1 coverage gate, §12 layer that does the work |
+| `atlas_catalogue` | which layers are worth building | §15.1 verdict and coverage per measure |
+| `atlas_compare` | two measures side by side | §4 refuses spending against conditions |
 | `run_sql` | anything else | read-only, logged, carries a standing caveat |
 
 ## `rules.py`
