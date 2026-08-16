@@ -1609,7 +1609,7 @@ def answer_preset(preset_id, pid6=None, county=None):
         thin = next((c for c in finer["caveats"] if c["code"] == "too_thin_to_map"), None)
         if thin:
             blocks.append({"kind": "text", "text": (
-                "The same measure town by town is refused. " + thin["guidance"])})
+                "The same measure city by city is refused. " + thin["guidance"])})
     elif preset_id == "ecosystem":
         name = county or (entity["host_county"] if entity else None)
         result = T.list_ecosystem(STORE, county_name=name)

@@ -207,7 +207,7 @@ so a README push does not spend a deploy.
 
 - `serves_place` is thin outside Multnomah. That county's precinct file is the
   only place "which governments serve this address" is recorded rather than
-  inferred; elsewhere a town resolves to its county and its school districts,
+  inferred; elsewhere a city resolves to its county and its school districts,
   against the roughly ten governments a real address sits inside. Boundary data
   for special districts is what would close this, and nothing else will.
 - `cnty_voterprecincts/` (Clackamas, 121 precincts with REPDIST/SENDIST/CONGDIST)

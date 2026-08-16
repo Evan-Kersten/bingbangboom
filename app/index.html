@@ -268,7 +268,7 @@ aside {
   font-size: 11px; color: var(--pf-muted);
   font-variant-numeric: tabular-nums slashed-zero; flex: 0 0 auto;
 }
-/* Oregon has a Fairview in two counties and four towns called some form of
+/* Oregon has a Fairview in two counties and four cities called some form of
    Union. The county rides quietly beside the name so the right row can be
    picked without opening it first. */
 .browse .row i {
@@ -643,13 +643,13 @@ tr:last-child td { border-bottom: 0; }
       <div class="inner" id="inner">
         <div class="welcome">
           <h2>Who would have to act?</h2>
-          <p>Name the town you are working in and the subject you are working on. You
+          <p>Name the city you are working in and the subject you are working on. You
           get the governments with a claim on it, what each reports in the nearest
           category, and a plain account of what this data cannot say about your
           subject &mdash; before any figure rather than after it.</p>
           <div class="opener">
             <div class="opener-line">I am working in
-              <button class="opener-slot" id="opener-place">a town</button>
+              <button class="opener-slot" id="opener-place">a city</button>
               on
               <button class="opener-slot" id="opener-topic">a subject</button>
             </div>
@@ -793,8 +793,8 @@ async function staticApi(path, body) {
     }
   }
 
-  /* Briefs are pre-rendered per town and subject, so the exported build opens
-     on the same question the served one does. Where a town has no stack
+  /* Briefs are pre-rendered per city and subject, so the exported build opens
+     on the same question the served one does. Where a city has no stack
      established, the file is absent and the reader is told which, rather than
      being handed an empty brief. */
   if (path === '/api/topics') return readJson('data/topics.json');
@@ -805,7 +805,7 @@ async function staticApi(path, body) {
     } catch (error) {
       return { blocks: [{ kind: 'answer', text:
         'No brief was pre-rendered for that place and subject. Briefs are built '
-        + 'for towns with an established stack of governments; run the server for '
+        + 'for cities with an established stack of governments; run the server for '
         + 'any place in the data.' }], trace: [] };
     }
   }
@@ -864,7 +864,7 @@ let MODE = {};
    same reason the preset list does: a copy of a list in the page is a list that
    goes stale, and the concordance is edited in rules.py. */
 let TOPICS = null, openerPlace = null, openerTopic = null;
-/* A subject clicked before a place is remembered, so choosing the town
+/* A subject clicked before a place is remembered, so choosing the city
    next completes the sentence instead of starting it again. */
 let pendingSubject = null;
 
@@ -879,23 +879,28 @@ async function loadOpener() {
 function paintOpener() {
   const place = $('opener-place'), topic = $('opener-topic');
   if (!place) return;
-  place.textContent = openerPlace ? openerPlace.name : 'a town';
+  place.textContent = openerPlace ? openerPlace.name : 'a city';
   place.dataset.set = openerPlace ? '1' : '0';
   topic.textContent = openerTopic || 'a subject';
   topic.dataset.set = openerTopic ? '1' : '0';
-  /* The honest scope of the sentence. A stack is established for a town, and
-     the boundary files reach 240 of them, so promising "any place" would be
-     promising something the next click cannot deliver. */
+  /* The honest scope of the sentence, and it is narrower than it looks. Oregon
+     has no legal category called a town: ORS makes every incorporated
+     municipality a city, which is why 227 of these 240 are filed as "CITY OF"
+     and the other 13 are charter names like Town of Lakeview rather than a
+     different kind of thing. Saying town also quietly wrote out everybody
+     living outside a city limit, who have a county and districts and no city
+     at all, so the note says that too. */
   const note = $('opener-note');
   if (note) {
     note.textContent = openerPlace && openerTopic ? ''
-      : `${(BROWSE?.places || []).length || 240} Oregon towns have a stack of `
-        + `governments established for them. Any of Oregon's 1,529 governments `
-        + `can be searched by name.`;
+      : `${(BROWSE?.places || []).length || 240} Oregon cities have a stack of `
+        + `governments established for them, and any of Oregon's 1,529 governments `
+        + `can be searched by name. An address outside every city limit is served `
+        + `by its county and districts, which this data does not record per address.`;
   }
 }
 
-/* Towns rather than all 1,529. The stack is established for a place, and asking
+/* Cities rather than all 1,529. The stack is established for a city, and asking
    a fire district which governments serve it is the question answering itself. */
 function openerPlaces() {
   return (BROWSE?.places || []).slice(0, 12);
@@ -1097,7 +1102,7 @@ function functionsMatching(term) {
 }
 
 /* A subject typed into the search box is a brief waiting for a place. Athena's
-   people arrive knowing the issue and the town, not the name of the fire
+   people arrive knowing the issue and the city, not the name of the fire
    district, and this is the row that turns "housing" into an answer. */
 function topicsMatching(term) {
   if (!term || term.length < 3 || !TOPICS) return [];
@@ -1181,7 +1186,7 @@ function choose(match) {
   /* Selecting a government anywhere completes the opener sentence. Without
      this, "search by name instead" focused the search box and abandoned the
      sentence half-written, and a subject clicked before a place was never
-     consumed unless the place came from the town list. */
+     consumed unless the place came from the city list. */
   openerPlace = { pid6: match.pid6, name: match.common_name || match.legal_name };
   paintOpener();
   if (pendingSubject) {
@@ -1253,8 +1258,8 @@ async function drawBrowse() {
   const counties = browseAll.counties ? BROWSE.counties : BROWSE.counties.slice(0, 8);
   const functions = browseAll.functions ? BROWSE.functions : BROWSE.functions.slice(0, 12);
 
-  /* The town list has its own filter rather than sharing the search box above.
-     Typing "Bend" here means the town and everything with a claim on it; typing
+  /* The city list has its own filter rather than sharing the search box above.
+     Typing "Bend" here means the city and everything with a claim on it; typing
      it up there means the city government alone. Conflating the two is what
      made a search box over 1,529 names the only way in. */
   const term = placeFilter.trim().toLowerCase();
@@ -1270,28 +1275,28 @@ async function drawBrowse() {
     <b>ten</b> of them, and they are the ones who would have to act.</div>
     <div class="browse">
       <h3>What you are working on</h3>
-      ${entity ? '' : `<p class="none">Pick a subject, then a town below. You get the
+      ${entity ? '' : `<p class="none">Pick a subject, then a city below. You get the
         governments with a claim on it and what this data cannot say.</p>`}
       <div class="tags">${(TOPICS || []).map((t) => `
         <button class="tag" data-subject="${esc(t)}"
                 title="${entity ? 'Brief for ' + esc(entityName())
-                                : 'Pick this, then a town'}"
+                                : 'Pick this, then a city'}"
                 >${esc(t)}</button>`).join('')}
       </div>
 
       <h3>Where you live</h3>
-      <input class="filter" id="place-filter" type="search" placeholder="Your town"
-             autocomplete="off" spellcheck="false" aria-label="Filter towns">
+      <input class="filter" id="place-filter" type="search" placeholder="Your city"
+             autocomplete="off" spellcheck="false" aria-label="Filter cities">
       ${places.map((p) => `
         <button class="row" data-place="${esc(p.pid6)}" data-name="${esc(p.name)}">
           <span>${esc(p.name)}<i>${esc(p.county)}</i></span>
           <span class="n">${esc(p.governments)} governments</span>
         </button>`).join('')}
       ${hits.length > places.length
-        ? `<button class="more" data-more="places">Show all ${hits.length} towns</button>`
+        ? `<button class="more" data-more="places">Show all ${hits.length} cities</button>`
         : (term && !hits.length
-            ? `<p class="none">No town by that name has a stack established. The
-               boundary files reach ${(BROWSE.places || []).length} of Oregon's towns.</p>`
+            ? `<p class="none">No city by that name has a stack established. The
+               boundary files reach ${(BROWSE.places || []).length} of Oregon's cities.</p>`
             : '')}
 
       <h3>What they do</h3>
@@ -1332,7 +1337,7 @@ async function drawBrowse() {
                              $('place-filter').focus(); };
     if (placeFilter) filter.setSelectionRange(placeFilter.length, placeFilter.length);
   }
-  /* Picking a town both answers the question and selects the town, so the pane
+  /* Picking a city both answers the question and selects it, so the pane
      turns into that government's questions. A door that answers once and leaves
      the reader back at the doors is a dead end: the stack is the beginning of
      the session, not the end of it. */
@@ -1355,7 +1360,7 @@ async function drawBrowse() {
     node.onclick = () => ask(node.dataset.label, { id: node.dataset.shared });
   });
   /* A subject with a place already chosen is a brief. Without one it scrolls to
-     the town list rather than doing nothing, because a disabled chip that never
+     the city list rather than doing nothing, because a disabled chip that never
      says why is the same as a broken one. */
   $('presets').querySelectorAll('[data-subject]').forEach((node) => {
     node.onclick = () => {
@@ -1478,7 +1483,7 @@ async function ask(label, payload) {
       ? await api('/api/brief', payload.brief)
       : payload.fn
       ? await api('/api/function', { name: payload.fn })
-      /* A door names its own subject. The browse panel asks about a town or a
+      /* A door names its own subject. The browse panel asks about a city or a
          county nobody has selected yet, and reading the selection instead sent
          an undefined pid6 — which is why picking a county out of the browse
          panel came back "that government is not in the data". The selection is

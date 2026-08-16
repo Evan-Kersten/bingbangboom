@@ -617,7 +617,7 @@ def list_ecosystem(store, county_pid6=None, county_name=None):
 # when a government arrives on more than one basis.
 SERVING_BASIS = [
     ("self", "the place itself",
-     "The town is a government, and for most residents it is the one they can name. "
+     "The city is a government, and for most residents it is the one they can name. "
      "It is listed with the rest because leaving it out makes the stack look like "
      "things happening to a place rather than including the place."),
     ("precinct_exact", "recorded per precinct",
@@ -708,15 +708,15 @@ def governments_serving(store, pid6):
         if place["gov_type_name"] != "Municipal":
             return envelope("governments_serving", entity=place, caveats=[{
                 "code": "not_a_place", "rule": "§9",
-                "guidance": "This asks which governments serve a town, so it is asked of "
-                            "a town. A district or a county is one of the answers, not "
+                "guidance": "This asks which governments serve a city, so it is asked of "
+                            "a city. A district or a county is one of the answers, not "
                             "the question."}])
         return envelope("governments_serving", entity=place, caveats=[{
             "code": "no_stack_established", "rule": "§9",
             "guidance": "No government has been established to serve this place beyond "
                         "itself. That is a gap in the boundary files, which cover school "
                         "districts and 19 special districts out of more than a thousand — "
-                        "not a town that governs itself alone."}])
+                        "not a city that governs itself alone."}])
 
     # One row per government, keeping the strongest basis it arrived on. A
     # district that both sits in the precinct file and overlaps the outline is
