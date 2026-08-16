@@ -4,7 +4,7 @@ Thirty-seven typed tools over the store built by `etl/`, the §4 formatter, and 
 orchestrator that routes a question and runs the tool loop.
 
 ```
-python3 agent/test_tools.py         # 235 checks
+python3 agent/test_tools.py         # 251 checks
 python3 agent/test_orchestrator.py  # 44 checks, uses a scripted model
 python3 agent/test_viz.py           # 88 checks on the render layer
 python3 agent/test_reports.py       # 53 checks on report composition

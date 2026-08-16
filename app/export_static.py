@@ -31,6 +31,11 @@ import server as S   # noqa: E402
 import viz           # noqa: E402
 import reports as R  # noqa: E402
 
+# The function the lab fills in for a measure that needs one. Police protection
+# rather than fire, because fire refuses on every layer and a demo that opened
+# on a refusal would read as broken rather than as careful.
+DEFAULT_FUNCTION = "Police Protection"
+
 
 def write(path, payload):
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -74,8 +79,11 @@ def export(out_dir):
         "areas": [r["service_area"] for r in store.rows(
             "SELECT service_area, COUNT(*) AS n FROM spending_by_service_area "
             "WHERE total > 0 GROUP BY service_area ORDER BY n DESC")]})
+    import atlas as A
     import brief as BR
     write(os.path.join(data_dir, "topics.json"), {"topics": BR.topics()})
+    write(os.path.join(data_dir, "measures.json"),
+          {"measures": A.measures(), "layers": ["county", "place", "school_district"]})
     write(os.path.join(data_dir, "mode.json"), {
         "mode": "static",
         "entities": len(entities),
@@ -124,6 +132,24 @@ def export(out_dir):
                 S.answer_brief(place_pid6, topic))
             written += 1
     print(f"  {len(stacked)} towns x {len(BR.topics())} subjects, {total/1e6:.0f} MB so far")
+
+    # The map lab: every measure on every layer it is valid on, plus the
+    # catalogue per layer. A refusal is pre-rendered too, because "this layer
+    # would be mostly absence" is the answer a discovery phase came for.
+    for layer in ("county", "place", "school_district"):
+        total += write(os.path.join(data_dir, "atlas", f"catalogue-{layer}.json"),
+                       S.answer_atlas([], layer=layer, mode="catalogue",
+                                      service_area=S.DEFAULT_AREA,
+                                      function=DEFAULT_FUNCTION))
+        written += 1
+        for measure in A.measures():
+            if layer not in measure["layers"]:
+                continue
+            total += write(
+                os.path.join(data_dir, "atlas", f"{layer}-{measure['id']}.json"),
+                S.answer_atlas([measure["id"]], layer=layer,
+                               service_area=S.DEFAULT_AREA, function=DEFAULT_FUNCTION))
+            written += 1
 
     for preset_id in sorted(S.ENTITY_INDEPENDENT):
         total += write(os.path.join(data_dir, "shared", f"{preset_id}.json"),

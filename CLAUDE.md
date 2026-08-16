@@ -37,7 +37,7 @@ No dependencies. Standard library only, so there is nothing to install.
 python3 etl/build.py          # ~20s, writes build/ from the files in the root
 python3 etl/verify.py         # 52 assertions about the built store
 python3 app/server.py         # http://localhost:8000
-python3 app/export_static.py --out site --clean   # ~50s, ~382 MB
+python3 app/export_static.py --out site --clean   # ~60s, ~385 MB
 ```
 
 `build/` and `site/` are gitignored and reproducible; never commit either.
@@ -45,7 +45,7 @@ python3 app/export_static.py --out site --clean   # ~50s, ~382 MB
 The full suite, all of which must pass before a push:
 
 ```
-python3 agent/test_tools.py        # 235    python3 app/test_server.py    # 177
+python3 agent/test_tools.py        # 251    python3 app/test_server.py    # 179
 python3 agent/test_orchestrator.py #  44    python3 app/test_parity.py    # 452
 python3 agent/test_viz.py          #  88    python3 evals/run.py          #  22
 python3 agent/test_reports.py      #  53    python3 etl/verify.py         #  52
@@ -126,6 +126,23 @@ extent beats needing a county, because the weakest reason reads as the most
 fixable, and fire protection reported as "scope it to a county" sends a reader
 to a map that will be just as empty for a reason nobody stated.
 
+**A layer is vetted before it is committed to.** `agent/atlas.py` is the
+prototyping surface: every mappable measure in one registry, each drawn only
+through the coverage gate, each result saying whether it was drawn or refused
+and over how much of the extent. The registry is derived from `tools.MAP_METRICS`
+and `community.INDICATORS` rather than restating them, so a metric added there is
+reachable here without a second edit.
+
+`atlas.compare` will not pair a fiscal measure with a survey one. §4: spending
+and conditions are aggregate patterns observed in the same geography with nothing
+joining them, and two maps side by side is the most persuasive way to assert that
+one explains the other without writing a sentence anybody could argue with. The
+refusal is by measure kind rather than by a warning, because a warning is advice.
+
+`atlas.catalogue` is the artifact a discovery phase actually wants: every measure
+on a layer with its verdict and its coverage, so a decision to build a layer is
+made against measurement rather than against whichever example the demo used.
+
 ## Data traps
 
 **There are two different expenditure totals and they disagree** for 1,112 of
@@ -188,6 +205,7 @@ public_foundry_system_prompt_v2.md   the specification
 etl/          build.py, verify.py, schema.sql, plus the shapefile and
               dissolve work. Reads the loose files in the repository root.
 agent/        rules.py (the caveat catalogue), tools.py (37 tools), explore.py,
+              atlas.py (every mappable measure, and whether it should be),
               brief.py (place + issue, the §12 front door),
               community.py (DP03, structurally unable to see a fiscal figure),
               viz.py + maps.py (hand-authored SVG), blocks.py (§15 block order),

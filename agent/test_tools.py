@@ -202,6 +202,61 @@ def main():
         check(f"{name.title()} is drawn as its own boundary",
               drawn["basis"] == "own_boundary" and drawn["svg"], str(drawn["basis"]))
 
+    print("\nthe atlas vets a layer before anybody commits to it (§4, §15)")
+    import atlas as A
+    catalogue = {m["id"] for m in A.measures()}
+    # Derived from the metric tables, never restated. A measure added to tools
+    # or community and missing here is a measure nobody can reach, which looks
+    # like a product decision rather than the drift it is.
+    check("every mappable measure is in the atlas",
+          catalogue >= set(T.MAP_METRICS) | set(T.SERVICE_AREA_MAP_METRICS)
+          | set(T.FUNCTION_MAP_METRICS),
+          str(sorted(catalogue)))
+    import community as C
+    check("and so is every survey indicator",
+          catalogue >= {code for code, *_ in C.INDICATORS})
+
+    # §4. Two maps side by side is the most persuasive way to assert that one
+    # explains the other without writing a sentence anybody could argue with,
+    # and spending against poverty is the pairing this domain reaches for first.
+    paired = A.compare(store, ["spending_per_resident", "DP03_0128P"], "county")
+    check("spending is never drawn beside a condition",
+          paired["data"]["refused"] is True
+          and "no_investment_against_conditions" in codes(paired))
+    check("and the refusal carries no picture at all",
+          not paired["data"]["panels"], str(paired["data"]["panels"])[:80])
+    check("and it says what to do instead",
+          "aggregate every" in next(c["guidance"] for c in paired["caveats"]
+                                    if c["code"] == "no_investment_against_conditions"))
+
+    both = A.compare(store, ["DP03_0128P", "DP03_0009P"], "county")
+    check("two measures of the same kind do draw",
+          all(p["drawn"] for p in both["data"]["panels"]))
+    # A shared scale across two panels would say a colour means the same amount
+    # in both, which is exactly the false comparison §15.4 is about.
+    check("and the panels say they are on separate scales",
+          "panels_have_separate_scales" in codes(both))
+
+    # There are no tract-level DP03 rows in any of the three source files, so a
+    # survey measure on a school district layer is not a coverage problem.
+    off_layer = A.draw(store, "DP03_0128P", "school_district")
+    check("a survey measure is refused on a layer it has no rows for",
+          "layer_unavailable" in codes(off_layer))
+
+    listing = A.catalogue(store, "county", service_area="Public Safety",
+                          function="Fire Protection")
+    verdicts = {row["measure"]: row["verdict"] for row in listing["data"]["rows"]}
+    check("the catalogue reports a verdict for every measure",
+          len(verdicts) == len(A.measures()), str(len(verdicts)))
+    check("and fire protection is refused in it rather than quietly drawn",
+          verdicts.get("Share of spending on Fire Protection") == "refused",
+          str(verdicts))
+    check("while police protection is drawn",
+          verdicts.get("Share of spending on Police Protection") is None
+          or verdicts.get("Spending per resident on Fire Protection") == "refused")
+    check("and the catalogue dates itself, because coverage is a property of the build",
+          "catalogue_is_a_snapshot" in codes(listing))
+
     print("\nthe brief answers a place and an issue together (§12, §9)")
     estacada = pid_for(store, "CITY OF ESTACADA")
     fire = T.TOOLS["place_topic_brief"](store, estacada, "wildfire")
@@ -773,6 +828,10 @@ def main():
         "who_spends_on": {"function_name": "Fire Protection"},
         "render_function_map": {"function": "Police Protection"},
         "place_topic_brief": {"pid6": portland, "topic": "housing"},
+        "atlas_measures": {},
+        "atlas_draw": {"measure_id": "spending_per_resident"},
+        "atlas_compare": {"measure_ids": ["DP03_0128P", "DP03_0009P"]},
+        "atlas_catalogue": {},
         "compare_change": {"pid6_list": [portland, baker_county]},
         "render_community_map": {"code": "DP03_0128P", "geo_level": "county"},
         "trend_panel": {"pid6_list": [portland, baker_county]},
