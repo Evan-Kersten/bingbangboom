@@ -269,13 +269,15 @@ def catalogue(store, layer="county", county=None, **selectors):
     rows = []
     for measure in measures():
         if layer not in measure["layers"]:
-            rows.append({"measure": measure["label"], "kind": measure["kind"],
+            rows.append({"id": measure["id"], "measure": measure["label"],
+                         "kind": measure["kind"],
                          "verdict": "not on this layer", "coverage": None,
                          "detail": f"drawn on {', '.join(measure['layers'])}",
                          "source": measure["source"]})
             continue
         if measure["needs"] and not selectors.get(measure["needs"]):
-            rows.append({"measure": measure["label"], "kind": measure["kind"],
+            rows.append({"id": measure["id"], "measure": measure["label"],
+                         "kind": measure["kind"],
                          "verdict": "needs a selector", "coverage": None,
                          "detail": f"name a {measure['needs'].replace('_', ' ')}",
                          "source": measure["source"]})
@@ -283,6 +285,10 @@ def catalogue(store, layer="county", county=None, **selectors):
         panel = draw(store, measure["id"], layer=layer, county=county,
                      **selectors)["data"]["panel"]
         rows.append({
+            # The id rides with the row so the interface can put a verdict on
+            # the control that selects the measure, rather than only in a table
+            # somebody reaches after choosing one.
+            "id": measure["id"],
             "measure": panel["label"], "kind": measure["kind"],
             "verdict": "drawn" if panel["drawn"] else "refused",
             "coverage": panel["coverage"],

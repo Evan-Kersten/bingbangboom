@@ -292,6 +292,75 @@ aside {
   padding: 3px 9px; border-radius: 13px; line-height: 1.35;
 }
 .browse .tag:hover { border-color: var(--pf-s1); color: var(--pf-s1); }
+/* ---------- the map lab ----------
+   The one surface here that is not a question about a government. It answers
+   "is this layer worth building", which is measured rather than looked up, so
+   the verdict travels on the control instead of waiting behind it. */
+.lab .lab-count {
+  margin: 8px 8px 14px; font-size: 12px; color: var(--pf-muted); line-height: 1.55;
+}
+.lab .lab-count b { color: var(--pf-ink); font-weight: 640; }
+.lab-group {
+  margin: 16px 8px 6px; font-size: 10px; font-weight: 600; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--pf-muted);
+}
+.lab-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+  font: inherit; font-size: 13px; cursor: pointer; background: none; border: 0;
+  border-radius: 7px; padding: 7px 8px; color: var(--pf-ink);
+}
+.lab-row:hover { background: var(--pf-track); }
+.lab-row.on { background: var(--pf-s1); color: var(--pf-panel); }
+/* Recessive, never disabled. A measure that refuses is still the most useful
+   thing to open when the question is what a layer can carry, and the refusal is
+   drawn in the frame with the count behind it. */
+.lab-row.off .lab-nm { color: var(--pf-muted); }
+.lab-row.off.on .lab-nm { color: var(--pf-panel); }
+.lab-nm { flex: 1 1 auto; min-width: 0; }
+.lab-nm i {
+  font-style: normal; font-size: 11px; color: var(--pf-muted);
+}
+.lab-row.on .lab-nm i { color: var(--pf-track); }
+.lab-cov { display: flex; align-items: center; gap: 7px; flex: 0 0 auto; }
+/* Magnitude, so one hue light to dark is wrong here and a single filled length
+   is right: every bar answers the same question against the same 0 to 100, and
+   what matters is comparing lengths down the column. The number is always
+   beside it, because the bar is the fast read and the figure is the true one. */
+.meter {
+  display: block; width: 30px; height: 4px; border-radius: 2px;
+  background: var(--pf-track);
+  background-image: linear-gradient(to right, var(--pf-s1) var(--fill),
+                                    transparent var(--fill));
+}
+/* A refused measure keeps its bar, because how much of the extent would have
+   carried a value is exactly what says whether the layer is close or hopeless,
+   and it loses the hue, because a full-strength green beside the word refused
+   is the bar arguing with the label. */
+.lab-row.off .meter {
+  background-image: linear-gradient(to right, var(--pf-dim) var(--fill),
+                                    transparent var(--fill));
+}
+.lab-row.on .meter { background: rgba(255,255,255,.28); }
+.lab-row.on .meter, .lab-row.off.on .meter { background-image: linear-gradient(
+    to right, var(--pf-panel) var(--fill), transparent var(--fill)); }
+.lab-verdict {
+  font-size: 11px; color: var(--pf-muted); font-variant-numeric: tabular-nums;
+  min-width: 52px; text-align: right;
+}
+.lab-row.on .lab-verdict { color: var(--pf-track); }
+.lab-do { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 0 8px 4px; }
+.lab-do .go {
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  padding: 7px 14px; border-radius: 7px; border: 0;
+  background: var(--pf-s1); color: var(--pf-panel);
+}
+.lab-do .go:hover { filter: brightness(1.12); }
+.lab-do .more { padding: 0; }
+.lab-warn {
+  margin: 8px 8px 0; padding-left: 10px; font-size: 12px; line-height: 1.5;
+  color: var(--pf-ink-2); border-left: 2px solid var(--pf-warning);
+}
+
 /* One fold below the lab. Everything in it is a legitimate way in and none of
    it is the first move, which is exactly what a disclosure is for. */
 .fold { margin-top: 20px; border-top: 1px solid var(--edge); padding-top: 4px; }
@@ -481,9 +550,45 @@ th {
   text-align: left; font-size: 10px; letter-spacing: .07em; text-transform: uppercase;
   color: var(--pf-muted); border-bottom: 1px solid var(--pf-axis); padding: 6px 14px 6px 0;
 }
-td { padding: 6px 14px 6px 0; border-bottom: 1px solid var(--edge);
-     font-variant-numeric: tabular-nums slashed-zero; }
+td { padding: 7px 14px 7px 0; border-bottom: 1px solid var(--edge);
+     font-variant-numeric: tabular-nums slashed-zero; color: var(--pf-ink-2); }
 tr:last-child td { border-bottom: 0; }
+
+/* The row's subject, and the only cell that should read at full strength. Every
+   cell used to be the same weight, so a school district's type label competed
+   with the figure beside it and a reader scanning for the figure had to read
+   the whole row. */
+td.lead { color: var(--pf-ink); font-weight: 550; }
+th.lead { color: var(--pf-ink-2); }
+
+/* Quantities line up on their right edge so magnitudes can be compared down the
+   column without reading them. Nothing else is right-aligned: a ragged right on
+   a name column is easier to scan than a justified one. */
+td.num, th.num { text-align: right; padding-right: 18px; }
+table tr > td.num:last-child, table tr > th.num:last-child { padding-right: 0; }
+
+/* A verdict is a state. Dot plus word, never the dot alone: colour is the fast
+   read and the word is the one that survives a colourblind reader, a printout
+   and a screenshot pasted into a document. */
+td.verdict { white-space: nowrap; }
+td.verdict .dot {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  margin-right: 7px; background: var(--pf-dim); vertical-align: baseline;
+}
+td.verdict .dot.good { background: var(--pf-good); }
+td.verdict .dot.warning { background: var(--pf-warning); }
+td.verdict .dot.muted { background: var(--pf-dim); }
+
+/* What every row of the table shares, said once. Sits above the header rule so
+   it reads as a property of the table rather than as a first row of it. */
+.tnote {
+  display: flex; flex-wrap: wrap; gap: 4px 18px; margin: -2px 0 12px;
+  font-size: 12px; color: var(--pf-muted); line-height: 1.5;
+}
+.tnote i {
+  font-style: normal; font-size: 10px; letter-spacing: .07em;
+  text-transform: uppercase; margin-right: 5px;
+}
 
 /* §15.1 interpretation: what was understood, before anything else. Overlapping
    jurisdictions mean a name resolves to several governments, so a reader who
@@ -727,6 +832,7 @@ tr:last-child td { border-bottom: 0; }
 
 <script src="comparison.js"></script>
 <script src="subjects.js"></script>
+<script src="tables.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 let entity = null, busy = false;
@@ -1399,6 +1505,122 @@ async function loadPresets() {
    districts that provide it are precisely the ones nobody can name. */
 let BROWSE = null;
 let browseAll = { counties: false, functions: false, open: false };
+/* The catalogue for the layer the lab is currently on, keyed by measure id.
+   Fetched when the layer changes and kept, so switching back and forth does not
+   re-ask. Null until it arrives; the measures still list without it. */
+let LAB_COVERAGE = {}, labCoverageFor = null, labCoverageBusy = false;
+
+/* What each measure would actually do on this layer, said on the control that
+   picks it.
+
+   The lab used to be a flat cloud of fifteen chips with nothing to separate the
+   nine that refuse from the six that draw. The verdict only appeared after
+   picking one and waiting for a map that turned out to be a stated reason, so
+   finding out which layers were worth building meant walking the whole list one
+   dead map at a time. That walk is the discovery phase, and it is the thing
+   this is for.
+
+   Grouped by kind because §4 keeps a spending measure and a survey measure
+   apart everywhere else, and a reader choosing two panels needs to see the
+   boundary before atlas.compare refuses across it. */
+function labMeasures() {
+  const all = MEASURES.measures || [];
+  const groups = [['What governments spend and staff', 'fiscal'],
+                  ['What residents report', 'survey']];
+  const seen = new Set();
+  const sections = groups.map(([name, kind]) => {
+    const rows = all.filter((m) => m.kind === kind);
+    rows.forEach((m) => seen.add(m.id));
+    return { name, rows };
+  });
+  const rest = all.filter((m) => !seen.has(m.id));
+  if (rest.length) sections.push({ name: 'Other', rows: rest });
+
+  const draws = Object.values(LAB_COVERAGE).filter((c) => c.verdict === 'drawn').length;
+  const known = Object.keys(LAB_COVERAGE).length;
+
+  /* The actions sit above the list rather than below it. Fifteen measures is
+     taller than the rail, so a draw button under them was off the bottom of a
+     scroll at the moment somebody had just picked something and wanted it. */
+  return `
+    <p class="lab-count">${known
+      ? `<b>${draws} of ${known}</b> can be drawn here. A refusal is the finding:
+         it says the layer would be mostly absence, which is worth knowing before
+         anybody builds it.`
+      : 'Measuring what this layer can carry&hellip;'}</p>
+    <div class="lab-do">
+      ${labPicked.length ? `<button class="go" data-lab="draw">Draw ${
+        labPicked.length === 2 ? 'both' : 'it'}</button>` : ''}
+      <button class="more" data-lab="catalogue">Open the full catalogue</button>
+    </div>
+    ${labCrossesKinds() ? `<p class="lab-warn">Those are a spending measure and a
+      survey measure. §4 refuses the pair: two maps side by side is the most
+      persuasive way to say one explains the other without writing a sentence
+      anybody could argue with.</p>` : ''}
+    ${sections.filter((s) => s.rows.length).map((s) => `
+      <h4 class="lab-group">${esc(s.name)}</h4>
+      ${s.rows.map((m) => labRow(m)).join('')}`).join('')}`;
+}
+
+function labRow(m) {
+  const cover = LAB_COVERAGE[m.id];
+  const on = labPicked.includes(m.id);
+  const selector = m.needs === 'service_area' ? DEFAULT_AREA
+                 : m.needs === 'function' ? DEFAULT_FUNCTION : '';
+  /* A refused measure stays pickable. The refusal drawn in the frame, with the
+     count of boundaries that would have carried a value, is a more useful thing
+     to put in front of somebody scoping a layer than a disabled control. */
+  const verdict = cover ? cover.verdict : null;
+  const share = cover && cover.coverage !== null ? cover.coverage : null;
+  return `
+    <button class="lab-row${on ? ' on' : ''}${verdict === 'drawn' ? '' : ' off'}"
+            data-measure="${esc(m.id)}"
+            title="${esc(cover ? cover.detail : (m.source || ''))}">
+      <span class="lab-nm">${esc(m.label)}${
+        selector ? ` <i>${esc(selector)}</i>` : ''}</span>
+      <span class="lab-cov">
+        ${share === null ? '' : `<span class="meter" style="--fill:${
+          Math.round(share * 100)}%"></span>`}
+        <span class="lab-verdict">${esc(
+          verdict === 'drawn' ? pct(share)
+          : verdict === 'refused' ? 'refused'
+          : verdict === 'not on this layer' ? 'not here'
+          : verdict === 'needs a selector' ? 'needs one'
+          : '')}</span>
+      </span>
+    </button>`;
+}
+
+const pct = (share) => share === null ? '' : Math.round(share * 100) + '%';
+
+/* Whether the two picks straddle the §4 line. atlas.compare refuses the pair
+   and says why, which is the right answer; saying it here as well means the
+   reader learns the rule instead of spending a click discovering it. */
+function labCrossesKinds() {
+  const kinds = new Set((MEASURES.measures || [])
+    .filter((m) => labPicked.includes(m.id)).map((m) => m.kind));
+  return kinds.size > 1;
+}
+
+/* One catalogue call per layer, in the background. The rail draws immediately
+   from the measure list and fills in verdicts when they land, because blocking
+   the whole panel on fifteen coverage measurements would make changing the
+   layer feel broken. */
+async function loadLabCoverage() {
+  if (labCoverageFor === labLayer || labCoverageBusy) return;
+  labCoverageBusy = true;
+  try {
+    const result = await api('/api/atlas', {
+      measures: [], mode: 'catalogue', layer: labLayer,
+      service_area: DEFAULT_AREA, function: DEFAULT_FUNCTION });
+    LAB_COVERAGE = {};
+    (result.catalogue || []).forEach((row) => { LAB_COVERAGE[row.id] = row; });
+    labCoverageFor = labLayer;
+  } finally {
+    labCoverageBusy = false;
+  }
+  if (!entity) drawBrowse();
+}
 
 async function drawBrowse() {
   BROWSE ||= await api('/api/browse');
@@ -1422,25 +1644,14 @@ async function drawBrowse() {
     <div class="empty-hint">Districts are <b>two thirds</b> of Oregon's
     governments and nobody arrives able to name one, so start with the subject
     and the place. A typical address sits inside about <b>ten</b> governments.</div>
-    <div class="browse">
+    <div class="browse lab">
       <h3>Map lab</h3>
-      <p class="none">Try a layer before committing to it. Pick one measure to draw
-      it, or two of the same kind to put them side by side. Every panel says how
-      much of the extent it can actually see.</p>
       <select class="filter" id="lab-layer" aria-label="Boundary layer">
         ${(MEASURES.layers || []).map((l) => `<option value="${esc(l)}"${
-          l === labLayer ? ' selected' : ''}>${esc(l.replace('_', ' '))}</option>`).join('')}
+          l === labLayer ? ' selected' : ''}>over ${esc(l.replace('_', ' '))
+          }${l === 'place' ? 's' : l === 'county' ? ' boundaries' : 's'}</option>`).join('')}
       </select>
-      <div class="tags">${(MEASURES.measures || []).map((m) => `
-        <button class="tag${labPicked.includes(m.id) ? ' on' : ''}"
-                data-measure="${esc(m.id)}"
-                title="${esc(m.source || '')}${m.needs ? ' · needs a ' + m.needs.replace('_', ' ') : ''}"
-                >${esc(m.label)}${m.needs === 'service_area' ? ' ' + esc(DEFAULT_AREA)
-                  : m.needs === 'function' ? ' ' + esc(DEFAULT_FUNCTION) : ''}</button>`).join('')}
-      </div>
-      <button class="more" data-lab="catalogue">What can this layer show at all?</button>
-      ${labPicked.length ? `<button class="more" data-lab="draw">Draw ${
-        labPicked.length === 2 ? 'both' : 'it'}</button>` : ''}
+      ${labMeasures()}
 
       <details class="fold"${browseAll.open ? ' open' : ''} id="browse-fold">
         <summary>Browse everything</summary>
@@ -1483,7 +1694,19 @@ async function drawBrowse() {
     node.onclick = () => ask(node.dataset.label, { id: node.dataset.shared });
   });
   const layerPicker = $('lab-layer');
-  if (layerPicker) layerPicker.onchange = () => { labLayer = layerPicker.value; drawBrowse(); };
+  if (layerPicker) {
+    layerPicker.onchange = () => {
+      labLayer = layerPicker.value;
+      /* The picks do not survive the layer. A measure selected on counties and
+         still selected on school districts is a pair the reader never chose,
+         and on that layer half of them are not drawable at all. */
+      labPicked = [];
+      LAB_COVERAGE = {}; labCoverageFor = null;
+      drawBrowse();
+      loadLabCoverage();
+    };
+  }
+  loadLabCoverage();
   $('presets').querySelectorAll('[data-measure]').forEach((node) => {
     node.onclick = () => {
       const id = node.dataset.measure;
@@ -1665,13 +1888,7 @@ const BLOCK = {
   report: (b) => `<div class="report pf-viz">${b.html}</div>`,
   list: (b) => `<ul>${b.items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>`,
 
-  table: (b) => {
-    const columns = Object.keys(b.rows[0] || {});
-    return `<div class="card"><table><thead><tr>${
-      columns.map((c) => `<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${
-      b.rows.map((row) => `<tr>${columns.map((c) => `<td>${esc(row[c])}</td>`).join('')}</tr>`).join('')
-    }</tbody></table></div>`;
-  },
+  table: (b) => PFTables.card(b.rows, b.caption),
 
   limits: (b) => `<details class="rules"><summary>${b.rules.length} rules bind this answer</summary><ul>${
     b.rules.map((rule) => `<li class="${rule.kind === 'never' ? 'never' : ''}"><code>${

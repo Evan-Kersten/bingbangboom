@@ -977,7 +977,12 @@ def answer_atlas(measure_ids, layer="county", county=None, service_area=None,
             for row in data["rows"]]})
         blocks.append(B.limits([result]))
         ordered = B.compose("place_or_cross_entity", [b for b in blocks if b])
+        # The measured rows ride alongside the rendered table rather than inside
+        # it. The interface puts a verdict and a coverage bar on the control
+        # that picks each measure, which needs the id and the raw fraction; the
+        # table is prose for a reader and should carry neither.
         return {"blocks": ordered, "question_type": "place_or_cross_entity",
+                "catalogue": data["rows"],
                 "rules": result["caveats"], "trace": [result["tool"]],
                 "violations": B.validate("place_or_cross_entity", ordered)}
 
@@ -1156,28 +1161,34 @@ def answer_brief(pid6, topic):
                     "place or ruled out of it.")
     blocks.append({"kind": "answer", "text": opening})
 
-    # Who has a claim. Reporting bodies first, because the reader is looking for
-    # somebody to talk to, and the silent ones are grouped rather than listed at
-    # length: seven school districts each reporting nothing on homelessness is a
-    # fact about school districts, not seven facts.
-    rows = []
-    for row in stack:
-        if not row["reports"]:
-            continue
-        rows.append({
-            "government": row["name"], "type": row["gov_type_name"],
-            "reports in these categories": "; ".join(
-                f"{r['service_area']} {fmt.money(r['total'])}" for r in row["reports"]),
-            "established by": row["basis_label"]})
+    # Who has a claim, in two tables rather than one. The reader is looking for
+    # somebody to talk to, so the bodies that report come first and on their
+    # own. The silent ones follow with their shared sentence stated once above
+    # them: eleven rows where two carry a figure and nine each repeat "nothing,
+    # which usually means another government holds this here" is one fact
+    # rendered nine times, and it buries the two rows that are the answer.
+    # Seven school districts reporting nothing on homelessness is a fact about
+    # school districts, not seven facts.
+    reporting = [
+        {"government": row["name"], "type": row["gov_type_name"],
+         "reports in these categories": "; ".join(
+             f"{r['service_area']} {fmt.money(r['total'])}" for r in row["reports"]),
+         "established by": row["basis_label"]}
+        for row in stack if row["reports"]]
+    if reporting:
+        blocks.append({"kind": "table", "rows": reporting})
+
     silent = [row for row in stack if not row["reports"]]
-    for row in silent:
-        rows.append({
-            "government": row["name"], "type": row["gov_type_name"],
-            "reports in these categories": "nothing, which usually means another "
-                                           "government holds this here",
-            "established by": row["basis_label"]})
-    if rows:
-        blocks.append({"kind": "table", "rows": rows})
+    if silent:
+        blocks.append({
+            "kind": "table",
+            "caption": "Reporting nothing in these categories usually means "
+                       "another government holds the responsibility here, not "
+                       "that nobody does.",
+            "rows": [{"reports nothing here": row["name"],
+                      "type": row["gov_type_name"],
+                      "established by": row["basis_label"]}
+                     for row in silent]})
 
     if data["elsewhere"]:
         blocks.append({"kind": "table", "rows": [

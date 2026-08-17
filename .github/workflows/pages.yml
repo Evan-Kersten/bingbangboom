@@ -72,6 +72,7 @@ jobs:
           python3 agent/test_blocks.py
           python3 app/test_server.py
           python3 app/test_parity.py
+          python3 app/test_tables.py
           python3 evals/run.py --route
 
       - name: Pre-render the interface

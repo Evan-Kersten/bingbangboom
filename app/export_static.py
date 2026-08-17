@@ -161,7 +161,7 @@ def export(out_dir):
 
     # The interface itself, with a flag telling it to read files rather than
     # call an API. One source file, two modes, so they cannot drift.
-    for script in ("comparison.js", "subjects.js"):
+    for script in ("comparison.js", "subjects.js", "tables.js"):
         shutil.copyfile(os.path.join(HERE, script), os.path.join(out_dir, script))
 
     # A build stamp on every asset the page fetches. GitHub Pages caches HTML,
@@ -176,7 +176,7 @@ def export(out_dir):
     html = html.replace("<script>\nconst $ =",
                         f"<script>\nwindow.PF_STATIC = true;\n"
                         f"window.PF_BUILD = '{stamp}';\nconst $ =", 1)
-    for script in ("comparison.js", "subjects.js"):
+    for script in ("comparison.js", "subjects.js", "tables.js"):
         html = html.replace(f'src="{script}"', f'src="{script}?v={stamp}"', 1)
     with open(os.path.join(out_dir, "index.html"), "w") as fh:
         fh.write(html)

@@ -47,12 +47,13 @@ The full suite, all of which must pass before a push:
 ```
 python3 agent/test_tools.py        # 289    python3 app/test_server.py    # 179
 python3 agent/test_orchestrator.py #  44    python3 app/test_parity.py    # 461
-python3 agent/test_viz.py          #  88    python3 evals/run.py          #  22
+python3 agent/test_viz.py          #  88    python3 app/test_tables.py    #  28
 python3 agent/test_reports.py      #  53    python3 etl/verify.py         #  58
 python3 agent/test_blocks.py       #  45    python3 etl/test_project.py   #   6
+                                            python3 evals/run.py          #  22
 ```
 
-CI runs exactly these ten. `evals/run.py --route` is the CI form: without a
+CI runs exactly these eleven. `evals/run.py --route` is the CI form: without a
 model it checks that each trap question routes to the right tools, which is
 what can be asserted deterministically. The answer assertions need `--model`
 and an API key, and they are what tell you whether a caveat that reached the
@@ -101,6 +102,23 @@ adding the words people use for it is the same bug as not adding it at all.
 **A preset must never be offered without its data.** §15.1. The availability
 manifest gates them, and `blocks.next_questions` gates the follow-up chips
 against the same dict.
+
+**A column that says the same thing in every row is a sentence.** `app/tables.js`
+draws every table block in the thread and lifts a constant column into a line
+above the table. Nine governments each carrying "nothing, which usually means
+another government holds this here" is one fact rendered nine times, and it
+buries the two rows that do carry a figure. The lift is measured and stops the
+moment one row differs, so a value is moved and never dropped, and the last
+column standing is always kept.
+
+**It takes two rows to be constant.** One row is a record, and every column of
+it is trivially the same in every row. Lifting on that turned Estacada's single
+silent government into a caption holding most of the record above a table
+holding the rest, so `layout` returns early below two rows. Places with one
+silent body are common, not an edge case.
+
+`agent/reports.py` deliberately does not use these rules: the full report is a
+document with its own stylesheet, and this is interface behaviour.
 
 **Absence is not zero.** §9. An entity reporting nothing in a category is
 usually evidence that another government holds that responsibility. A blank must
