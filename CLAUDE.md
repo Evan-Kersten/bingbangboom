@@ -35,7 +35,7 @@ No dependencies. Standard library only, so there is nothing to install.
 
 ```
 python3 etl/build.py          # ~20s, writes build/ from the files in the root
-python3 etl/verify.py         # 52 assertions about the built store
+python3 etl/verify.py         # 58 assertions about the built store
 python3 app/server.py         # http://localhost:8000
 python3 app/export_static.py --out site --clean   # ~60s, ~385 MB
 ```
@@ -45,10 +45,10 @@ python3 app/export_static.py --out site --clean   # ~60s, ~385 MB
 The full suite, all of which must pass before a push:
 
 ```
-python3 agent/test_tools.py        # 251    python3 app/test_server.py    # 179
+python3 agent/test_tools.py        # 258    python3 app/test_server.py    # 179
 python3 agent/test_orchestrator.py #  44    python3 app/test_parity.py    # 452
 python3 agent/test_viz.py          #  88    python3 evals/run.py          #  22
-python3 agent/test_reports.py      #  53    python3 etl/verify.py         #  52
+python3 agent/test_reports.py      #  53    python3 etl/verify.py         #  58
 python3 agent/test_blocks.py       #  45    python3 etl/test_project.py   #   6
 ```
 
@@ -142,6 +142,35 @@ refusal is by measure kind rather than by a warning, because a warning is advice
 `atlas.catalogue` is the artifact a discovery phase actually wants: every measure
 on a layer with its verdict and its coverage, so a decision to build a layer is
 made against measurement rather than against whichever example the demo used.
+
+**The one join between money and people.** Finance is filed by financial
+function and workforce by employment function, and `function_bridge` is the only
+crosswalk between them. It is **many to many in both directions**: Fire
+Protection money covers firefighters and other fire staff, and six public
+welfare financial functions land on one employment function. `cost_per_head`
+sums both sides before dividing, and a row-to-row join is wrong in a way that
+looks plausible whichever direction it errs.
+
+The crosswalk names financial functions by an id whose table, `financial_functions.json`,
+arrived in the repository after the crosswalk itself. Resolving it against
+`government_functions.json` — a different list of a similar shape — silently
+produced pairs like housing and community development against firefighters. The
+ETL reads both files so that cannot be repeated by hand.
+
+`cost_per_head` refuses where the function is absent from the entity's listed
+employment functions. §8: the source reports top functions only, so a missing
+headcount is a truncated list rather than a government doing the work with
+nobody. That refusal fires for 165 of the 327 entities reporting fire
+protection, and dividing by what happens to be listed would flatter every one
+of them.
+
+**Coverage and recency trade against each other, by design.** The Census of
+Governments takes a full census in years ending 2 and 7 and samples in between.
+2022 reaches 978 entities at function level, 2023 reaches 400 and skews to the
+largest: mean population around 24,000 against 4,100. A statewide picture wants
+a census year; the latest year is a picture of big governments and has to say
+so. `etl/verify.py` asserts both halves of that, so a refresh that quietly
+inverted it fails the suite.
 
 ## Data traps
 

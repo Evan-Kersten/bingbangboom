@@ -54,6 +54,35 @@ CAVEATS = {
         "Capital spending is lumpy and reflects position in a bond and construction cycle. "
         "One year is a point, not a trend. Say the entity is in an active capital period; "
         "do not call it a policy preference."),
+    "bridge_is_many_to_many": (
+        "8",
+        "Finance and workforce are filed under different taxonomies and the crosswalk "
+        "between them is many to many in both directions. Fire Protection money covers "
+        "two employment functions, firefighters and other fire staff; six separate "
+        "public welfare financial functions all land on one employment function. Both "
+        "sides are summed before dividing here. Never divide one row by one row: the "
+        "result looks plausible whichever way it is wrong."),
+    "headcount_from_listed_functions": (
+        "8",
+        "The denominator is headcount from the entity's listed employment functions, "
+        "which the source reports as a top-N rather than in full. A government whose "
+        "staff in this function did not make its own list has spending here and no "
+        "headcount, so it is excluded rather than divided by a partial number. Say the "
+        "figure is per listed employee."),
+    "cost_per_head_is_not_a_salary": (
+        "4",
+        "This is everything the government spent on the function, operating and capital "
+        "together, divided by the people it employs in it. It is not a wage and not a "
+        "compensation figure: it includes trucks, stations and debt-funded construction. "
+        "A high figure is as likely to mean a building year as a generous payroll."),
+    "census_year_coverage": (
+        "8",
+        "The Census of Governments takes a full census in years ending 2 and 7 and "
+        "samples in between, so coverage and recency trade against each other here. "
+        "2017 and 2022 reach the most governments; 2023 reaches fewer and skews to the "
+        "largest, with a mean population around 24,000 against 4,100 for 2022. A "
+        "statewide picture wants a census year. A current picture of big governments "
+        "wants the latest year and must say it is not the whole state."),
     "workforce_partial": (
         "8",
         "Only top employment functions are listed. A function not listed is not necessarily "

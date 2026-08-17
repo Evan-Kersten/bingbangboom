@@ -721,6 +721,59 @@ def write_duckdb_loader(out_dir, tables):
         fh.write("\n".join(lines) + "\n")
 
 
+def build_function_bridge():
+    """The one join between what a government spends and who it employs.
+
+    Finance is filed by financial function and workforce by employment function,
+    and the two taxonomies are not the same list. `service_area_functions.json`
+    is the crosswalk between them and it is the only thing in this repository
+    that connects the two sides, which makes spending per firefighter or per
+    officer computable at all.
+
+    **It is many to many, and that is the whole difficulty.** Fire Protection
+    money maps to two employment functions, firefighters and other fire staff.
+    Six separate public welfare financial functions all land on one employment
+    function. Joining a row to a row therefore double counts on one side and
+    drops money on the other, and the resulting per-head figure looks plausible
+    in every case. Anything reading this table has to sum both sides of the
+    bridge before dividing.
+
+    The crosswalk refers to financial functions by an id whose table was added
+    to the repository later than the crosswalk itself. Resolving it against
+    `government_functions.json`, which is a different list of a similar shape,
+    silently produced pairs like housing and community development against
+    firefighters. Both files are read here so that mistake cannot be repeated
+    by hand.
+    """
+    def load(name):
+        with open(os.path.join(REPO, name)) as fh:
+            return json.load(fh)
+
+    areas = {row["id"]: row["name"] for row in load("service_areas.json")}
+    financial = {row["id"]: row["name"] for row in load("financial_functions.json")}
+    employment = {row["id"]: row["name"] for row in load("employment_functions.json")}
+
+    rows, unresolved = [], 0
+    for row in load("service_area_functions.json"):
+        money = financial.get(row["financial_function_id"])
+        staff = employment.get(row["employment_function_id"])
+        if not money or not staff:
+            unresolved += 1
+            continue
+        rows.append({"service_area": areas.get(row["service_area_id"]),
+                     "financial_function": money, "employment_function": staff})
+    if unresolved:
+        note_defect(
+            "function_bridge_unresolved",
+            "Crosswalk rows name a financial or employment function that is not in the "
+            "taxonomy files.",
+            f"{unresolved} of {len(load('service_area_functions.json'))} rows",
+            "Dropped rather than guessed at. A near-miss on this crosswalk pairs "
+            "spending on one function with headcount from another and the per-head "
+            "figure looks plausible either way.")
+    return rows
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", default=os.path.join(REPO, "build"))
@@ -742,6 +795,8 @@ def main():
     dp03_rows, dp03_variables = build_dp03()
     tables["dp03"] = dp03_rows
     tables["dp03_variables"] = dp03_variables
+
+    tables["function_bridge"] = build_function_bridge()
 
     geo_rows, layers, precincts = build_geometry(entities, out_dir)
     tables["geo_entity"] = geo_rows

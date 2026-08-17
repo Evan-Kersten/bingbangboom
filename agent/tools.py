@@ -2018,7 +2018,8 @@ def _bind_explore():
     for name in ("drill", "compare_to_peer_group", "compare_entities_over_time",
                  "compare_service_area", "per_capita_by_service_area",
                  "per_capita_over_time", "who_spends_on", "staffing",
-                 "revenue_mix", "debt_load", "compare_change", "trend_panel"):
+                 "revenue_mix", "debt_load", "compare_change", "trend_panel",
+                 "cost_per_head"):
         TOOLS[name] = getattr(explore, name)
 
 

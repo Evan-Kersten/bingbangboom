@@ -1600,3 +1600,89 @@ def compare_change(store, pid6_list, measure="expenditure",
         caveats=caveats,
         blocked=[not_computable("service_area_yoy"),
                  not_computable("outcome_or_performance")])
+
+
+# ------------------------------------------------- money against people
+
+def cost_per_head(store, pid6, function_name):
+    """What a government spends on one function against who it employs in it.
+
+    The only measure in this product that crosses the finance and workforce
+    taxonomies, and the crosswalk it rests on is many to many in both
+    directions. Fire Protection money covers firefighters and other fire staff;
+    six public welfare financial functions land on one employment function. So
+    both sides are summed across the bridge before dividing. A row-to-row join
+    would double count on one side and drop money on the other, and the answer
+    looks equally plausible either way, which is what makes it dangerous.
+
+    Refused rather than estimated where the entity's listed employment functions
+    do not include this work. §8: the source reports top functions only, so an
+    absent headcount is a truncated list rather than a government doing the job
+    with nobody, and dividing by what happens to be listed would flatter every
+    government whose staff fell below the cut. That is 59 of the 327 entities
+    reporting fire protection.
+    """
+    entity = T._entity(store, pid6)
+    if not entity:
+        return T.envelope("cost_per_head", caveats=[{
+            "code": "entity_not_found", "rule": "§14",
+            "guidance": "This pid6 is not in the data."}])
+
+    money = store.row(
+        "SELECT SUM(COALESCE(operating_expenditures, 0) "
+        "     + COALESCE(capital_expenditures, 0)) AS spend, MIN(year) AS year "
+        "FROM financial_functions WHERE pid6=? AND function_name=?", pid6, function_name)
+    if not money or not money["spend"]:
+        return T.envelope("cost_per_head", entity=entity, caveats=[{
+            "code": "function_not_reported", "rule": "§2",
+            "guidance": f"{entity['common_name'] or entity['legal_name']} reports no "
+                        f"spending on {function_name}. That is an absence of a report, "
+                        "not a report of zero."}])
+
+    # Every employment function this financial function maps to, summed.
+    staff = store.row(
+        "SELECT SUM(w.headcount) AS heads, SUM(w.total_payroll) AS payroll, "
+        "       COUNT(*) AS listed, MIN(w.year) AS year "
+        "FROM workforce_top_functions w "
+        "WHERE w.pid6=? AND w.function_name IN ("
+        "  SELECT employment_function FROM function_bridge WHERE financial_function=?)",
+        pid6, function_name)
+
+    bridged = [r["employment_function"] for r in store.rows(
+        "SELECT employment_function FROM function_bridge WHERE financial_function=?",
+        function_name)]
+    caveats = [caveat("bridge_is_many_to_many"), caveat("cost_per_head_is_not_a_salary"),
+               caveat("headcount_from_listed_functions"), caveat("inputs_not_outcomes")]
+
+    if not bridged:
+        return T.envelope("cost_per_head", entity=entity, caveats=caveats + [{
+            "code": "no_bridge_for_function", "rule": "§8",
+            "guidance": f"No employment function is crosswalked to {function_name}, so "
+                        "there is no headcount to divide by. The spending figure stands "
+                        "on its own."}],
+            data={"function": function_name, "spend": money["spend"], "heads": None})
+
+    if not staff or not staff["heads"]:
+        return T.envelope(
+            "cost_per_head", entity=entity,
+            data={"function": function_name, "spend": money["spend"], "heads": None,
+                  "per_head": None, "bridged_to": bridged, "refused": True},
+            caveats=caveats + [{
+                "code": "no_listed_headcount", "rule": "§8",
+                "guidance": f"This government reports spending on {function_name} and "
+                            f"none of {', '.join(bridged)} appears among its listed "
+                            "employment functions, which the source reports as a top-N. "
+                            "Per-head is refused rather than divided by a headcount that "
+                            "is missing rather than zero."}],
+            blocked=[not_computable("outcome_or_performance")])
+
+    per_head = money["spend"] / staff["heads"]
+    return T.envelope(
+        "cost_per_head", entity=entity,
+        data={"function": function_name, "spend": money["spend"],
+              "heads": staff["heads"], "per_head": per_head,
+              "payroll": staff["payroll"], "bridged_to": bridged,
+              "listed_functions": staff["listed"], "refused": False},
+        caveats=caveats,
+        blocked=[not_computable("outcome_or_performance")],
+        vintage={"finance": money["year"], "workforce": staff["year"]})

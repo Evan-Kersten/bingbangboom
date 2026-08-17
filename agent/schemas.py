@@ -614,6 +614,32 @@ SCHEMAS = [
         },
     },
     {
+        "name": "cost_per_head",
+        "description": "What one government spends on a named function against the people "
+                       "it employs in it: spending per firefighter, per officer, per "
+                       "teacher. This is the only measure that crosses the finance and "
+                       "workforce taxonomies, over a crosswalk that is many to many in "
+                       "both directions, and both sides are summed before dividing. It is "
+                       "operating plus capital over headcount, so it is not a wage: a high "
+                       "figure is as likely to be a building year as a generous payroll. "
+                       "Refused where the function does not appear among the entity's "
+                       "listed employment functions, because the source reports top "
+                       "functions only and an absent headcount is a truncated list rather "
+                       "than a government doing the work with nobody. About half the "
+                       "entities reporting fire protection are in that position. "
+                       + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pid6": PID,
+                "function_name": {"type": "string",
+                                  "description": "A named financial function, as returned "
+                                                 "by drill or who_spends_on."},
+            },
+            "required": ["pid6", "function_name"],
+        },
+    },
+    {
         "name": "place_topic_brief",
         "description": "One place and one issue: the governments with a claim on it, what "
                        "each reports in the categories that stand in for the issue, the "

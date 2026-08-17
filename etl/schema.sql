@@ -190,6 +190,19 @@ CREATE TABLE financial_functions (
     pct_of_entity_total       DOUBLE
 );
 
+-- The crosswalk between the finance taxonomy and the workforce taxonomy, and
+-- the only join between money and people in this data. Many to many in both
+-- directions: sum every employment function a financial function maps to before
+-- dividing, and every financial function an employment function receives.
+DROP TABLE IF EXISTS function_bridge;
+CREATE TABLE function_bridge (
+    service_area        TEXT,
+    financial_function  TEXT,
+    employment_function TEXT
+);
+CREATE INDEX idx_bridge_fin ON function_bridge(financial_function);
+CREATE INDEX idx_bridge_emp ON function_bridge(employment_function);
+
 DROP TABLE IF EXISTS financial_trends;
 CREATE TABLE financial_trends (
     pid6            TEXT,

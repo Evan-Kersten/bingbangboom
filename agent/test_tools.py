@@ -202,6 +202,42 @@ def main():
         check(f"{name.title()} is drawn as its own boundary",
               drawn["basis"] == "own_boundary" and drawn["svg"], str(drawn["basis"]))
 
+    print("\nmoney against people, across the one crosswalk between them (§8)")
+    fire = T.TOOLS["cost_per_head"](store, portland, "Fire Protection")
+    data = fire["data"]
+    # Fire Protection money maps to two employment functions. Summing both is
+    # the difference between a right answer and one that is out by whatever
+    # share of the staff sat in the other row.
+    check("both employment functions on the bridge are counted",
+          set(data["bridged_to"]) == {"Fire Protection - Firefighters",
+                                      "Fire Protection - Other"},
+          str(data["bridged_to"]))
+    check("and the per-head figure is the summed money over the summed heads",
+          abs(data["per_head"] - data["spend"] / data["heads"]) < 1e-6)
+    check("the many-to-many shape is stated rather than assumed away",
+          "bridge_is_many_to_many" in codes(fire))
+    # §4: this is operating plus capital over headcount. It includes trucks and
+    # stations, and a reader who takes it for a salary has read a building year
+    # as a generous payroll.
+    check("and it is marked as not being a wage",
+          "cost_per_head_is_not_a_salary" in codes(fire))
+
+    # §8: the source lists top employment functions only, so a missing headcount
+    # is a truncated list rather than a government doing the work with nobody.
+    # Half the entities reporting fire spending are in that position.
+    refused = 0
+    for row in store.rows("SELECT DISTINCT pid6 FROM financial_functions "
+                          "WHERE function_name='Fire Protection'"):
+        if T.TOOLS["cost_per_head"](store, row["pid6"], "Fire Protection")["data"].get(
+                "refused"):
+            refused += 1
+    check("a missing listed headcount is refused, not divided by what is listed",
+          refused > 100, f"only {refused} refused")
+
+    no_bridge = T.TOOLS["cost_per_head"](store, portland, "Sewerage")
+    check("a function with no employment function crosswalked returns no per-head",
+          no_bridge["data"].get("per_head") is None)
+
     print("\nthe atlas vets a layer before anybody commits to it (§4, §15)")
     import atlas as A
     catalogue = {m["id"] for m in A.measures()}
@@ -828,6 +864,7 @@ def main():
         "who_spends_on": {"function_name": "Fire Protection"},
         "render_function_map": {"function": "Police Protection"},
         "place_topic_brief": {"pid6": portland, "topic": "housing"},
+        "cost_per_head": {"pid6": portland, "function_name": "Fire Protection"},
         "atlas_measures": {},
         "atlas_draw": {"measure_id": "spending_per_resident"},
         "atlas_compare": {"measure_ids": ["DP03_0128P", "DP03_0009P"]},
