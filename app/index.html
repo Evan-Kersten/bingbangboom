@@ -638,21 +638,19 @@ td.verdict .dot.muted { background: var(--pf-dim); }
 
 /* The rules panel is the point of the product, so it is a first-class element
    rather than a footnote: these are the constraints the answer is bound by. */
-.rules { border-left: 2px solid var(--pf-warning); padding-left: 14px; }
-.rules summary {
-  cursor: pointer; font-size: 12px; color: var(--pf-muted); list-style: none;
-  display: flex; align-items: center; gap: 6px;
+/* What this cannot tell you. Not a fold and not a warning stripe: these are
+   findings a reader is meant to carry away, and the previous version was a
+   collapsed list of a dozen rules that nobody opened twice. */
+.notes { border-left: 2px solid var(--pf-axis); padding-left: 16px; }
+.notes h4 {
+  margin: 0 0 9px; font-size: 10.5px; font-weight: 600; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--pf-muted);
 }
-.rules summary::-webkit-details-marker { display: none; }
-.rules summary::before { content: '▸'; font-size: 9px; transition: transform .15s; }
-.rules[open] summary::before { transform: rotate(90deg); }
-.rules ul { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
-.rules li { font-size: 12.5px; color: var(--pf-ink-2); line-height: 1.5; }
-.rules code {
-  font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 10.5px;
-  background: var(--pf-track); padding: 1.5px 5px; border-radius: 3px; margin-right: 7px;
+.notes ul {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: 8px;
 }
-.rules .never code { background: var(--pf-warning); color: #0b0b0b; }
+.notes li { font-size: 13px; color: var(--pf-ink-2); line-height: 1.55; }
 
 .trace {
   display: flex; flex-wrap: wrap; gap: 5px; align-items: center;
@@ -1884,16 +1882,28 @@ const BLOCK = {
     </div>`,
 
   chart: (b) => `<div class="card pf-viz">${b.svg}</div>`,
-  map: (b) => `<div class="card pf-viz">${b.svg}</div>`,
+  /* A map may say what it is being read for. Nothing inside render_map takes a
+     title, a caption or a colour, because that is where a picture asserts the
+     relationship §4 forbids and the way to prevent it is to have nowhere to put
+     one. This sits outside the frame and is written by the composer, which is
+     the same arrangement the tables have. */
+  map: (b) => `<div class="card pf-viz">${
+    b.caption ? `<div class="tnote"><span>${esc(b.caption)}</span></div>` : ''}${b.svg}</div>`,
   report: (b) => `<div class="report pf-viz">${b.html}</div>`,
   list: (b) => `<ul>${b.items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>`,
 
   table: (b) => PFTables.card(b.rows, b.caption),
 
-  limits: (b) => `<details class="rules"><summary>${b.rules.length} rules bind this answer</summary><ul>${
-    b.rules.map((rule) => `<li class="${rule.kind === 'never' ? 'never' : ''}"><code>${
-      esc(rule.rule)}</code>${rule.kind === 'never' ? 'Never: ' : ''}${esc(rule.guidance)}</li>`).join('')
-  }</ul></details>`,
+  /* What this answer cannot tell you. Replaced a disclosure headed "11 rules
+     bind this answer", whose contents were mostly orders aimed at whoever wrote
+     the answer rather than facts for whoever reads it. Open by default and
+     short, because a limit behind a fold is a limit nobody reads, and the
+     reason there is no fold any more is that there are three of these now
+     instead of eleven. */
+  notes: (b) => `<div class="notes">
+      <h4>What this cannot tell you</h4>
+      <ul>${b.items.map((n) => `<li>${esc(n.text)}</li>`).join('')}</ul>
+    </div>`,
 
   next: (b) => `<div class="next">${
     b.questions.map((q) => `<button class="chip">${esc(q)}</button>`).join('')}</div>`,

@@ -31,12 +31,14 @@ Set `PF_MODEL` to evaluate a different model. Nothing else changes.
 Most chat interfaces hide the plumbing. Here the plumbing is the product, so
 three things are deliberately visible.
 
-**The rules panel.** Every answer carries the constraints it is bound by, keyed
-to the prompt section each comes from, with prohibitions marked separately from
-requirements. Asking what drives Sumpter's stability score returns four: the
-debt cap, the missing prior year, the Oregon property tax rule, and a standing
-prohibition on per-service-area year over year. A reader who can see why an
-answer stops where it does will trust the answers that do not stop.
+**What this cannot tell you.** Every answer closes on the limits that bear on
+it, in the reader's words. This used to be a fold headed "11 rules bind this
+answer" listing every constraint the tools attached, and almost all of them were
+imperative instructions aimed at whoever writes the answer rather than facts for
+whoever reads it. `rules.READER_NOTES` is the subset that survives into the
+interface, capped and minus anything the prose already said, so the two limits
+that would change a conclusion are not buried among nine that cannot. The full
+set still reaches the model and still travels on the response.
 
 **The tool trace.** Which tools ran, in order. The claim that the model never
 recalls a figure is only credible if you can watch it not happening.
@@ -149,7 +151,7 @@ audience; this is interface behaviour.
 ## Testing
 
 ```
-python3 app/test_server.py    # 179 checks, no browser needed
+python3 app/test_server.py    # 184 checks, no browser needed
 python3 app/test_parity.py    # 461 checks, drives the browser code through node
 python3 app/test_tables.py    #  28 checks on how a table block is drawn
 ```

@@ -63,12 +63,26 @@ def main():
 
     print("\npresets carry their rules and their trace")
     result = S.answer_preset("scale", sumpter)
-    limits = next((b for b in result["blocks"] if b["kind"] == "limits"), {"rules": []})
-    codes = {r["code"] for r in limits["rules"]}
+    # Every rule still travels on the response, which is what the model is
+    # handed and what the trace is checked against. What changed is which of
+    # them a reader is shown.
+    codes = {r["code"] for r in result["rules"]}
     check("the peer group and its count reach the interface",
           "peer_group_stated" in codes, str(sorted(codes)))
-    check("a never-rule is marked as one",
-          any(r["kind"] == "never" for r in limits["rules"]))
+
+    # §15.2: the reader-facing block carries only rules that are facts about the
+    # data, never the ones instructing whoever writes the answer. Without this
+    # assertion the split is one careless append away from becoming the wall of
+    # guidance it replaced.
+    import rules as RULES
+    shown = next((b for b in result["blocks"] if b["kind"] == "notes"), {"items": []})
+    check("the notes block carries only reader-facing rules",
+          all(n["code"] in RULES.READER_NOTES for n in shown["items"]),
+          str([n["code"] for n in shown["items"]]))
+    check("and it is shorter than the full rule set",
+          len(shown["items"]) < len(codes), f"{len(shown['items'])} of {len(codes)}")
+    check("an instruction aimed at the writer never reaches the reader",
+          "peer_group_stated" not in {n["code"] for n in shown["items"]})
     check("the tool trace is reported", "compare_to_peer_group" in result["trace"])
     check("a chart is returned", any(b["kind"] == "chart" for b in result["blocks"]))
 
@@ -329,10 +343,15 @@ def main():
           all(r["established by"] for r in rows))
     check("the reader is shown where the place is",
           any(b["kind"] == "map" for b in serving["blocks"]))
-    limits = next(b for b in serving["blocks"] if b["kind"] == "limits")
     check("the stack is never presented as the whole stack",
-          "serving_stack_incomplete" in {r["code"] for r in limits["rules"]},
-          str([r["code"] for r in limits["rules"]]))
+          "serving_stack_incomplete" in {r["code"] for r in serving["rules"]},
+          str([r["code"] for r in serving["rules"]]))
+    # And this one is a fact about the boundary files rather than an instruction
+    # to a writer, so it is one of the few that reaches the reader.
+    shown = next((b for b in serving["blocks"] if b["kind"] == "notes"), {"items": []})
+    check("and the reader is told why the list is short, in their own terms",
+          "serving_stack_incomplete" in {n["code"] for n in shown["items"]},
+          str([n["code"] for n in shown["items"]]))
 
     # §9 again, at the interface: a town with no established stack must not be
     # offered the question. The manifest column is computed rather than stored,
@@ -356,10 +375,9 @@ def main():
           "not governments" in text, text[:200])
     check("and the finer grain is refused in the survey's own terms",
           "refused" in text.lower() and "margin of error" in text, text[-260:])
-    limits = next(b for b in conditions["blocks"] if b["kind"] == "limits")
     check("a condition is never read as an outcome",
-          "conditions_are_not_outcomes" in {r["code"] for r in limits["rules"]},
-          str([r["code"] for r in limits["rules"]]))
+          "conditions_are_not_outcomes" in {r["code"] for r in conditions["rules"]},
+          str([r["code"] for r in conditions["rules"]]))
 
     print("\nfive years of data reaches the comparison and the report")
     keizer = pid("CITY OF KEIZER")
@@ -499,14 +517,21 @@ def main():
     check("the stack is named in the answer with a count",
           "established to serve" in answer)
 
-    # The margin column exists so nobody quotes a figure the survey cannot
-    # support. Estacada is small enough that most of its estimates are soft.
+    # §15.3: an estimate whose margin swamps it is marked on the number rather
+    # than in a column of verdicts beside it. Estacada is small enough that most
+    # of its estimates are soft, so this is where the mark has to appear.
     conditions = [b for b in brief["blocks"] if b["kind"] == "table"
-                  and b["rows"] and "safe to quote" in b["rows"][0]]
-    check("conditions carry a verdict on whether they can be quoted",
-          bool(conditions) and any(r["safe to quote"].startswith("no")
-                                   for r in conditions[0]["rows"]),
-          str(conditions[:1])[:160])
+                  and b["rows"] and "what residents report" in b["rows"][0]]
+    check("an estimate the survey cannot support is marked on the figure",
+          bool(conditions) and any("\u00b1" in r["figure"] for r in conditions[0]["rows"]),
+          str(conditions[:1])[:200])
+    check("and the mark is explained where the table is, not in a footnote",
+          bool(conditions) and "margin is wide" in (conditions[0].get("caption") or ""),
+          str(conditions[0].get("caption") if conditions else None))
+    check("the verdict column it replaced is gone",
+          not any("safe to quote" in (b["rows"][0] or {})
+                  for b in brief["blocks"]
+                  if b["kind"] == "table" and b["rows"]))
     asks = [b for b in brief["blocks"] if b["kind"] == "table"
             and b["rows"] and "what to ask for next" in b["rows"][0]]
     check("and the brief ends with what to ask, not with a number", bool(asks))

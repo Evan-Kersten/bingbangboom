@@ -45,7 +45,7 @@ python3 app/export_static.py --out site --clean   # ~60s, ~385 MB
 The full suite, all of which must pass before a push:
 
 ```
-python3 agent/test_tools.py        # 289    python3 app/test_server.py    # 179
+python3 agent/test_tools.py        # 289    python3 app/test_server.py    # 184
 python3 agent/test_orchestrator.py #  44    python3 app/test_parity.py    # 461
 python3 agent/test_viz.py          #  88    python3 app/test_tables.py    #  28
 python3 agent/test_reports.py      #  53    python3 etl/verify.py         #  58
@@ -102,6 +102,23 @@ adding the words people use for it is the same bug as not adding it at all.
 **A preset must never be offered without its data.** §15.1. The availability
 manifest gates them, and `blocks.next_questions` gates the follow-up chips
 against the same dict.
+
+**Most rules are written for the writer, not the reader.** The catalogue in
+`rules.py` is imperative because a model is being told what to do: name the
+driver before the label, decline the distance calculation, never divide one row
+by one row. Rendering all of them is what produced a disclosure headed "11 rules
+bind this answer" in which the two that would have changed a conclusion were
+buried among nine that could not.
+
+`rules.READER_NOTES` is the subset that reaches a reader: the ones that are a
+*fact about the data* and change what somebody concludes or does next, phrased
+declaratively. `blocks.notes` renders those, capped, minus any the answer
+already states in prose. Everything else still reaches the model in full and
+still travels on the response under `rules`, because separating "the caveat
+never reached the answer" from "the caveat reached it and the answer broke the
+rule anyway" needs the whole record. A code absent from `READER_NOTES` is
+model-only, which is the safe default for the hundred-odd codes tools raise
+inline.
 
 **A column that says the same thing in every row is a sentence.** `app/tables.js`
 draws every table block in the thread and lifts a constant column into a line

@@ -21,7 +21,7 @@ all of those are structural, so they are caught here rather than hoped away.
 
 import format as fmt
 import tools as T
-from rules import THRESHOLDS
+from rules import THRESHOLDS, reader_note
 
 # §15.1: a map is offered only where the picture is not mostly absence.
 #
@@ -36,25 +36,32 @@ MAP_COVERAGE_FLOOR = THRESHOLDS["map_density_minimum"]
 # up rather than comparing, so the table becomes the primary form.
 TABLE_OVER_CHART = 7
 
-# §15.2, verbatim.
+# §15.2.
 BLOCK_ORDER = {
-    "factual_lookup": ["interpretation", "answer", "figure", "limits", "next"],
-    "governance": ["interpretation", "answer", "table", "limits", "next"],
+    "factual_lookup": ["interpretation", "answer", "figure", "notes", "next"],
+    "governance": ["interpretation", "answer", "table", "notes", "next"],
     # A map earns a place in a financial answer where the question is "is this
     # a lot", because a peer distribution says where a government sits among its
     # peers and a map says where it sits in the state, on the same measure.
     "financial_interpretation": ["interpretation", "answer", "figure", "chart",
-                                 "map", "limits", "next"],
+                                 "map", "notes", "next"],
     # A "what stands out" answer takes a table where the finding is a ranking of
     # divergences: the lead goes in the answer and the ranking is what the reader
     # checks it against. A cross-entity answer takes a chart, because several
     # governments on one axis is a comparison a table makes the reader perform.
     "what_stands_out": ["interpretation", "answer", "figure", "chart", "table",
-                        "limits", "next"],
+                        "notes", "next"],
     "place_or_cross_entity": ["interpretation", "answer", "figure", "chart",
-                              "table", "map", "report", "limits", "next"],
-    "issue_or_topic": ["interpretation", "answer", "table", "limits", "next"],
-    "investment_vs_conditions": ["interpretation", "answer", "table", "limits", "next"],
+                              "table", "map", "report", "notes", "next"],
+    # The funnel. A brief opens on the gap, then the state, then the place,
+    # then the bodies, then the money: a reader scoping a subject in a place
+    # needs to know where that place sits before any figure about it means
+    # anything. The map earned its place in §15.2 for this question type
+    # because the brief is where somebody arrives first and it had no picture
+    # in it at all.
+    "issue_or_topic": ["interpretation", "answer", "map", "chart", "table",
+                       "notes", "next"],
+    "investment_vs_conditions": ["interpretation", "answer", "table", "notes", "next"],
 }
 
 # Follow-ups are offered only where the block behind them exists for the entity.
@@ -124,20 +131,39 @@ def figure(label, value_text, marks=None, basis=None, year=None, context=None):
             "legend": fmt.mark_legend(kinds)}
 
 
-def limits(results):
-    """One de-duplicated rules block, prohibitions marked apart (§15.1)."""
-    rules, seen = [], set()
+def notes(results, said=(), limit=5):
+    """What this answer cannot tell the reader, in the reader's words.
+
+    This replaced a block that listed every rule bound to the answer, headed
+    "11 rules bind this answer". Every one of the eleven did real work, but
+    almost all of it was aimed at whoever wrote the answer rather than at
+    whoever reads it: name the driver before the label, decline the distance
+    calculation, never divide one row by one row. A reader given those is being
+    handed the factory floor, and the ones that would have mattered to them were
+    buried among the ones that could not.
+
+    So the rules still all reach the model, unchanged and in full. What surfaces
+    here is `rules.READER_NOTES`: the subset that is a fact about the data and
+    that changes what somebody would conclude or do next, phrased declaratively
+    because a person is being told what is true rather than what to do.
+
+    `said` names codes the answer already states in prose, so the block does not
+    repeat a sentence the reader just read. The cap exists because a list long
+    enough to skim past is the thing this is replacing.
+    """
+    said = set(said)
+    items, seen = [], set()
     for result in results:
-        for rule in result.get("caveats", []):
-            if rule["code"] not in seen:
-                seen.add(rule["code"])
-                rules.append({**rule, "kind": "must"})
-        for rule in result.get("not_computable", []):
-            if rule["code"] not in seen:
-                seen.add(rule["code"])
-                rules.append({"code": rule["code"], "rule": rule["rule"],
-                              "guidance": rule["reason"], "kind": "never"})
-    return {"kind": "limits", "rules": rules} if rules else None
+        for rule in list(result.get("caveats", [])) + list(
+                result.get("not_computable", [])):
+            code = rule["code"]
+            if code in seen or code in said:
+                continue
+            seen.add(code)
+            text = reader_note(code)
+            if text:
+                items.append({"code": code, "rule": rule["rule"], "text": text})
+    return {"kind": "notes", "items": items[:limit]} if items else None
 
 
 def next_questions(store, pid6, asked=None, limit=3):
@@ -154,7 +180,7 @@ def compose(question_type, blocks):
     """Order blocks per §15.2 and drop what is absent.
 
     Blocks are dropped, never padded: an entity with nothing unusual gets an
-    interpretation, an answer, its limits and a next, and no chart.
+    interpretation, an answer, its notes and a next, and no chart.
     """
     order = BLOCK_ORDER.get(question_type, BLOCK_ORDER["factual_lookup"])
     by_kind = {}

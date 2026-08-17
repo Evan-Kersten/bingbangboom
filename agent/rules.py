@@ -549,6 +549,180 @@ THRESHOLDS = {
 }
 
 
+# Which rules a reader should see, and in what words.
+#
+# Almost everything above is an instruction to whoever writes the answer: name
+# the driver before the label, decline the distance calculation, never divide
+# one row by one row. Those are manufacturing instructions. Showing them to an
+# analyst was showing them the inside of the factory — the interface said
+# "11 rules bind this answer" and every one of the eleven was either an order
+# aimed at a writer or a restatement of a sentence already in the answer.
+#
+# What is left, and what belongs in front of a reader, is the subset that is a
+# *fact about the data* and that changes what they would conclude or do next.
+# An Oregon county's health budget being a state mandate rather than a local
+# priority is a finding. "Name the gap, offer the proxy" is not.
+#
+# The phrasing here is deliberately not the phrasing above. The guidance text
+# is imperative because a model is being told what to do; these are declarative
+# because a person is being told what is true. A code absent from this dict
+# still reaches the model in full — it is simply never rendered.
+READER_NOTES = {
+    # What the figures are and are not
+    "inputs_not_outcomes":
+        "This data records what governments spend and who they employ. It "
+        "contains no service levels, caseloads or results, so nothing here says "
+        "whether any of it worked.",
+    "two_expenditure_measures":
+        "Two different totals in this source are both called expenditure and "
+        "they disagree for most governments. Figures here are operating plus "
+        "capital, which is the basis every share is computed against, so a "
+        "number checked against a budget document may not match it.",
+    "other_share_high":
+        "More than a fifth of this budget is filed under Other, which is a "
+        "Census classification artifact rather than a programme, so this "
+        "breakdown is partial.",
+    "capital_lumpy":
+        "Capital spending follows a bond and construction cycle. A high year is "
+        "a position in that cycle rather than a standing preference.",
+    "cost_per_head_is_not_a_salary":
+        "This is everything spent on the function divided by the people "
+        "employed in it, so it includes trucks, buildings and debt-funded "
+        "construction. It is not a wage.",
+
+    # Coverage and vintage, which decide whether a layer is worth building
+    "census_year_coverage":
+        "The Census of Governments takes a full census in years ending 2 and 7 "
+        "and samples in between. 2022 reaches the most governments; 2023 "
+        "reaches fewer and skews to the largest, so the latest year is a "
+        "picture of big governments rather than of the state.",
+    "peer_pool_mixed_vintage":
+        "Each government is shown at whichever year it last reported, so a peer "
+        "median blends two or three vintages rather than describing one moment.",
+    "workforce_partial":
+        "The source lists top employment functions only. A function that does "
+        "not appear here is not necessarily one nobody staffs.",
+
+    # Who is in the list, and who cannot be
+    "serving_stack_incomplete":
+        "Special districts are two thirds of Oregon's governments and almost "
+        "none of them have a boundary in this data. This is who is established "
+        "to serve here, not everyone who does.",
+    "host_county_undercaptures":
+        "A district crossing county lines is filed under the county holding "
+        "most of its assessed value, so a county list over-collects districts "
+        "serving elsewhere and misses districts serving here.",
+    "ecosystem_no_summing":
+        "These budgets do not add up to a figure for the place. The same dollar "
+        "appears twice wherever one government transfers to another.",
+    "peer_median_degenerate":
+        "Most of the peer pool reports nothing on this measure, so the median "
+        "is not a midpoint and the distance from it is not meaningful.",
+
+    # Conditions
+    "dp03_cannot_measure_homelessness":
+        "These estimates come from a household survey, and people who are "
+        "unsheltered are largely outside its frame. Nothing here counts them.",
+    "dp03_geography_differs":
+        "These conditions are measured over a geography rather than over the "
+        "governments above, and the two do not share a boundary.",
+
+    # Oregon, where the expected pattern is the finding
+    "oregon_county_delegated":
+        "Oregon counties run health, corrections, veterans' services and courts "
+        "on the state's behalf, so those budgets are mandates rather than county "
+        "priorities, and they are not comparable to a city's.",
+    "oregon_city_health_expected":
+        "An Oregon city spending little or nothing on health is the expected "
+        "pattern rather than a gap. The county is the local public health "
+        "authority.",
+    "oregon_property_tax_constrained":
+        "Flat or slow property tax growth in an Oregon local government is what "
+        "Measure 5 and Measure 50 produce, not a local choice or a sign of "
+        "weakness.",
+    "oregon_school_state_funded":
+        "Oregon school districts are funded more by state revenue than by local "
+        "taxes, so local revenue is not a measure of total capacity.",
+    "oregon_cog_not_a_government":
+        "A council of governments has no taxing or regulatory authority. It is a "
+        "group of governments and its finances are not comparable to a city's.",
+
+    # Prohibitions worth stating, because the absence is the scoping finding
+    "issue_level_spending":
+        "No spending figure for this subject exists in the source and none can "
+        "be derived from it. The figures here are for the Census categories "
+        "that stand nearest to it.",
+    "service_area_yoy":
+        "A single service area has one year and no history of its own, so "
+        "nothing here supports a growth rate for it. The total it sits inside "
+        "does have a history.",
+    "cross_denominator_comparison":
+        "A per-resident figure and a per-student figure are not the same "
+        "measure and cannot be ranked against each other.",
+    "property_tax_summed":
+        "Property tax must not be added across these districts. Overlapping "
+        "boundaries and bond pockets mean the sum counts the same base twice.",
+
+    # Codes raised inline by a tool rather than drawn from the catalogue above.
+    # Registering one here is the only thing that makes it reader-facing, so an
+    # unregistered code defaults to model-only, which is the safe direction: a
+    # tool that invents a code cannot accidentally put text in front of anybody.
+    "conditions_are_not_a_record":
+        "These describe the population these governments operate in. They are "
+        "not those governments' results and were not produced by the spending "
+        "beside them.",
+    "survey_not_census":
+        "These are American Community Survey five-year estimates. They describe "
+        "a five-year window rather than a single year, and they are a sample "
+        "rather than a count.",
+    "margin_too_wide":
+        "Some of these estimates have a margin of error wider than a fifth of "
+        "the estimate itself. A small place's figure can move by half its own "
+        "value and still be the same sample, so read those with the margin or "
+        "not at all.",
+    "vintage_dollars":
+        "Each release is in its own dollars, so a difference between two of "
+        "them is part inflation and part change, and nothing in this data can "
+        "separate the two. Compare a share or a rate instead.",
+    "no_price_index":
+        "There is no price index in this data, so these figures are nominal. A "
+        "government that grew is not necessarily buying more than it did.",
+    "population_held_constant":
+        "Population is one estimate per government rather than a series, so the "
+        "denominator is fixed and what moves in a per-resident line is spending.",
+    "indexed_hides_level":
+        "Every line starts at 100, so this shows growth and deliberately hides "
+        "level. A government that doubled from a low base outruns one that grew "
+        "slightly from a high one.",
+    "one_year_per_entity":
+        "Service-area spending is one year per government, so this is a "
+        "snapshot rather than a trend.",
+    "map_years_differ":
+        "This map is one year per government rather than one year across the "
+        "map, so neighbouring boundaries can be two years apart. Read it as a "
+        "level and not as a moment.",
+    "geometry_by_name":
+        "School district boundaries are matched by name rather than by a shared "
+        "identifier, and reach 156 of 223 districts.",
+    "map_is_partial":
+        "This layer covers one government type. Special districts are the "
+        "largest group in Oregon and almost none of them have a boundary here.",
+    "debt_is_not_a_deficit":
+        "Outstanding debt is a balance rather than an annual shortfall, and most "
+        "of it is borrowing against capital a government intends to hold for "
+        "decades.",
+    "catalogue_is_a_snapshot":
+        "Coverage is a property of this build of the data. A refreshed source "
+        "can change a verdict here, so record the date beside any layer "
+        "decision this informs.",
+}
+
+
+def reader_note(code):
+    """The reader-facing sentence for a rule, or None if it is model-only."""
+    return READER_NOTES.get(code)
+
+
 def caveat(code):
     """Return a caveat as a dict ready to place in a tool result."""
     section, text = CAVEATS[code]

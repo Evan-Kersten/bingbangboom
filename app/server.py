@@ -975,7 +975,7 @@ def answer_atlas(measure_ids, layer="county", county=None, service_area=None,
                           if row["coverage"] is not None else "not measured"),
              "what the coverage is": row["detail"], "source": row["source"]}
             for row in data["rows"]]})
-        blocks.append(B.limits([result]))
+        blocks.append(B.notes([result]))
         ordered = B.compose("place_or_cross_entity", [b for b in blocks if b])
         # The measured rows ride alongside the rendered table rather than inside
         # it. The interface puts a verdict and a coverage bar on the control
@@ -1019,7 +1019,7 @@ def answer_atlas(measure_ids, layer="county", county=None, service_area=None,
                 {"panel": p["label"], "kind": p["kind"],
                  "boundaries carrying a value": f"{p['covered']} of {p['total']}",
                  "source": p["source"]} for p in panels]})
-    blocks.append(B.limits([result]))
+    blocks.append(B.notes([result]))
     ordered = B.compose("place_or_cross_entity", [b for b in blocks if b])
     return {"blocks": ordered, "question_type": "place_or_cross_entity",
             "rules": result["caveats"], "trace": [result["tool"]],
@@ -1161,6 +1161,44 @@ def answer_brief(pid6, topic):
                     "place or ruled out of it.")
     blocks.append({"kind": "answer", "text": opening})
 
+    # The funnel opens here: the state, before the place, before the bodies,
+    # before the money. A reader scoping a subject in a place cannot use a
+    # figure about that place until they know where it sits, and the brief had
+    # no picture in it at all, which made it a stack of tables about one dot on
+    # a map nobody had drawn.
+    #
+    # Counties, statewide, on the nearest category, with this place's county
+    # marked. Counties because they are the only layer that joins exactly and
+    # covers the state; the same measure on places refuses, and correctly, since
+    # 378 cities at that scale compares land areas.
+    #
+    # Gated like every other map. Where the nearest category is thin on counties
+    # the refusal is drawn in the frame and the brief carries the reason instead
+    # of a picture, which is the right answer to "can I map my subject here".
+    if data["categories"] and entity and entity.get("host_county_pid6"):
+        drawn = T.render_map(
+            STORE, layer="county", metric="service_area_per_resident",
+            service_area=data["categories"][0],
+            highlight_pid6=entity["host_county_pid6"])
+        panel = drawn["data"]
+        if panel.get("svg"):
+            county = (entity["host_county"] or "").title()
+            blocks.append({
+                "kind": "map", "svg": panel["svg"],
+                # The outline is the whole reason this map is here and a reader
+                # cannot be expected to guess which of thirty-six shapes it is
+                # on, so the frame is told what it is being read for. It is a
+                # county measure, never the place's own, and saying so is what
+                # stops the outline being read as Eugene's own figure.
+                "caption": f"{county} County, which {data['place']} sits inside, "
+                           f"against the other 35 on the nearest measure to "
+                           f"{data['topic']}. This is the county's spending, "
+                           f"not {data['place']}'s.",
+                "coverage": panel.get("coverage")})
+            for rule in drawn["caveats"]:
+                if rule["code"] not in {c["code"] for c in result["caveats"]}:
+                    result["caveats"].append(rule)
+
     # Who has a claim, in two tables rather than one. The reader is looking for
     # somebody to talk to, so the bodies that report come first and on their
     # own. The silent ones follow with their shared sentence stated once above
@@ -1169,15 +1207,44 @@ def answer_brief(pid6, topic):
     # rendered nine times, and it buries the two rows that are the answer.
     # Seven school districts reporting nothing on homelessness is a fact about
     # school districts, not seven facts.
-    reporting = [
-        {"government": row["name"], "type": row["gov_type_name"],
-         "reports in these categories": "; ".join(
-             f"{r['service_area']} {fmt.money(r['total'])}" for r in row["reports"]),
-         "established by": row["basis_label"]}
-        for row in stack if row["reports"]]
+    # The share is the column that was missing and it is the one that decides
+    # things. "$135M on Public Safety" says nothing until you know it is a third
+    # of everything Eugene spends and a sixth of what Lane County spends: one of
+    # those bodies is organised around this subject and the other is not, and
+    # the dollars alone rank them by size instead.
+    #
+    # Summing shares across distinct service areas is sound arithmetic — they
+    # partition the entity's own operating plus capital — but it is labelled as
+    # a share of that budget and never as the topic's share, which is the §12
+    # figure that does not exist.
+    #
+    # There is no per-resident column here on purpose. This table spans
+    # government types, and a school district's denominator is students, so the
+    # column would rank dollars per student against dollars per resident under
+    # one heading. That is the silent basis change §10 forbids, and it looks
+    # sound, which is what makes it worth refusing.
+    reporting = []
+    for row in stack:
+        if not row["reports"]:
+            continue
+        share = sum(r["percentage"] or 0 for r in row["reports"])
+        years = sorted({r["year"] for r in row["reports"] if r.get("year")})
+        reporting.append({
+            "government": row["name"],
+            "type": row["gov_type_name"],
+            "reports in these categories": "; ".join(
+                f"{r['service_area']} {fmt.money(r['total'])}" for r in row["reports"]),
+            "of its own budget": fmt.percent(share) if share else "not stated",
+            "year": str(years[-1]) if years else "not stated"})
     if reporting:
         blocks.append({"kind": "table", "rows": reporting})
 
+    # "Established by" is gone from both of these. It said "the place itself",
+    # "from the register" or "the place falls inside its boundary", which is the
+    # provenance of our own join rather than a fact about the government, and
+    # nothing an analyst reads there changes what they do next. What they need
+    # instead is that the list is short because the boundary files are, and that
+    # is one sentence in the notes rather than a column repeated per row.
     silent = [row for row in stack if not row["reports"]]
     if silent:
         blocks.append({
@@ -1186,38 +1253,46 @@ def answer_brief(pid6, topic):
                        "another government holds the responsibility here, not "
                        "that nobody does.",
             "rows": [{"reports nothing here": row["name"],
-                      "type": row["gov_type_name"],
-                      "established by": row["basis_label"]}
+                      "type": row["gov_type_name"]}
                      for row in silent]})
 
     if data["elsewhere"]:
-        blocks.append({"kind": "table", "rows": [
-            {"government": row["name"], "type": row["gov_type_name"],
-             "reports in": row["service_area"],
-             "why it is not in the list above": "filed under this county, with no "
-                                                "boundary to place it"}
-            for row in data["elsewhere"]]})
+        blocks.append({
+            "kind": "table",
+            "caption": "These are filed under the county and have no boundary in "
+                       "this data, so they cannot be tied to this place or ruled "
+                       "out of it. The money sits where it is filed, which is not "
+                       "necessarily where the service goes.",
+            "rows": [{"also reports in these categories": row["name"],
+                      "in": row["service_area"],
+                      "spending": fmt.money(row["total"])}
+                     for row in data["elsewhere"]]})
 
     # Conditions get their own table and never share a row with a budget figure.
     if data["conditions"]:
         import community as C
-        # The margin column is not decoration. Estacada's poverty rate is 24%
-        # give or take 17, and a facilitator who quotes the 24 to a room has
-        # said something the survey does not support. The verdict column is
-        # there so nobody has to do that division in their head.
+        # The reliability verdict used to be a column, reading "yes" six times
+        # down a table that already printed the margin one cell to its left.
+        # §15.3 says an uncertainty belongs on the number, so it is a mark now,
+        # and the column it used to occupy is gone rather than replaced.
+        marked = False
+        rows = []
+        for i in data["conditions"]:
+            wide = i["reliability"] in ("soft", "unstated")
+            marked = marked or wide
+            rows.append({
+                "what residents report": i["name"],
+                "figure": fmt.mark(C.format_value(i["estimate"], i["unit"]),
+                                   ["wide_margin"] if wide else []),
+                "give or take": (C.format_value(i["moe"], i["unit"])
+                                 if i["moe"] is not None else "not stated")})
         where = {"own": "this place", "host_county": "the county, standing in for "
                  "this place"}.get(data["conditions_basis"], data["conditions_basis"])
-        blocks.append({"kind": "table", "rows": [
-            {"what residents report": i["name"],
-             "figure": C.format_value(i["estimate"], i["unit"]),
-             "give or take": (C.format_value(i["moe"], i["unit"])
-                              if i["moe"] is not None else "not stated"),
-             "safe to quote": {"firm": "yes",
-                               "soft": "no, the margin is too wide",
-                               "unstated": "no margin given",
-                               "absent": "no estimate"}[i["reliability"]],
-             "measured over": where}
-            for i in data["conditions"]]})
+        blocks.append({
+            "kind": "table",
+            "caption": f"Measured over {where}."
+                       + (" " + fmt.mark_legend(["wide_margin"])[0] if marked else ""),
+            "rows": rows})
 
     # Every gap this data leaves closes in a document somebody else holds, so
     # the last table is the list of documents to go and get. Named for the
@@ -1226,7 +1301,11 @@ def answer_brief(pid6, topic):
     blocks.append({"kind": "table", "rows": [
         {"what to ask for next": q} for q in data["questions"]]})
 
-    blocks.append(B.limits([result]))
+    # The opening sentence already says there is no figure for the subject and
+    # that the categories are the nearest thing, so repeating it under a heading
+    # called "what this cannot tell you" would spend the reader's attention on
+    # something they read forty words ago.
+    blocks.append(B.notes([result], said=["issue_level_spending"]))
     blocks.append(B.next_questions(STORE, pid6))
     ordered = B.compose("issue_or_topic", [b for b in blocks if b])
     return {"blocks": ordered, "question_type": "issue_or_topic",
@@ -1291,13 +1370,37 @@ def answer_function(function_name):
     composed = [{"kind": "answer",
                  "text": " ".join(b["text"] for b in blocks if b["kind"] == "text")}]
     composed += [b for b in blocks if b["kind"] in ("table", "map")]
-    composed.append(B.limits(results))
+    composed.append(B.notes(results))
     ordered = B.compose("place_or_cross_entity", composed)
     return {"blocks": ordered, "question_type": "place_or_cross_entity",
+            "rules": _all_rules(results),
             "violations": B.validate("place_or_cross_entity",
                                      [b for b in ordered if b["kind"]
                                       in B.BLOCK_ORDER["place_or_cross_entity"]]),
             "trace": [r["tool"] for r in results]}
+
+
+def _all_rules(results):
+    """Every rule bound to an answer, de-duplicated, whether it is shown or not.
+
+    The reader sees `blocks.notes`, which is a short reader-facing subset. This
+    is the whole set, and it is what the trace and the eval harness assert
+    against: separating "the caveat never reached the answer" from "the caveat
+    reached it and the answer broke the rule anyway" needs the full record, and
+    those two failures look identical without it.
+    """
+    seen, rules = set(), []
+    for result in results:
+        for rule in result.get("caveats", []):
+            if rule["code"] not in seen:
+                seen.add(rule["code"])
+                rules.append({**rule, "kind": "must"})
+        for rule in result.get("not_computable", []):
+            if rule["code"] not in seen:
+                seen.add(rule["code"])
+                rules.append({"code": rule["code"], "rule": rule["rule"],
+                              "guidance": rule["reason"], "kind": "never"})
+    return rules
 
 
 def _gap(points):
@@ -1826,7 +1929,7 @@ def answer_preset(preset_id, pid6=None, county=None):
                 year=(result.get("vintage") or {}).get("finance")))
 
     composed += [b for b in blocks if b["kind"] in ("chart", "map", "table", "report", "list")]
-    composed.append(B.limits(results))
+    composed.append(B.notes(results))
     # Never offer back the question just asked.
     asked = {label for pid, label, _, _, _ in PRESETS if pid == preset_id}
     composed.append(B.next_questions(STORE, pid6, asked=asked))
@@ -1835,8 +1938,14 @@ def answer_preset(preset_id, pid6=None, county=None):
     violations = B.validate(question_type, [b for b in ordered
                                             if b["kind"] in B.BLOCK_ORDER[question_type]])
 
+    # Every rule the tools attached travels on the response even though only a
+    # few of them are rendered. This used to ride inside the limits block, so
+    # replacing that block with a reader-facing one would have quietly thrown
+    # the record away: the claim that a caveat reached the answer is only
+    # checkable if the full set is still here to check.
     return {"blocks": ordered,
             "question_type": question_type,
+            "rules": _all_rules(results),
             "violations": violations,
             "trace": [r["tool"] for r in results]}
 
@@ -1976,7 +2085,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             if data.get("svg"):
                 blocks.append({"kind": "chart", "svg": data["svg"],
                                "table": data.get("table")})
-            blocks.append(B.limits([result]))
+            blocks.append(B.notes([result]))
             return self._json({"blocks": [b for b in blocks if b],
                                "trace": [result["tool"]],
                                "refused": data.get("refused", False)})
