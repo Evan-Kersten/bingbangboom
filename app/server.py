@@ -945,6 +945,82 @@ def _section_readout(section, entity=None):
     return None
 
 
+def answer_atlas(measure_ids, layer="county", county=None, service_area=None,
+                 function=None, mode="draw"):
+    """The map lab: one measure, two side by side, or the whole catalogue.
+
+    Composed as a place question because that is what §15.2 gives a map: a
+    reader gets the answer, the tables, the pictures and then the rules. The
+    catalogue mode returns no picture at all and is the more useful of the two
+    during a discovery phase, because the decision it supports is which layers
+    are worth building rather than what one of them looks like.
+    """
+    import atlas as A
+    selectors = {k: v for k, v in
+                 (("service_area", service_area), ("function", function)) if v}
+
+    if mode == "catalogue":
+        result = A.catalogue(STORE, layer=layer, county=county, **selectors)
+        data = result["data"]
+        blocks = [{"kind": "answer", "text": (
+            f"{data['drawn']} of {data['considered']} measures can be drawn on the "
+            f"{layer.replace('_', ' ')} layer"
+            + (f" inside {county.title()} County" if county else " across Oregon")
+            + ". A refusal here is a finding: it says the layer would be mostly "
+              "absence, and that is worth knowing before anybody builds it.")}]
+        blocks.append({"kind": "table", "rows": [
+            {"measure": row["measure"], "kind": row["kind"],
+             "verdict": row["verdict"],
+             "coverage": (fmt.percent(100 * row["coverage"])
+                          if row["coverage"] is not None else "not measured"),
+             "what the coverage is": row["detail"], "source": row["source"]}
+            for row in data["rows"]]})
+        blocks.append(B.limits([result]))
+        ordered = B.compose("place_or_cross_entity", [b for b in blocks if b])
+        return {"blocks": ordered, "question_type": "place_or_cross_entity",
+                "rules": result["caveats"], "trace": [result["tool"]],
+                "violations": B.validate("place_or_cross_entity", ordered)}
+
+    if len(measure_ids) == 2:
+        result = A.compare(STORE, measure_ids, layer=layer, county=county, **selectors)
+    else:
+        result = A.draw(STORE, measure_ids[0], layer=layer, county=county, **selectors)
+    data = result["data"] or {}
+    panels = data.get("panels") or ([data["panel"]] if data.get("panel") else [])
+
+    blocks = []
+    if data.get("refused"):
+        # The §4 pairing refusal. It carries no picture on purpose: drawing one
+        # of the two would answer a question nobody asked, and drawing both is
+        # the thing being refused.
+        blocks.append({"kind": "answer", "text": next(
+            c["guidance"] for c in result["caveats"]
+            if c["code"] == "no_investment_against_conditions")})
+    elif panels:
+        drawn = [p for p in panels if p["drawn"]]
+        headline = " ".join(
+            f"{p['label']}: " + (
+                f"drawn over {p['covered']} of {p['total']} boundaries."
+                if p["drawn"] else "refused.")
+            for p in panels)
+        blocks.append({"kind": "answer", "text": headline})
+        for panel in panels:
+            if panel["svg"]:
+                blocks.append({"kind": "map", "svg": panel["svg"],
+                               "coverage": panel["coverage"] if panel["drawn"] else None,
+                               "refused": not panel["drawn"]})
+        if drawn:
+            blocks.append({"kind": "table", "rows": [
+                {"panel": p["label"], "kind": p["kind"],
+                 "boundaries carrying a value": f"{p['covered']} of {p['total']}",
+                 "source": p["source"]} for p in panels]})
+    blocks.append(B.limits([result]))
+    ordered = B.compose("place_or_cross_entity", [b for b in blocks if b])
+    return {"blocks": ordered, "question_type": "place_or_cross_entity",
+            "rules": result["caveats"], "trace": [result["tool"]],
+            "violations": B.validate("place_or_cross_entity", ordered)}
+
+
 def _function_map_options(service_area):
     """The functions inside one service area, and what each can be drawn on.
 
@@ -1055,6 +1131,17 @@ def answer_brief(pid6, topic):
         opening = (f"This data records Census functional categories, not programmes, so "
                    f"there is no figure for {data['topic']} in it. The closest categories "
                    f"are {' and '.join(data['categories'])}. {data['fit_meaning']}")
+        # §14. A word that names more than one subject was resolved to one of
+        # them, and the reader has to be able to see that a choice was made and
+        # which way it went. "fire" is structural and wildland; they sit on
+        # different categories with different fit, and answering one silently
+        # is the ambiguity failure with the ambiguity hidden.
+        if data.get("matched") and data["matched"] != data["topic"]:
+            opening += f" Read as {data['matched']}."
+        if data.get("also"):
+            opening += (f" It could also have meant {' or '.join(data['also'])}, which "
+                        "this data files elsewhere; ask again by that name for those "
+                        "categories.")
     else:
         opening = (f"No category in this data corresponds to {data['topic']}, so nothing "
                    "here measures it. What follows is the stack of governments serving "
@@ -1121,10 +1208,12 @@ def answer_brief(pid6, topic):
              "measured over": where}
             for i in data["conditions"]]})
 
-    # The deliverable is usually a conversation, so the last table is the one a
-    # reader takes into the room.
+    # Every gap this data leaves closes in a document somebody else holds, so
+    # the last table is the list of documents to go and get. Named for the
+    # analysis it unblocks rather than for a meeting: this is the step between
+    # a scoping pass and real work, and the reader is at a desk.
     blocks.append({"kind": "table", "rows": [
-        {"take this into the room": q} for q in data["questions"]]})
+        {"what to ask for next": q} for q in data["questions"]]})
 
     blocks.append(B.limits([result]))
     blocks.append(B.next_questions(STORE, pid6))
@@ -1322,7 +1411,8 @@ def answer_preset(preset_id, pid6=None, county=None):
                 f"{fmt.count(lead['peer_n'])} peers, which is "
                 f"{abs(lead['gap']):.0f} points {direction}.")})
             blocks.append({"kind": "table", "rows": [
-                {"service area": a["label"], "share here": fmt.percent(a["share"]),
+                {"service area": a["label"], "year": a.get("year") or "not stated",
+                 "share here": fmt.percent(a["share"]),
                  "peer median": fmt.percent(a["peer_median_share"]),
                  "gap": _gap(a["gap"]), "amount": fmt.money(a["value"])}
                 for a in rated]})
@@ -1450,6 +1540,7 @@ def answer_preset(preset_id, pid6=None, county=None):
             add(staff)
             blocks.append({"kind": "table", "rows": [
                 {"job": r["role"] or r["function_name"],
+                 "year": r.get("year") or "not stated",
                  "staff": fmt.count(r["headcount"]),
                  "share of payroll": fmt.percent(r["pct_of_total"]),
                  f"{data_units(staff)} per staff member": _ratio(r["per_staff"]) or "no denominator",
@@ -1609,7 +1700,7 @@ def answer_preset(preset_id, pid6=None, county=None):
         thin = next((c for c in finer["caveats"] if c["code"] == "too_thin_to_map"), None)
         if thin:
             blocks.append({"kind": "text", "text": (
-                "The same measure town by town is refused. " + thin["guidance"])})
+                "The same measure city by city is refused. " + thin["guidance"])})
     elif preset_id == "ecosystem":
         name = county or (entity["host_county"] if entity else None)
         result = T.list_ecosystem(STORE, county_name=name)
@@ -1778,12 +1869,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                                "ambiguous": any(c["code"] == "ambiguous_name"
                                                 for c in result["caveats"])})
 
+        if parsed.path == "/api/measures":
+            import atlas as A
+            return self._json({"measures": A.measures(),
+                               "layers": ["county", "place", "school_district"]})
+
         if parsed.path == "/api/topics":
             # One definition, sent at runtime, for the same reason the preset
             # list is: a second copy in the page drifts the moment a topic is
             # added to the concordance.
             import brief as BR
-            return self._json({"topics": BR.topics()})
+            return self._json(BR.topic_index())
 
         if parsed.path == "/api/browse":
             import browse_data
@@ -1823,6 +1919,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if parsed.path == "/api/preset":
             return self._json(answer_preset(payload.get("id"), payload.get("pid6"),
                                             payload.get("county")))
+
+        if parsed.path == "/api/atlas":
+            ids = [m for m in (payload.get("measures") or []) if m]
+            mode = payload.get("mode") or "draw"
+            if mode != "catalogue" and not ids:
+                return self._json({"error": "measures required"}, 400)
+            return self._json(answer_atlas(
+                ids, layer=payload.get("layer") or "county",
+                county=payload.get("county"),
+                service_area=payload.get("service_area"),
+                function=payload.get("function"), mode=mode))
 
         if parsed.path == "/api/brief":
             pid6 = payload.get("pid6")

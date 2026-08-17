@@ -222,6 +222,44 @@ def main():
     check("and the service-area basis is operating plus capital, as its shares assume",
           matched < 10, f"{matched} rows disagree with operating_vs_capital")
 
+    print("\nthe one join between money and people")
+    bridge = one("SELECT COUNT(*) FROM function_bridge")
+    check("the finance-to-workforce crosswalk is built", bridge > 30, f"{bridge} rows")
+    # Many to many in both directions. A schema that assumed one-to-one would
+    # let a row-to-row join through, and the per-head figure it produced would
+    # look plausible whichever way it was wrong.
+    fan_out = one("""SELECT COUNT(*) FROM (SELECT financial_function FROM function_bridge
+                     GROUP BY financial_function HAVING COUNT(*) > 1)""")
+    fan_in = one("""SELECT COUNT(*) FROM (SELECT employment_function FROM function_bridge
+                    GROUP BY employment_function HAVING COUNT(*) > 1)""")
+    check("and it fans out: one financial function to several employment ones",
+          fan_out >= 3, f"{fan_out} financial functions map to more than one")
+    check("and fans in: several financial functions to one employment one",
+          fan_in >= 3, f"{fan_in} employment functions receive more than one")
+    both = one("""SELECT COUNT(*) FROM function_bridge b
+                  WHERE EXISTS (SELECT 1 FROM financial_functions f
+                                WHERE f.function_name = b.financial_function)
+                    AND EXISTS (SELECT 1 FROM workforce_top_functions w
+                                WHERE w.function_name = b.employment_function)""")
+    check("and both sides of it have live per-entity data", both >= 25,
+          f"only {both} bridge rows have data on both sides")
+
+    print("\ncoverage and recency trade against each other")
+    # The Census of Governments is a full census in years ending 2 and 7 and a
+    # sample in between. The vintage mix is that design, not a data problem.
+    census_year = one("SELECT COUNT(DISTINCT pid6) FROM financial_functions WHERE year=2022")
+    sample_year = one("SELECT COUNT(DISTINCT pid6) FROM financial_functions WHERE year=2023")
+    check("the census year reaches more governments than the sample year",
+          census_year > sample_year, f"2022 {census_year}, 2023 {sample_year}")
+    big = one("""SELECT ROUND(AVG(w.population)) FROM workforce_profile w
+                 WHERE w.population > 0 AND w.pid6 IN
+                   (SELECT pid6 FROM financial_functions WHERE year=2023)""")
+    small = one("""SELECT ROUND(AVG(w.population)) FROM workforce_profile w
+                   WHERE w.population > 0 AND w.pid6 IN
+                     (SELECT pid6 FROM financial_functions WHERE year=2022)""")
+    check("and the sample year skews to the larger governments", big > small * 2,
+          f"2023 mean population {big}, 2022 mean {small}")
+
     print(f"\n{checks - len(failures)}/{checks} checks passed")
     if failures:
         print(f"\nFAILED: {len(failures)}")

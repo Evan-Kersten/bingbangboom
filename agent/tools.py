@@ -25,7 +25,8 @@ import os
 import re
 import sqlite3
 
-from rules import (THRESHOLDS, TOPIC_CONCORDANCE, caveat, not_computable)
+from rules import (THRESHOLDS, TOPIC_CONCORDANCE, caveat, not_computable,
+                   resolve_topic)
 
 DEFAULT_DB = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "build", "pf.sqlite")
@@ -617,7 +618,7 @@ def list_ecosystem(store, county_pid6=None, county_name=None):
 # when a government arrives on more than one basis.
 SERVING_BASIS = [
     ("self", "the place itself",
-     "The town is a government, and for most residents it is the one they can name. "
+     "The city is a government, and for most residents it is the one they can name. "
      "It is listed with the rest because leaving it out makes the stack look like "
      "things happening to a place rather than including the place."),
     ("precinct_exact", "recorded per precinct",
@@ -708,15 +709,15 @@ def governments_serving(store, pid6):
         if place["gov_type_name"] != "Municipal":
             return envelope("governments_serving", entity=place, caveats=[{
                 "code": "not_a_place", "rule": "§9",
-                "guidance": "This asks which governments serve a town, so it is asked of "
-                            "a town. A district or a county is one of the answers, not "
+                "guidance": "This asks which governments serve a city, so it is asked of "
+                            "a city. A district or a county is one of the answers, not "
                             "the question."}])
         return envelope("governments_serving", entity=place, caveats=[{
             "code": "no_stack_established", "rule": "§9",
             "guidance": "No government has been established to serve this place beyond "
                         "itself. That is a gap in the boundary files, which cover school "
                         "districts and 19 special districts out of more than a thousand — "
-                        "not a town that governs itself alone."}])
+                        "not a city that governs itself alone."}])
 
     # One row per government, keeping the strongest basis it arrived on. A
     # district that both sits in the precinct file and overlaps the outline is
@@ -962,26 +963,42 @@ def get_offices(store, pid6):
 # ----------------------------------------------------------------- topics
 
 def map_topic_to_categories(store, topic):
-    """§12: name the gap, offer the proxy, say how loose the fit is."""
+    """§12: name the gap, offer the proxy, say how loose the fit is.
+
+    The typed word is resolved through the alias index rather than by looking
+    for a concordance key inside it. Nobody arrives with the concordance's
+    vocabulary: the scope of work says unsheltered, or broadband, or deferred
+    maintenance. A subject that fails to resolve never reaches the §12 gap
+    sentence at all, and an empty result reads as "this data has nothing" when
+    the truth is that it has a loose proxy and needs to say how loose.
+    """
     key = topic.strip().lower()
-    entry = next((v for k, v in TOPIC_CONCORDANCE.items() if k in key), None)
+    resolved = resolve_topic(key)
 
     caveats = [caveat("topic_gap"), caveat("topic_no_dollar_figure")]
-    if "homeless" in key:
+    if "homeless" in key or "homelessness" in resolved:
         caveats.append(caveat("dp03_cannot_measure_homelessness"))
 
-    if not entry:
+    if not resolved:
         return envelope(
             "map_topic_to_categories",
-            data={"topic": topic, "categories": [], "fit": "none",
+            data={"topic": topic, "matched": None, "also": [], "categories": [],
+                  "fit": "none",
                   "note": "No category in this data corresponds to that topic."},
             caveats=caveats,
             blocked=[not_computable("issue_level_spending")])
 
-    categories, fit, note = entry
+    # The rest are named rather than dropped. "fire" is structural and wildland,
+    # they sit on different categories with different fit, and picking one
+    # silently is the §14 ambiguity failure with the ambiguity hidden.
+    matched, also = resolved[0], resolved[1:]
+    categories, fit, note = TOPIC_CONCORDANCE[matched]
+    if also:
+        caveats.append(caveat("topic_reads_as_several"))
     return envelope(
         "map_topic_to_categories",
-        data={"topic": topic, "categories": categories, "fit": fit, "note": note},
+        data={"topic": topic, "matched": matched, "also": also,
+              "categories": categories, "fit": fit, "note": note},
         caveats=caveats,
         blocked=[not_computable("issue_level_spending")])
 
@@ -2018,7 +2035,8 @@ def _bind_explore():
     for name in ("drill", "compare_to_peer_group", "compare_entities_over_time",
                  "compare_service_area", "per_capita_by_service_area",
                  "per_capita_over_time", "who_spends_on", "staffing",
-                 "revenue_mix", "debt_load", "compare_change", "trend_panel"):
+                 "revenue_mix", "debt_load", "compare_change", "trend_panel",
+                 "cost_per_head"):
         TOOLS[name] = getattr(explore, name)
 
 

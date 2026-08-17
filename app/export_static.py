@@ -31,6 +31,11 @@ import server as S   # noqa: E402
 import viz           # noqa: E402
 import reports as R  # noqa: E402
 
+# The function the lab fills in for a measure that needs one. Police protection
+# rather than fire, because fire refuses on every layer and a demo that opened
+# on a refusal would read as broken rather than as careful.
+DEFAULT_FUNCTION = "Police Protection"
+
 
 def write(path, payload):
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -74,8 +79,14 @@ def export(out_dir):
         "areas": [r["service_area"] for r in store.rows(
             "SELECT service_area, COUNT(*) AS n FROM spending_by_service_area "
             "WHERE total > 0 GROUP BY service_area ORDER BY n DESC")]})
+    import atlas as A
     import brief as BR
-    write(os.path.join(data_dir, "topics.json"), {"topics": BR.topics()})
+    # The alias index rides with the topic list. Aliases resolve to the same
+    # seventeen canonical topics in the browser, so no extra brief is rendered:
+    # "unhoused" lands on the homelessness file that is already there.
+    write(os.path.join(data_dir, "topics.json"), BR.topic_index())
+    write(os.path.join(data_dir, "measures.json"),
+          {"measures": A.measures(), "layers": ["county", "place", "school_district"]})
     write(os.path.join(data_dir, "mode.json"), {
         "mode": "static",
         "entities": len(entities),
@@ -112,7 +123,7 @@ def export(out_dir):
 
     # Briefs, for every town with an established stack crossed with every
     # subject. A brief is the front door, so leaving it to the server would mean
-    # the exported build opens on a question it cannot answer. Only towns: the
+    # the exported build opens on a question it cannot answer. Only cities: the
     # stack is established for a place, and asking a fire district which
     # governments serve it is the question answering itself.
     stacked = [row["place_pid6"] for row in store.rows(
@@ -123,7 +134,25 @@ def export(out_dir):
                 os.path.join(data_dir, place_pid6, f"brief-{topic}.json"),
                 S.answer_brief(place_pid6, topic))
             written += 1
-    print(f"  {len(stacked)} towns x {len(BR.topics())} subjects, {total/1e6:.0f} MB so far")
+    print(f"  {len(stacked)} cities x {len(BR.topics())} subjects, {total/1e6:.0f} MB so far")
+
+    # The map lab: every measure on every layer it is valid on, plus the
+    # catalogue per layer. A refusal is pre-rendered too, because "this layer
+    # would be mostly absence" is the answer a discovery phase came for.
+    for layer in ("county", "place", "school_district"):
+        total += write(os.path.join(data_dir, "atlas", f"catalogue-{layer}.json"),
+                       S.answer_atlas([], layer=layer, mode="catalogue",
+                                      service_area=S.DEFAULT_AREA,
+                                      function=DEFAULT_FUNCTION))
+        written += 1
+        for measure in A.measures():
+            if layer not in measure["layers"]:
+                continue
+            total += write(
+                os.path.join(data_dir, "atlas", f"{layer}-{measure['id']}.json"),
+                S.answer_atlas([measure["id"]], layer=layer,
+                               service_area=S.DEFAULT_AREA, function=DEFAULT_FUNCTION))
+            written += 1
 
     for preset_id in sorted(S.ENTITY_INDEPENDENT):
         total += write(os.path.join(data_dir, "shared", f"{preset_id}.json"),
@@ -132,8 +161,8 @@ def export(out_dir):
 
     # The interface itself, with a flag telling it to read files rather than
     # call an API. One source file, two modes, so they cannot drift.
-    shutil.copyfile(os.path.join(HERE, "comparison.js"),
-                    os.path.join(out_dir, "comparison.js"))
+    for script in ("comparison.js", "subjects.js"):
+        shutil.copyfile(os.path.join(HERE, script), os.path.join(out_dir, script))
 
     # A build stamp on every asset the page fetches. GitHub Pages caches HTML,
     # and a stale index.html paired with a fresh data directory is the worst
@@ -147,7 +176,8 @@ def export(out_dir):
     html = html.replace("<script>\nconst $ =",
                         f"<script>\nwindow.PF_STATIC = true;\n"
                         f"window.PF_BUILD = '{stamp}';\nconst $ =", 1)
-    html = html.replace('src="comparison.js"', f'src="comparison.js?v={stamp}"', 1)
+    for script in ("comparison.js", "subjects.js"):
+        html = html.replace(f'src="{script}"', f'src="{script}?v={stamp}"', 1)
     with open(os.path.join(out_dir, "index.html"), "w") as fh:
         fh.write(html)
 

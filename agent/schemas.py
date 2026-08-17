@@ -103,10 +103,10 @@ SCHEMAS = [
     {
         "name": "list_ecosystem",
         "description": "Every government filed under a county, which is a wider and looser "
-                       "set than the ones serving any particular town in it. Use this for a "
+                       "set than the ones serving any particular city in it. Use this for a "
                        "question about a county, or about a function commonly split across "
                        "entities such as housing, health, transit, water or emergency "
-                       "services. When the question names a town, prefer "
+                       "services. When the question names a city, prefer "
                        "governments_serving. " + ENVELOPE_NOTE,
         "input_schema": {
             "type": "object",
@@ -118,11 +118,11 @@ SCHEMAS = [
     },
     {
         "name": "governments_serving",
-        "description": "The governments established to serve one town, each row saying what "
+        "description": "The governments established to serve one city, each row saying what "
                        "established it: a precinct record, an overlap with the government's "
                        "own boundary, or the register. Use this whenever the question is "
                        "about a place rather than a named government — who serves me, what "
-                       "am I paying for, which districts cover this town. Returns the "
+                       "am I paying for, which districts cover this city. Returns the "
                        "established stack and never the whole stack: most special districts "
                        "have no boundary in this data, so the count is a floor. Say "
                        "established, never all. " + ENVELOPE_NOTE,
@@ -428,11 +428,11 @@ SCHEMAS = [
         "description": "A condition of Oregon's places, mapped at county or place level. "
                        "Estimates whose margin of error exceeds 30% of the estimate are "
                        "withheld and draw as no data, because binning a figure the "
-                       "survey cannot place puts a town in a colour band it has not been "
+                       "survey cannot place puts a city in a colour band it has not been "
                        "shown to belong in. Where fewer than half the geographies "
                        "survive that test the map is refused entirely — at place level "
                        "that is unemployment, poverty and health insurance, which would "
-                       "colour as few as 20 of 420 towns; counties are reliable for all "
+                       "colour as few as 20 of 420 cities; counties are reliable for all "
                        "indicators and are the grain to use instead. Never place this "
                        "beside a spending map as cause and effect. " + ENVELOPE_NOTE,
         "input_schema": {
@@ -614,6 +614,32 @@ SCHEMAS = [
         },
     },
     {
+        "name": "cost_per_head",
+        "description": "What one government spends on a named function against the people "
+                       "it employs in it: spending per firefighter, per officer, per "
+                       "teacher. This is the only measure that crosses the finance and "
+                       "workforce taxonomies, over a crosswalk that is many to many in "
+                       "both directions, and both sides are summed before dividing. It is "
+                       "operating plus capital over headcount, so it is not a wage: a high "
+                       "figure is as likely to be a building year as a generous payroll. "
+                       "Refused where the function does not appear among the entity's "
+                       "listed employment functions, because the source reports top "
+                       "functions only and an absent headcount is a truncated list rather "
+                       "than a government doing the work with nobody. About half the "
+                       "entities reporting fire protection are in that position. "
+                       + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pid6": PID,
+                "function_name": {"type": "string",
+                                  "description": "A named financial function, as returned "
+                                                 "by drill or who_spends_on."},
+            },
+            "required": ["pid6", "function_name"],
+        },
+    },
+    {
         "name": "place_topic_brief",
         "description": "One place and one issue: the governments with a claim on it, what "
                        "each reports in the categories that stand in for the issue, the "
@@ -624,7 +650,7 @@ SCHEMAS = [
                        "first, then the proxy and how loose it is, then figures. It never "
                        "totals across the governments (§9: the same dollar appears in two "
                        "entities' expenditures) and never states an issue-level dollar "
-                       "figure. Ask it of a town rather than a district or a county. "
+                       "figure. Ask it of a city rather than a district or a county. "
                        + ENVELOPE_NOTE,
         "input_schema": {
             "type": "object",

@@ -7,7 +7,7 @@ governments. So the interface needs doors that are not the search box.
 
 Four doors, each complete rather than a sample:
 
-    places        the towns a stack of governments has been established for.
+    places        the cities a stack of governments has been established for.
                   This is the front door: a reader cannot name a district but
                   can always name where they live, and the answer behind it is
                   the several governments serving that address rather than one
@@ -65,9 +65,9 @@ def build(store):
             "GROUP BY service_area ORDER BY n DESC")]
 
     # Ordered by residents, not by how many governments were established. A
-    # reader scanning for their own town finds it faster in a list that opens on
-    # the towns most people live in, and stack size is an artefact of which
-    # boundary files exist rather than a fact about the town.
+    # reader scanning for their own city finds it faster in a list that opens on
+    # the cities most people live in, and stack size is an artefact of which
+    # boundary files exist rather than a fact about the city.
     try:
         places = [
             {"pid6": row["pid6"], "name": row["name"], "county": (row["county"] or "").title(),

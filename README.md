@@ -28,7 +28,7 @@ returns are the same ones the model is handed.
 `.github/workflows/pages.yml` rebuilds the store, runs every test, pre-renders
 all 29,744 answers and publishes to GitHub Pages. Grounded mode is
 deterministic, so the whole interface can be served as static files with no
-server at all. The rendered site is ~382 MB and is never committed.
+server at all. The rendered site is ~385 MB and is never committed.
 
 Details in `app/DEPLOY.md`.
 

@@ -202,6 +202,124 @@ def main():
         check(f"{name.title()} is drawn as its own boundary",
               drawn["basis"] == "own_boundary" and drawn["svg"], str(drawn["basis"]))
 
+    print("\nevery entity is shown at its own latest year, and says which (§8)")
+    # The policy for this product: show each government at whichever year it last
+    # reported rather than holding everything back to a common one, and disclose
+    # the year on the figure. Portland's spending is 2023 and its workforce 2024,
+    # and both appear in one answer.
+    import explore as _explore
+    breakdown = _explore.drill(store, portland)
+    areas = breakdown["data"]["areas"]
+    check("a service-area row carries the year it was reported",
+          all(a.get("year") for a in areas), str(areas[:1]))
+    staff = _explore.staffing(store, portland)
+    check("and a workforce row carries its own, which is often a different year",
+          all(f.get("year") for f in staff["data"]["functions"]),
+          str(staff["data"]["functions"][:1]))
+    check("the two really can differ for one government",
+          areas[0]["year"] != staff["data"]["functions"][0]["year"],
+          f"{areas[0]['year']} vs {staff['data']['functions'][0]['year']}")
+
+    # Disclosing the entity's year is necessary and not sufficient. The peer
+    # median it is compared against has no single year at all: the pool is
+    # whichever year each peer last reported.
+    check("and the peer pool says it blends vintages",
+          "peer_pool_mixed_vintage" in codes(breakdown))
+    pool_years = {r["year"] for r in store.rows(
+        "SELECT DISTINCT year FROM spending_by_service_area")}
+    check("which it does, in this build", len(pool_years) > 1, str(sorted(pool_years)))
+
+    print("\nmoney against people, across the one crosswalk between them (§8)")
+    fire = T.TOOLS["cost_per_head"](store, portland, "Fire Protection")
+    data = fire["data"]
+    # Fire Protection money maps to two employment functions. Summing both is
+    # the difference between a right answer and one that is out by whatever
+    # share of the staff sat in the other row.
+    check("both employment functions on the bridge are counted",
+          set(data["bridged_to"]) == {"Fire Protection - Firefighters",
+                                      "Fire Protection - Other"},
+          str(data["bridged_to"]))
+    check("and the per-head figure is the summed money over the summed heads",
+          abs(data["per_head"] - data["spend"] / data["heads"]) < 1e-6)
+    check("the many-to-many shape is stated rather than assumed away",
+          "bridge_is_many_to_many" in codes(fire))
+    # §4: this is operating plus capital over headcount. It includes trucks and
+    # stations, and a reader who takes it for a salary has read a building year
+    # as a generous payroll.
+    check("and it is marked as not being a wage",
+          "cost_per_head_is_not_a_salary" in codes(fire))
+
+    # §8: the source lists top employment functions only, so a missing headcount
+    # is a truncated list rather than a government doing the work with nobody.
+    # Half the entities reporting fire spending are in that position.
+    refused = 0
+    for row in store.rows("SELECT DISTINCT pid6 FROM financial_functions "
+                          "WHERE function_name='Fire Protection'"):
+        if T.TOOLS["cost_per_head"](store, row["pid6"], "Fire Protection")["data"].get(
+                "refused"):
+            refused += 1
+    check("a missing listed headcount is refused, not divided by what is listed",
+          refused > 100, f"only {refused} refused")
+
+    no_bridge = T.TOOLS["cost_per_head"](store, portland, "Sewerage")
+    check("a function with no employment function crosswalked returns no per-head",
+          no_bridge["data"].get("per_head") is None)
+
+    print("\nthe atlas vets a layer before anybody commits to it (§4, §15)")
+    import atlas as A
+    catalogue = {m["id"] for m in A.measures()}
+    # Derived from the metric tables, never restated. A measure added to tools
+    # or community and missing here is a measure nobody can reach, which looks
+    # like a product decision rather than the drift it is.
+    check("every mappable measure is in the atlas",
+          catalogue >= set(T.MAP_METRICS) | set(T.SERVICE_AREA_MAP_METRICS)
+          | set(T.FUNCTION_MAP_METRICS),
+          str(sorted(catalogue)))
+    import community as C
+    check("and so is every survey indicator",
+          catalogue >= {code for code, *_ in C.INDICATORS})
+
+    # §4. Two maps side by side is the most persuasive way to assert that one
+    # explains the other without writing a sentence anybody could argue with,
+    # and spending against poverty is the pairing this domain reaches for first.
+    paired = A.compare(store, ["spending_per_resident", "DP03_0128P"], "county")
+    check("spending is never drawn beside a condition",
+          paired["data"]["refused"] is True
+          and "no_investment_against_conditions" in codes(paired))
+    check("and the refusal carries no picture at all",
+          not paired["data"]["panels"], str(paired["data"]["panels"])[:80])
+    check("and it says what to do instead",
+          "aggregate every" in next(c["guidance"] for c in paired["caveats"]
+                                    if c["code"] == "no_investment_against_conditions"))
+
+    both = A.compare(store, ["DP03_0128P", "DP03_0009P"], "county")
+    check("two measures of the same kind do draw",
+          all(p["drawn"] for p in both["data"]["panels"]))
+    # A shared scale across two panels would say a colour means the same amount
+    # in both, which is exactly the false comparison §15.4 is about.
+    check("and the panels say they are on separate scales",
+          "panels_have_separate_scales" in codes(both))
+
+    # There are no tract-level DP03 rows in any of the three source files, so a
+    # survey measure on a school district layer is not a coverage problem.
+    off_layer = A.draw(store, "DP03_0128P", "school_district")
+    check("a survey measure is refused on a layer it has no rows for",
+          "layer_unavailable" in codes(off_layer))
+
+    listing = A.catalogue(store, "county", service_area="Public Safety",
+                          function="Fire Protection")
+    verdicts = {row["measure"]: row["verdict"] for row in listing["data"]["rows"]}
+    check("the catalogue reports a verdict for every measure",
+          len(verdicts) == len(A.measures()), str(len(verdicts)))
+    check("and fire protection is refused in it rather than quietly drawn",
+          verdicts.get("Share of spending on Fire Protection") == "refused",
+          str(verdicts))
+    check("while police protection is drawn",
+          verdicts.get("Share of spending on Police Protection") is None
+          or verdicts.get("Spending per resident on Fire Protection") == "refused")
+    check("and the catalogue dates itself, because coverage is a property of the build",
+          "catalogue_is_a_snapshot" in codes(listing))
+
     print("\nthe brief answers a place and an issue together (§12, §9)")
     estacada = pid_for(store, "CITY OF ESTACADA")
     fire = T.TOOLS["place_topic_brief"](store, estacada, "wildfire")
@@ -233,10 +351,17 @@ def main():
     # A topic the concordance does not cover is answered, not refused: §12 says
     # a bare refusal is less useful than a labelled approximation, and the stack
     # is still the honest half of the answer.
-    unknown = T.TOOLS["place_topic_brief"](store, estacada, "broadband")
+    #
+    # This was "broadband" until the alias index reached it, which is the
+    # correct outcome and not a reason to weaken the assertion: the case being
+    # tested is a word with genuinely nothing behind it, and the vocabulary
+    # gaining a word is exactly what should shrink that set over time.
+    unknown = T.TOOLS["place_topic_brief"](store, estacada, "immigration")
     check("an uncovered topic returns the gap and still names the governments",
           unknown["data"]["fit"] == "none" and not unknown["data"]["categories"]
           and unknown["data"]["stack"], str(unknown["data"]["fit"]))
+    check("and a word the alias index reaches is no longer uncovered",
+          T.map_topic_to_categories(store, "broadband")["data"]["fit"] != "none")
 
     # §4: conditions are not the government's record, and a figure whose margin
     # swamps it must not be quotable.
@@ -448,7 +573,7 @@ def main():
     check("with the withheld geographies named, not silently grey",
           "withheld_for_margin" in codes(good) or good["data"]["withheld"] == 0)
 
-    # 20 of 420 Oregon towns have an unemployment estimate tight enough to bin.
+    # 20 of 420 Oregon cities have an unemployment estimate tight enough to bin.
     thin = C.render_community_map(store, "DP03_0009P", geo_level="place")
     check("a place-level unemployment map is refused",
           thin["data"].get("svg") is None and "too_thin_to_map" in codes(thin))
@@ -728,6 +853,46 @@ def main():
     check("an unmapped topic still refuses a figure",
           "issue_level_spending" in blocked_codes(result) and result["data"]["fit"] == "none")
 
+    # The words a scope of work is written in, against the words the
+    # concordance is keyed by. A subject that fails to resolve never reaches the
+    # §12 gap sentence at all: the reader gets nothing, reads it as "this data
+    # has no view on my subject", and goes somewhere that will hand them a
+    # number with no gap attached. That is the one failure mode that routes
+    # around every refusal in the system, so the vocabulary is asserted.
+    print("\nthe words somebody actually types reach a subject (§12)")
+    for typed, expected in (("unsheltered", "homelessness"),
+                            ("encampments", "homelessness"),
+                            ("police", "public safety"),
+                            ("law enforcement", "public safety"),
+                            ("roads", "transportation"),
+                            ("stormwater", "sewer"),
+                            ("broadband", "technology"),
+                            ("fentanyl", "opioid"),
+                            ("behavioral health", "mental health"),
+                            ("deferred maintenance", "infrastructure")):
+        result = T.map_topic_to_categories(store, typed)
+        check(f"{typed!r} is read as {expected}",
+              result["data"]["matched"] == expected, str(result["data"]["matched"]))
+        check(f"and {typed!r} still refuses a dollar figure for the subject",
+              "issue_level_spending" in blocked_codes(result))
+
+    # §14: a word naming two subjects is answered as one of them and says so.
+    result = T.map_topic_to_categories(store, "fire")
+    check("'fire' is answered as one reading", result["data"]["matched"] == "public safety")
+    check("and the other reading is named rather than dropped",
+          result["data"]["also"] == ["wildfire"], str(result["data"]["also"]))
+    check("and the answer is told to say which reading it took",
+          "topic_reads_as_several" in codes(result))
+    check("a word with one reading carries no such caveat",
+          "topic_reads_as_several" not in codes(
+              T.map_topic_to_categories(store, "police")))
+
+    # The concordance key itself must keep winning outright. Without the exact
+    # pass running first, "water" picks up wastewater from the alias list and
+    # drinking water is offered the sewer concordance.
+    check("an exact subject beats every alias",
+          T.map_topic_to_categories(store, "water")["data"]["matched"] == "water")
+
     print("\ncompare_entities (§12)")
     result = T.compare_entities(store, [portland, baker_county])
     check("mixing a city and a county is flagged", "mixed_entity_types" in codes(result))
@@ -773,6 +938,11 @@ def main():
         "who_spends_on": {"function_name": "Fire Protection"},
         "render_function_map": {"function": "Police Protection"},
         "place_topic_brief": {"pid6": portland, "topic": "housing"},
+        "cost_per_head": {"pid6": portland, "function_name": "Fire Protection"},
+        "atlas_measures": {},
+        "atlas_draw": {"measure_id": "spending_per_resident"},
+        "atlas_compare": {"measure_ids": ["DP03_0128P", "DP03_0009P"]},
+        "atlas_catalogue": {},
         "compare_change": {"pid6_list": [portland, baker_county]},
         "render_community_map": {"code": "DP03_0128P", "geo_level": "county"},
         "trend_panel": {"pid6_list": [portland, baker_county]},

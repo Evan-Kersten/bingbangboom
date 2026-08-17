@@ -36,7 +36,8 @@ says nothing about who holds the responsibility being asked about.
 
 import format as fmt
 import tools as T
-from rules import TOPIC_CONCORDANCE, caveat, not_computable
+from rules import (TOPIC_ALIASES, TOPIC_CONCORDANCE, TOPIC_GROUPS, caveat,
+                   not_computable)
 
 # How loose the fit is, in a reader's words rather than a rating scale. §12
 # gives the ratings; this says what each one means for the answer that follows,
@@ -70,13 +71,15 @@ def _reported(store, pid6, categories):
 
 
 def _questions(store, place, stack, categories):
-    """What to ask, and who to ask it of.
+    """What to ask for next, and who holds it.
 
-    The output of this product is usually a conversation rather than a figure.
-    A facilitator standing in front of a council does not need another number;
-    they need the question that the number cannot answer, pointed at the body
-    that can. §12's "note who is missing" and §9's "responsibility is
-    distributed" both end here rather than in a caveat nobody reads aloud.
+    A scoping pass ends by naming what would have to be collected, and that is
+    what this is: the categories are a Census classification, so the programme
+    names, the mandates and the year-over-year explanations all sit in
+    documents this data does not contain. Pointing at the body that holds each
+    one is the difference between a limit and a next step. §12's "note who is
+    missing" and §9's "responsibility is distributed" both end here rather than
+    in a caveat nobody reads.
     """
     asks = []
     silent = [row for row in stack if not row.get("reports")]
@@ -177,6 +180,11 @@ def place_topic_brief(store, pid6, topic):
         data={
             "place": place["common_name"] or place["legal_name"],
             "topic": topic,
+            # What the typed word was read as, and what else it could have been.
+            # A reader who typed "fire" and got structural fire needs to see
+            # both, or the answer silently decides which subject they meant.
+            "matched": mapped["data"].get("matched"),
+            "also": mapped["data"].get("also") or [],
             "categories": categories,
             "fit": fit,
             "fit_meaning": FIT_MEANING.get(fit, FIT_MEANING["none"]),
@@ -203,3 +211,29 @@ def topics():
     they ask.
     """
     return sorted(TOPIC_CONCORDANCE)
+
+
+def topic_index():
+    """The subject list and the words that reach it, for the page's own matcher.
+
+    Sent at runtime for the reason the preset list is: the browser matching a
+    typed subject against its own copy of the vocabulary is the same drift that
+    shipped a question the exported interface never offered. The page filters
+    this rather than defining it, so an alias added to the concordance is
+    reachable in the box without a second edit.
+    """
+    # Fit rides with the list rather than waiting for the answer. "Is this
+    # measurable at all" is the first question in a prototyping session, and a
+    # reader who can see that technology is a weak proxy before clicking has
+    # been told the most useful thing this data has to say about it.
+    grouped = [{"name": name, "topics": [t for t in names if t in TOPIC_CONCORDANCE]}
+               for name, names in TOPIC_GROUPS]
+    placed = {t for group in grouped for t in group["topics"]}
+    missing = [t for t in topics() if t not in placed]
+    if missing:
+        grouped.append({"name": "Other", "topics": missing})
+    return {"topics": topics(),
+            "groups": grouped,
+            "aliases": {alias: list(names)
+                        for alias, names in sorted(TOPIC_ALIASES.items())},
+            "fit": {name: TOPIC_CONCORDANCE[name][1] for name in TOPIC_CONCORDANCE}}

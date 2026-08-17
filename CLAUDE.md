@@ -35,9 +35,9 @@ No dependencies. Standard library only, so there is nothing to install.
 
 ```
 python3 etl/build.py          # ~20s, writes build/ from the files in the root
-python3 etl/verify.py         # 52 assertions about the built store
+python3 etl/verify.py         # 58 assertions about the built store
 python3 app/server.py         # http://localhost:8000
-python3 app/export_static.py --out site --clean   # ~50s, ~382 MB
+python3 app/export_static.py --out site --clean   # ~60s, ~385 MB
 ```
 
 `build/` and `site/` are gitignored and reproducible; never commit either.
@@ -45,10 +45,10 @@ python3 app/export_static.py --out site --clean   # ~50s, ~382 MB
 The full suite, all of which must pass before a push:
 
 ```
-python3 agent/test_tools.py        # 235    python3 app/test_server.py    # 177
-python3 agent/test_orchestrator.py #  44    python3 app/test_parity.py    # 452
+python3 agent/test_tools.py        # 289    python3 app/test_server.py    # 179
+python3 agent/test_orchestrator.py #  44    python3 app/test_parity.py    # 461
 python3 agent/test_viz.py          #  88    python3 evals/run.py          #  22
-python3 agent/test_reports.py      #  53    python3 etl/verify.py         #  52
+python3 agent/test_reports.py      #  53    python3 etl/verify.py         #  58
 python3 agent/test_blocks.py       #  45    python3 etl/test_project.py   #   6
 ```
 
@@ -69,19 +69,34 @@ These have each been broken at least once and cost real time to find.
 
 **Python and JavaScript must render identically.** `agent/` renders answers for
 the server; `app/comparison.js` re-renders comparisons in the browser so a
-reader can pick any set of governments without a round trip. `app/test_parity.py`
-runs both through node and compares refusal state, answer sentence, caveat
-codes, table rows and **every SVG text node**. Change one side, change the other.
+reader can pick any set of governments without a round trip, and
+`app/subjects.js` resolves a typed subject there because a pre-rendered build
+has no server to ask which brief to open. `app/test_parity.py` runs both through
+node and compares refusal state, answer sentence, caveat codes, table rows,
+**every SVG text node**, and which subject every alias resolves to. Change one
+side, change the other.
 
 **No API key may ever reach the static site.** The exported build is public.
 Free text needs a server; that is not a limitation to engineer around.
 
 **One definition per list.** The question list, the set of entity-independent
-answers and the availability manifest each have exactly one definition
-(`server.preset_shell()`, `server.ENTITY_INDEPENDENT`, `tools.availability()`)
-and are sent to the page at runtime. The page used to keep its own copy of the
-question list and it drifted: a question shipped and the exported interface
-never offered it. Do not reintroduce a second copy.
+answers, the availability manifest and the subject vocabulary each have exactly
+one definition (`server.preset_shell()`, `server.ENTITY_INDEPENDENT`,
+`tools.availability()`, `brief.topic_index()`) and are sent to the page at
+runtime. The page used to keep its own copy of the question list and it
+drifted: a question shipped and the exported interface never offered it. Do not
+reintroduce a second copy. `subjects.js` duplicates the matching *algorithm*,
+under a parity test, and never the vocabulary.
+
+**A subject that does not resolve routes around every refusal here.** The §12
+concordance is keyed by seventeen words and nobody arrives with them: a scope of
+work says unsheltered, or broadband, or deferred maintenance.
+`rules.TOPIC_ALIASES` maps those onto the seventeen and `rules.resolve_topic` is
+the only resolver. This is not search polish. An unresolved subject never
+reaches the §12 gap sentence, so the reader sees an empty pane, reads it as
+"this data has no view on my subject", and leaves for a source that will give
+them a number with no gap attached. Adding a subject to the concordance without
+adding the words people use for it is the same bug as not adding it at all.
 
 **A preset must never be offered without its data.** §15.1. The availability
 manifest gates them, and `blocks.next_questions` gates the follow-up chips
@@ -125,6 +140,66 @@ The three refusals are ranked and the order matters. Mostly-absence beats a thin
 extent beats needing a county, because the weakest reason reads as the most
 fixable, and fire protection reported as "scope it to a county" sends a reader
 to a map that will be just as empty for a reason nobody stated.
+
+**A layer is vetted before it is committed to.** `agent/atlas.py` is the
+prototyping surface: every mappable measure in one registry, each drawn only
+through the coverage gate, each result saying whether it was drawn or refused
+and over how much of the extent. The registry is derived from `tools.MAP_METRICS`
+and `community.INDICATORS` rather than restating them, so a metric added there is
+reachable here without a second edit.
+
+`atlas.compare` will not pair a fiscal measure with a survey one. §4: spending
+and conditions are aggregate patterns observed in the same geography with nothing
+joining them, and two maps side by side is the most persuasive way to assert that
+one explains the other without writing a sentence anybody could argue with. The
+refusal is by measure kind rather than by a warning, because a warning is advice.
+
+`atlas.catalogue` is the artifact a discovery phase actually wants: every measure
+on a layer with its verdict and its coverage, so a decision to build a layer is
+made against measurement rather than against whichever example the demo used.
+
+**Each entity is shown at its own latest year, and the year rides on the row.**
+Every single-year table already holds exactly one year per entity, whichever the
+source last reported, so this is the data's shape rather than a choice the ETL
+makes. Portland's spending is 2023 and its workforce 2024, and both appear in
+one answer. A comparison across entities is therefore a comparison across years,
+which is acceptable because each figure states its own.
+
+Disclosing the entity's year is necessary and not sufficient. **The peer median
+beside it has no single year**: the pool is whichever year each peer last
+reported, so a median blends two or three vintages. `peer_pool_mixed_vintage`
+says so wherever a peer statistic is placed next to an entity figure. Discarding
+the pool to get one vintage would throw away most of it, so the comparison
+stands and is labelled for what it is.
+
+**The one join between money and people.** Finance is filed by financial
+function and workforce by employment function, and `function_bridge` is the only
+crosswalk between them. It is **many to many in both directions**: Fire
+Protection money covers firefighters and other fire staff, and six public
+welfare financial functions land on one employment function. `cost_per_head`
+sums both sides before dividing, and a row-to-row join is wrong in a way that
+looks plausible whichever direction it errs.
+
+The crosswalk names financial functions by an id whose table, `financial_functions.json`,
+arrived in the repository after the crosswalk itself. Resolving it against
+`government_functions.json` — a different list of a similar shape — silently
+produced pairs like housing and community development against firefighters. The
+ETL reads both files so that cannot be repeated by hand.
+
+`cost_per_head` refuses where the function is absent from the entity's listed
+employment functions. §8: the source reports top functions only, so a missing
+headcount is a truncated list rather than a government doing the work with
+nobody. That refusal fires for 165 of the 327 entities reporting fire
+protection, and dividing by what happens to be listed would flatter every one
+of them.
+
+**Coverage and recency trade against each other, by design.** The Census of
+Governments takes a full census in years ending 2 and 7 and samples in between.
+2022 reaches 978 entities at function level, 2023 reaches 400 and skews to the
+largest: mean population around 24,000 against 4,100. A statewide picture wants
+a census year; the latest year is a picture of big governments and has to say
+so. `etl/verify.py` asserts both halves of that, so a refresh that quietly
+inverted it fails the suite.
 
 ## Data traps
 
@@ -187,7 +262,8 @@ never share an axis or a legend with a spending figure.
 public_foundry_system_prompt_v2.md   the specification
 etl/          build.py, verify.py, schema.sql, plus the shapefile and
               dissolve work. Reads the loose files in the repository root.
-agent/        rules.py (the caveat catalogue), tools.py (37 tools), explore.py,
+agent/        rules.py (the caveat catalogue), tools.py (41 tools), explore.py,
+              atlas.py (every mappable measure, and whether it should be),
               brief.py (place + issue, the §12 front door),
               community.py (DP03, structurally unable to see a fiscal figure),
               viz.py + maps.py (hand-authored SVG), blocks.py (§15 block order),
@@ -207,7 +283,7 @@ so a README push does not spend a deploy.
 
 - `serves_place` is thin outside Multnomah. That county's precinct file is the
   only place "which governments serve this address" is recorded rather than
-  inferred; elsewhere a town resolves to its county and its school districts,
+  inferred; elsewhere a city resolves to its county and its school districts,
   against the roughly ten governments a real address sits inside. Boundary data
   for special districts is what would close this, and nothing else will.
 - `cnty_voterprecincts/` (Clackamas, 121 precincts with REPDIST/SENDIST/CONGDIST)

@@ -9,6 +9,8 @@ module is where the tools reach for the words, so the two cannot drift apart
 and so a rule cannot be silently dropped by a model that skimmed section 8.
 """
 
+import re
+
 CAVEATS = {
     "two_expenditure_measures": (
         "10",
@@ -54,6 +56,43 @@ CAVEATS = {
         "Capital spending is lumpy and reflects position in a bond and construction cycle. "
         "One year is a point, not a trend. Say the entity is in an active capital period; "
         "do not call it a policy preference."),
+    "bridge_is_many_to_many": (
+        "8",
+        "Finance and workforce are filed under different taxonomies and the crosswalk "
+        "between them is many to many in both directions. Fire Protection money covers "
+        "two employment functions, firefighters and other fire staff; six separate "
+        "public welfare financial functions all land on one employment function. Both "
+        "sides are summed before dividing here. Never divide one row by one row: the "
+        "result looks plausible whichever way it is wrong."),
+    "headcount_from_listed_functions": (
+        "8",
+        "The denominator is headcount from the entity's listed employment functions, "
+        "which the source reports as a top-N rather than in full. A government whose "
+        "staff in this function did not make its own list has spending here and no "
+        "headcount, so it is excluded rather than divided by a partial number. Say the "
+        "figure is per listed employee."),
+    "cost_per_head_is_not_a_salary": (
+        "4",
+        "This is everything the government spent on the function, operating and capital "
+        "together, divided by the people it employs in it. It is not a wage and not a "
+        "compensation figure: it includes trucks, stations and debt-funded construction. "
+        "A high figure is as likely to mean a building year as a generous payroll."),
+    "census_year_coverage": (
+        "8",
+        "The Census of Governments takes a full census in years ending 2 and 7 and "
+        "samples in between, so coverage and recency trade against each other here. "
+        "2017 and 2022 reach the most governments; 2023 reaches fewer and skews to the "
+        "largest, with a mean population around 24,000 against 4,100 for 2022. A "
+        "statewide picture wants a census year. A current picture of big governments "
+        "wants the latest year and must say it is not the whole state."),
+    "peer_pool_mixed_vintage": (
+        "8",
+        "The entity's figure carries its own year, but the peer statistic it is compared "
+        "against does not have one: the pool is built from whichever year each peer last "
+        "reported, so a median can blend two or three vintages. Say the entity's year and "
+        "say the pool spans several. The comparison is still worth making, because the "
+        "alternative is discarding most of the pool, but it is a comparison against what "
+        "peers most recently reported rather than against a single moment."),
     "workforce_partial": (
         "8",
         "Only top employment functions are listed. A function not listed is not necessarily "
@@ -184,6 +223,12 @@ CAVEATS = {
         "12",
         "Never state or imply a dollar amount for this topic. The figure does not exist in "
         "the source and cannot be derived from it."),
+    "topic_reads_as_several": (
+        "14",
+        "The word asked about names more than one subject in this concordance, and they map "
+        "to different categories with different fit. Say which reading the figures are for "
+        "and name the others, rather than answering the one and leaving the reader to "
+        "assume it was the only one."),
 }
 
 NOT_COMPUTABLE = {
@@ -263,6 +308,175 @@ TOPIC_CONCORDANCE = {
         ["Health & Human Services"], "weak",
         "No separate category exists. Response is usually a county or state program."),
 }
+
+# The words somebody actually types, against the seventeen the concordance is
+# keyed by. Nobody sits down to analyse "homelessness" — they sit down having
+# been handed a scope of work that says unsheltered, or encampment, or shelter
+# beds, and the concordance key is a word they would only reach by guessing it.
+#
+# This is not a search convenience. §12 says the answer to an issue question
+# opens on the gap between the subject and the Census categories, and a subject
+# that fails to resolve never reaches that sentence: the reader gets an empty
+# result, concludes the data has nothing, and goes to a source that will hand
+# them a number without the gap attached. A miss here is the one failure mode
+# that routes around every refusal in the system.
+#
+# An alias may name more than one topic, and both are offered rather than the
+# first being picked silently. "fire" is wildland and structural and they land
+# on different categories with different fit; choosing for the reader is the
+# §14 ambiguity failure with the ambiguity hidden.
+TOPIC_ALIASES = {
+    "unhoused": ("homelessness",), "houseless": ("homelessness",),
+    "unsheltered": ("homelessness",), "homeless": ("homelessness",),
+    "shelter": ("homelessness",), "encampment": ("homelessness",),
+    "encampments": ("homelessness",), "supportive housing": ("homelessness", "housing"),
+
+    "affordable housing": ("housing",), "affordability": ("housing",),
+    "rent": ("housing",), "renters": ("housing",), "zoning": ("housing",),
+    "land use": ("housing",), "development": ("housing",),
+    "community development": ("housing",),
+
+    "police": ("public safety",), "policing": ("public safety",),
+    "law enforcement": ("public safety",), "sheriff": ("public safety",),
+    "crime": ("public safety",), "corrections": ("public safety",),
+    "jail": ("public safety",), "courts": ("public safety",),
+    "emergency": ("public safety",), "911": ("public safety",),
+    "dispatch": ("public safety",), "ems": ("public safety",),
+    "ambulance": ("public safety",),
+    # Both, in this order. Structural fire is a Public Safety function with real
+    # coverage; wildland is mostly state and federal and the concordance rates it
+    # weak. A reader typing "fire" is usually after the first and needs to be
+    # told which one they got.
+    "fire": ("public safety", "wildfire"),
+    "fire protection": ("public safety",), "firefighters": ("public safety",),
+    "wildland": ("wildfire",), "wildfires": ("wildfire",),
+    "defensible space": ("wildfire",), "smoke": ("wildfire",),
+
+    "behavioral health": ("mental health",), "behavioural health": ("mental health",),
+    "crisis": ("mental health",), "suicide": ("mental health",),
+    "substance use": ("opioid", "mental health"), "addiction": ("opioid",),
+    "overdose": ("opioid",), "fentanyl": ("opioid",), "naloxone": ("opioid",),
+    "treatment": ("opioid", "mental health"), "recovery": ("opioid",),
+    "public health": ("mental health",), "health": ("mental health",),
+    "human services": ("mental health",), "social services": ("mental health",),
+
+    "roads": ("transportation",), "streets": ("transportation",),
+    "highways": ("transportation",), "traffic": ("transportation",),
+    "bridges": ("transportation",), "pavement": ("transportation",),
+    "sidewalks": ("transportation", "infrastructure"),
+    "bike": ("transportation",), "pedestrian": ("transportation",),
+    "vision zero": ("transportation",), "safe routes": ("transportation",),
+    "bus": ("transit",), "rail": ("transit",), "light rail": ("transit",),
+    "transit oriented": ("transit", "housing"), "mobility": ("transit",),
+
+    "schools": ("education",), "students": ("education",), "school": ("education",),
+    "childcare": ("education",), "child care": ("education",),
+    "early learning": ("education",), "literacy": ("education",),
+    "enrollment": ("education",),
+
+    "drinking water": ("water",), "water quality": ("water",),
+    "wells": ("water",), "watershed": ("water", "environment"),
+    "stormwater": ("sewer",), "wastewater": ("sewer",),
+    "sanitation": ("sewer",), "sewage": ("sewer",), "septic": ("sewer",),
+    "utilities": ("water", "sewer"), "garbage": ("sewer",), "waste": ("sewer",),
+    "landfill": ("sewer",), "recycling": ("sewer",),
+
+    "broadband": ("technology",), "internet": ("technology",),
+    "digital equity": ("technology",), "digital": ("technology",),
+    "connectivity": ("technology",), "it": ("technology",),
+    "cybersecurity": ("technology",), "data": ("technology",),
+
+    "emissions": ("climate",), "greenhouse gas": ("climate",),
+    "decarbonization": ("climate",), "decarbonisation": ("climate",),
+    "resilience": ("climate",), "heat": ("climate",), "extreme heat": ("climate",),
+    "flooding": ("climate", "infrastructure"), "drought": ("climate", "water"),
+    "sustainability": ("climate", "environment"), "energy": ("climate",),
+    "conservation": ("environment",), "habitat": ("environment",),
+    "air quality": ("environment",), "pollution": ("environment",),
+    "natural resources": ("environment",), "forestry": ("environment", "wildfire"),
+
+    "trails": ("parks",), "open space": ("parks",), "green space": ("parks",),
+    "playgrounds": ("parks",), "library": ("recreation",),
+    "libraries": ("recreation",), "culture": ("recreation",),
+    "arts": ("recreation",), "community center": ("recreation",),
+
+    "capital": ("infrastructure",), "construction": ("infrastructure",),
+    "facilities": ("infrastructure",), "buildings": ("infrastructure",),
+    "deferred maintenance": ("infrastructure",), "public works": ("infrastructure",),
+}
+
+
+# The seventeen subjects arranged for scanning. Alphabetical is the order a
+# list has when nobody chose one, and it puts climate beside education and
+# education beside environment; a reader looking for the drainage question has
+# to read all seventeen. Grouping is presentation and nothing reads it as data,
+# but it lives here rather than in the page for the reason the concordance does:
+# a subject added there and not here would silently stop being offerable.
+TOPIC_GROUPS = (
+    ("People and health",
+     ["homelessness", "housing", "mental health", "opioid", "education"]),
+    ("Safety",
+     ["public safety", "wildfire"]),
+    ("Built environment",
+     ["transportation", "transit", "water", "sewer", "infrastructure",
+      "technology"]),
+    ("Land and climate",
+     ["climate", "environment", "parks", "recreation"]),
+)
+
+
+def resolve_topic(term):
+    """The canonical concordance topics a typed word names, best fit first.
+
+    Three passes, and the order is the whole behaviour: an exact hit on a
+    concordance key or an alias wins outright, and only a term that matches
+    nothing exactly falls through to substring. Without that ordering "water"
+    drags in "wastewater" and a reader asking about drinking water is offered
+    the sewer concordance first.
+    """
+    needle = " ".join((term or "").lower().split())
+    if not needle:
+        return []
+    if needle in TOPIC_CONCORDANCE:
+        return [needle]
+    if needle in TOPIC_ALIASES:
+        return list(TOPIC_ALIASES[needle])
+
+    # Two characters is enough to be typing and not enough to mean anything, and
+    # a subject offered on one letter fires on every keystroke of a city name.
+    if len(needle) < 3:
+        return []
+
+    # Sorted, not insertion order, in both loops below. app/subjects.js resolves
+    # the same term in the browser and can only iterate the list it was sent,
+    # which is sorted; matching that here is what lets the parity test compare
+    # the two orderings rather than only the two sets.
+    found = []
+    for topic in sorted(TOPIC_CONCORDANCE):
+        if needle in topic or topic in needle:
+            found.append(topic)
+
+    # Aliases match on whole words, and the concordance keys above do not. The
+    # keys are long enough that a bare substring is safe; the aliases include
+    # "it", "ems" and "911", and a bare substring made "housing situation"
+    # resolve to technology because "it" sits inside "situation".
+    # Prefix rather than substring, so a half-typed word still offers the
+    # subject while "car" does not pull in childcare from the middle of it.
+    # Both directions, because the box is matched on every keystroke: the typed
+    # word is the shorter one while somebody is still typing it, and the longer
+    # one once they have finished and pluralised it.
+    words = re.findall(r"[a-z0-9]+", needle)
+    for alias, topics in sorted(TOPIC_ALIASES.items()):
+        hit = alias.startswith(needle) or all(
+            any(w.startswith(part) or (len(w) >= 3 and part.startswith(w))
+                for w in words)
+            for part in alias.split())
+        if not hit:
+            continue
+        for topic in topics:
+            if topic not in found:
+                found.append(topic)
+    return found
 
 # §11 attention thresholds. Triggers for attention, not verdicts.
 # The payload calls one field "population" for every government type, and it is

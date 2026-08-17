@@ -268,7 +268,7 @@ aside {
   font-size: 11px; color: var(--pf-muted);
   font-variant-numeric: tabular-nums slashed-zero; flex: 0 0 auto;
 }
-/* Oregon has a Fairview in two counties and four towns called some form of
+/* Oregon has a Fairview in two counties and four cities called some form of
    Union. The county rides quietly beside the name so the right row can be
    picked without opening it first. */
 .browse .row i {
@@ -292,6 +292,18 @@ aside {
   padding: 3px 9px; border-radius: 13px; line-height: 1.35;
 }
 .browse .tag:hover { border-color: var(--pf-s1); color: var(--pf-s1); }
+/* One fold below the lab. Everything in it is a legitimate way in and none of
+   it is the first move, which is exactly what a disclosure is for. */
+.fold { margin-top: 20px; border-top: 1px solid var(--edge); padding-top: 4px; }
+.fold summary {
+  cursor: pointer; list-style: none; padding: 8px 8px 6px; font-size: 11px;
+  font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
+  color: var(--pf-muted); display: flex; align-items: center; gap: 6px;
+}
+.fold summary::-webkit-details-marker { display: none; }
+.fold summary::before { content: '▸'; font-size: 9px; transition: transform .15s; }
+.fold[open] summary::before { transform: rotate(90deg); }
+.fold summary:hover { color: var(--pf-ink-2); }
 .browse .more {
   font: inherit; font-size: 12px; cursor: pointer; background: none; border: 0;
   color: var(--pf-s1); padding: 6px 10px;
@@ -385,18 +397,46 @@ main { display: flex; flex-direction: column; overflow: hidden; }
 .opener-slot[data-set="1"] {
   background: var(--pf-s1); color: var(--pf-panel); border-color: var(--pf-s1);
 }
-.opener-choices { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.opener-choices { margin-top: 14px; }
 .opener-choices:empty { margin: 0; }
+.opener-filter {
+  font: inherit; font-size: 14px; width: 100%; box-sizing: border-box;
+  padding: 9px 12px; border-radius: 8px; border: 1px solid var(--edge);
+  background: var(--pf-panel); color: var(--pf-ink);
+}
+.opener-filter:focus { outline: 2px solid var(--pf-s1); outline-offset: -1px; }
+.opener-group { margin-top: 14px; }
+.opener-group h4 {
+  margin: 0 0 7px; font-size: 10.5px; font-weight: 600; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--pf-muted);
+}
+.opener-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .opener-choice {
   font: inherit; font-size: 13px; cursor: pointer; padding: 5px 11px;
   border: 1px solid var(--edge); border-radius: 999px; background: var(--pf-panel);
-  color: var(--pf-ink);
+  color: var(--pf-ink); display: inline-flex; align-items: baseline; gap: 6px;
 }
 .opener-choice:hover { border-color: var(--pf-s1); color: var(--pf-s1); }
+.opener-choice i {
+  font-style: normal; font-size: 10.5px; color: var(--pf-muted);
+}
+/* How well the data stands in for the subject, on the chip. Colour carries the
+   same three steps the concordance uses and nothing finer, because the fourth
+   step would imply a precision the concordance does not have. Weak is muted
+   rather than red: a loose proxy is the honest answer for most issues here, not
+   a warning to steer around. */
+.fit { font-variant: small-caps; letter-spacing: .04em; }
+.fit.good { color: var(--pf-good); }
+.fit.moderate { color: var(--pf-ink-2); }
+.opener-hint {
+  margin: 12px 0 0; font-size: 12.5px; color: var(--pf-muted); line-height: 1.5;
+}
 .opener-note {
   margin: 12px 0 0; font-size: 12.5px; color: var(--pf-muted); line-height: 1.5;
 }
 .opener-note:empty { margin: 0; }
+.tag.on { background: var(--pf-s1); color: var(--pf-panel); border-color: var(--pf-s1); }
+#lab-layer { margin: 8px 0; }
 .opener-go {
   margin-top: 14px; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
   padding: 10px 20px; border-radius: 8px; border: 0;
@@ -642,40 +682,34 @@ tr:last-child td { border-bottom: 0; }
     <div class="thread" id="thread">
       <div class="inner" id="inner">
         <div class="welcome">
-          <h2>Who would have to act?</h2>
-          <p>Name the town you are working in and the subject you are working on. You
-          get the governments with a claim on it, what each reports in the nearest
-          category, and a plain account of what this data cannot say about your
-          subject &mdash; before any figure rather than after it.</p>
+          <h2>What can you measure here?</h2>
+          <p>Name a subject and a place. You get the Census categories that stand in
+          for the subject and how loosely they fit, the governments with a claim on
+          it, what each of them reports, and where the data gives out &mdash; before
+          any figure rather than after it.</p>
           <div class="opener">
-            <div class="opener-line">I am working in
-              <button class="opener-slot" id="opener-place">a town</button>
-              on
+            <div class="opener-line">I am working on
               <button class="opener-slot" id="opener-topic">a subject</button>
+              in
+              <button class="opener-slot" id="opener-place">a place</button>
             </div>
             <div class="opener-choices" id="opener-choices"></div>
             <p class="opener-note" id="opener-note"></p>
           </div>
           <div class="capabilities">
-            <div class="capability"><b>The subject first</b>
-              <span>This data records Census functional categories, not programmes.
-              Ask about homelessness and the first thing you get is which categories
-              stand in for it and how loosely &mdash; then the real figures, labelled
-              as what they are.</span></div>
-            <div class="capability"><b>Who is at the table</b>
-              <span>A typical Oregon address sits inside about ten governments and most
-              people can name two. Each one is listed with what established it, and the
-              bodies that do the work but have no boundary to place them are listed
-              separately rather than dropped.</span></div>
-            <div class="capability"><b>Safe to quote</b>
-              <span>Every condition figure carries its margin of error and a plain
-              verdict on whether it will hold weight. Estacada's poverty rate is 24%
-              give or take 17, and the table says so rather than leaving you to do
-              that division in front of a room.</span></div>
-            <div class="capability"><b>Questions, not just figures</b>
-              <span>Every brief ends with what to ask and who to ask it of, because the
-              gap between a category and a programme closes in a budget document this
-              data does not contain.</span></div>
+            <div class="capability"><b>Before you build a layer</b>
+              <span>Every subject carries how well the data stands in for it, and every
+              map is drawn only where enough of the extent reports the measure. A
+              refusal is the finding: fire protection draws at one county in thirty-six
+              because fire is district work, and that is worth knowing on day one.</span></div>
+            <div class="capability"><b>Three levels down</b>
+              <span>Service area to function and back out again, on one basis at every
+              level. Public safety, then police protection, then whether that function
+              is running costs or construction this year.</span></div>
+            <div class="capability"><b>Numbers you can hand to a client</b>
+              <span>Every figure states its own year, every survey estimate carries its
+              margin and a verdict on whether it will hold weight, and every chart
+              returns the table underneath it.</span></div>
           </div>
           <p id="welcome-mode"></p>
         </div>
@@ -692,6 +726,7 @@ tr:last-child td { border-bottom: 0; }
 </div>
 
 <script src="comparison.js"></script>
+<script src="subjects.js"></script>
 <script>
 const $ = (id) => document.getElementById(id);
 let entity = null, busy = false;
@@ -793,11 +828,30 @@ async function staticApi(path, body) {
     }
   }
 
-  /* Briefs are pre-rendered per town and subject, so the exported build opens
-     on the same question the served one does. Where a town has no stack
+  /* Briefs are pre-rendered per city and subject, so the exported build opens
+     on the same question the served one does. Where a city has no stack
      established, the file is absent and the reader is told which, rather than
      being handed an empty brief. */
   if (path === '/api/topics') return readJson('data/topics.json');
+
+  if (path === '/api/measures') return readJson('data/measures.json');
+
+  /* The lab is pre-rendered one measure at a time and once per layer for the
+     catalogue. Every pair of the same kind is far more combinations than a
+     static build should carry, so a pair asks for the server rather than
+     shipping a hundred files nobody opens. */
+  if (path === '/api/atlas') {
+    if (body.mode === 'catalogue') {
+      return readJson(`data/atlas/catalogue-${body.layer}.json`);
+    }
+    if ((body.measures || []).length === 1) {
+      return readJson(`data/atlas/${body.layer}-${body.measures[0]}.json`);
+    }
+    return { blocks: [{ kind: 'answer', text:
+      'Two panels side by side are assembled on request, so they need the '
+      + 'server. Every single measure is pre-rendered here, and so is the '
+      + 'catalogue of what this layer can show at all.' }], rules: [], trace: [] };
+  }
 
   if (path === '/api/brief') {
     try {
@@ -805,7 +859,7 @@ async function staticApi(path, body) {
     } catch (error) {
       return { blocks: [{ kind: 'answer', text:
         'No brief was pre-rendered for that place and subject. Briefs are built '
-        + 'for towns with an established stack of governments; run the server for '
+        + 'for cities with an established stack of governments; run the server for '
         + 'any place in the data.' }], trace: [] };
     }
   }
@@ -863,14 +917,22 @@ let MODE = {};
    One sentence with two blanks. The subject list comes from the server for the
    same reason the preset list does: a copy of a list in the page is a list that
    goes stale, and the concordance is edited in rules.py. */
-let TOPICS = null, openerPlace = null, openerTopic = null;
-/* A subject clicked before a place is remembered, so choosing the town
-   next completes the sentence instead of starting it again. */
-let pendingSubject = null;
+let TOPICS = null, TOPIC_INDEX = {}, openerPlace = null, openerTopic = null;
+/* How well the data stands in for a subject, straight off the concordance.
+   Shown on the chip rather than only in the answer, because "can this be
+   measured at all" is the first question in a prototyping session and a reader
+   should not have to click a subject to find out that it is a loose proxy. */
+const FIT_OF = (topic) => (TOPIC_INDEX.fit || {})[topic] || 'none';
+/* Whether the subject in the sentence is still waiting on a place. */
+let subjectUnspent = false;
+/* The map lab's state. Two picks maximum: §15.4 says two measures are two
+   panels, and a third is a wall of pictures nobody reads. */
+let MEASURES = {}, labPicked = [], labLayer = 'county';
 
 async function loadOpener() {
-  const info = await api('/api/topics');
-  TOPICS = info.topics || [];
+  TOPIC_INDEX = await api('/api/topics');
+  TOPICS = TOPIC_INDEX.topics || [];
+  MEASURES = await api('/api/measures');
   $('opener-place').onclick = () => openerPick('place');
   $('opener-topic').onclick = () => openerPick('topic');
   paintOpener();
@@ -879,62 +941,128 @@ async function loadOpener() {
 function paintOpener() {
   const place = $('opener-place'), topic = $('opener-topic');
   if (!place) return;
-  place.textContent = openerPlace ? openerPlace.name : 'a town';
+  place.textContent = openerPlace ? openerPlace.name : 'a place';
   place.dataset.set = openerPlace ? '1' : '0';
   topic.textContent = openerTopic || 'a subject';
   topic.dataset.set = openerTopic ? '1' : '0';
-  /* The honest scope of the sentence. A stack is established for a town, and
-     the boundary files reach 240 of them, so promising "any place" would be
-     promising something the next click cannot deliver. */
+  /* The honest scope of the sentence, and it is narrower than it looks. Oregon
+     has no legal category called a town: ORS makes every incorporated
+     municipality a city, which is why 227 of these 240 are filed as "CITY OF"
+     and the other 13 are charter names like Town of Lakeview rather than a
+     different kind of thing. Saying town also quietly wrote out everybody
+     living outside a city limit, who have a county and districts and no city
+     at all, so the note says that too. */
   const note = $('opener-note');
   if (note) {
     note.textContent = openerPlace && openerTopic ? ''
-      : `${(BROWSE?.places || []).length || 240} Oregon towns have a stack of `
-        + `governments established for them. Any of Oregon's 1,529 governments `
-        + `can be searched by name.`;
+      : `${(BROWSE?.places || []).length || 240} Oregon cities have a stack of `
+        + `governments established for them, and any of Oregon's 1,529 governments `
+        + `can be searched by name. An address outside every city limit is served `
+        + `by its county and districts, which this data does not record per address.`;
   }
 }
 
-/* Towns rather than all 1,529. The stack is established for a place, and asking
-   a fire district which governments serve it is the question answering itself. */
-function openerPlaces() {
-  return (BROWSE?.places || []).slice(0, 12);
+/* Type or click, and typing is the one that has to work. Seventeen subjects is
+   a short list only if the word you arrived with is one of the seventeen, and
+   nobody arrives with the concordance's vocabulary: the scope of work says
+   unsheltered, or broadband, or deferred maintenance. The filter runs through
+   the alias index, so those reach a subject instead of an empty pane. */
+let openerFilter = '';
+
+function paintOpenerChoices(which) {
+  const box = $('opener-choices');
+  const term = openerFilter.trim();
+
+  if (which === 'topic') {
+    const hits = term ? PFSubjects.resolve(term, TOPIC_INDEX) : null;
+    const groups = !hits ? (TOPIC_INDEX.groups || [])
+      : hits.length ? [{ name: 'matches', topics: hits }] : [];
+    box.innerHTML = `
+      <input class="opener-filter" id="opener-filter" type="search" autocomplete="off"
+             spellcheck="false" aria-label="Find a subject"
+             placeholder="unsheltered, broadband, deferred maintenance&hellip;">
+      ${groups.map((g) => `
+        <div class="opener-group">
+          <h4>${esc(g.name)}</h4>
+          <div class="opener-row">${g.topics.map((t) => `
+            <button class="opener-choice" data-topic="${esc(t)}">${esc(t)}<i
+              class="fit ${esc(FIT_OF(t))}">${esc(FIT_OF(t))}</i></button>`).join('')}
+          </div>
+        </div>`).join('')}
+      ${hits && !hits.length ? `<p class="opener-hint">No Census category stands in
+        for that, even loosely, so nothing here would measure it. Clear the box to
+        see the subjects that do have one behind them.</p>` : ''}`;
+  } else {
+    const needle = term.toLowerCase();
+    const all = (BROWSE?.places || []);
+    const hits = needle
+      ? all.filter((p) => p.name.toLowerCase().includes(needle)
+                       || p.county.toLowerCase().includes(needle)).slice(0, 24)
+      : all.slice(0, 12);
+    box.innerHTML = `
+      <input class="opener-filter" id="opener-filter" type="search" autocomplete="off"
+             spellcheck="false" aria-label="Find a place"
+             placeholder="a city, or the county it sits in&hellip;">
+      <div class="opener-row">${hits.map((p, i) => `
+        <button class="opener-choice" data-place="${i}">${esc(p.name)}<i
+          >${esc(p.county)}</i></button>`).join('')}
+      </div>
+      ${hits.length ? '' : `<p class="opener-hint">No city by that name has a stack
+        established. Any of Oregon's 1,529 governments can still be found by name in
+        the box on the left.</p>`}`;
+    box.querySelectorAll('[data-place]').forEach((node) => {
+      node.onclick = () => { openerPlace = hits[Number(node.dataset.place)];
+                             closeOpenerChoices(); };
+    });
+  }
+
+  box.querySelectorAll('[data-topic]').forEach((node) => {
+    node.onclick = () => { openerTopic = node.dataset.topic; subjectUnspent = true;
+                           closeOpenerChoices(); };
+  });
+
+  /* Redrawn on every keystroke, so the value is restored and the caret put back
+     at the end rather than losing the field on the second letter. */
+  const filter = $('opener-filter');
+  if (filter) {
+    filter.value = openerFilter;
+    filter.oninput = () => { openerFilter = filter.value; paintOpenerChoices(which);
+                             $('opener-filter').focus(); };
+    filter.focus();
+    if (openerFilter) filter.setSelectionRange(openerFilter.length, openerFilter.length);
+  }
+}
+
+/* Filling one slot opens the other, rather than closing back to the sentence
+   and waiting to be clicked again. The sentence needs both halves and the
+   reader knows it, so making them ask for the second one is a step that exists
+   only because the code was written a slot at a time. */
+function closeOpenerChoices() {
+  openerFilter = '';
+  paintOpener();
+  if (!openerTopic) return openerPick('topic');
+  if (!openerPlace) return openerPick('place');
+  $('opener-choices').innerHTML = '';
+  openerReady();
 }
 
 async function openerPick(which) {
-  const box = $('opener-choices');
   if (which === 'place' && !BROWSE) { BROWSE = await api('/api/browse'); }
-  const options = which === 'place'
-    ? openerPlaces().map((p) => ({ label: p.name, value: p }))
-    : (TOPICS || []).map((t) => ({ label: t, value: t }));
-  box.innerHTML = options.map((o, i) =>
-    `<button class="opener-choice" data-i="${i}">${esc(o.label)}</button>`).join('')
-    + (which === 'place'
-        ? '<button class="opener-choice" data-i="-1">search by name instead</button>'
-        : '');
-  box.querySelectorAll('.opener-choice').forEach((node) => {
-    node.onclick = () => {
-      const at = Number(node.dataset.i);
-      if (at < 0) { box.innerHTML = ''; $('q').focus(); return; }
-      if (which === 'place') openerPlace = options[at].value;
-      else openerTopic = options[at].value;
-      box.innerHTML = '';
-      paintOpener();
-      openerReady();
-    };
-  });
+  openerFilter = '';
+  paintOpenerChoices(which);
 }
 
 function openerReady() {
   const box = $('opener-choices');
   if (!openerPlace || !openerTopic) return;
-  box.innerHTML = `<button class="opener-go" id="opener-go">Who would have to act on `
+  box.innerHTML = `<button class="opener-go" id="opener-go">What can I measure about `
     + `${esc(openerTopic)} in ${esc(openerPlace.name)}?</button>`;
   $('opener-go').onclick = () => askBrief(openerPlace, openerTopic);
 }
 
 function askBrief(place, topic) {
-  ask(`Working in ${place.name} on ${topic}`,
+  subjectUnspent = false;
+  ask(`Working on ${topic} in ${place.name}`,
       { brief: { pid6: place.pid6, topic } });
 }
 
@@ -943,6 +1071,11 @@ function askBrief(place, topic) {
    while DOM focus stays in the input, so a reader can keep typing to refine
    without leaving the highlighted row. Moving focus into the list instead is
    what makes "type three letters, arrow twice, add" stop being one gesture. */
+/* The two selectors a measure can need. Public Safety is the one area almost
+   every general-purpose government reports, and Police Protection is the
+   function inside it that draws; a lab that opened on a refusing default would
+   look broken rather than careful. */
+const DEFAULT_AREA = 'Public Safety', DEFAULT_FUNCTION = 'Police Protection';
 const SERIES = ['s1', 's2', 's3', 's4'];
 const MAX_COMPARE = 4;
 let comparison = [], AREAS = null, matches = [], active = -1, armedChip = -1;
@@ -1035,11 +1168,17 @@ function drawResults(term) {
     <button class="preset" data-county="${esc(c.name)}" data-pid6="${esc(c.pid6)}">
       Which governments serve ${esc(c.name)}?</button>`).join('');
 
+  /* Live without a government chosen. A disabled row reading "pick a place
+     first" is a dead end at the exact moment somebody has told us what they are
+     working on: the subject is remembered and the place question is asked next,
+     which is the same two-step the opener runs. */
   const topicHits = topicsMatching(term);
   const subjects = topicHits.map((t) => `
-    <button class="preset" data-topic="${esc(t)}" ${entity ? '' : 'disabled'}>
-      ${entity ? `Working in ${esc(entityName())} on ${esc(t)}`
-               : `${esc(t)} · pick a place first`}</button>`).join('');
+    <button class="preset" data-topic="${esc(t)}">
+      ${entity ? `Working on ${esc(t)} in ${esc(entityName())}`
+               : `Working on ${esc(t)}`}<span
+        style="color:var(--pf-muted);font-size:11px"> · ${esc(FIT_OF(t))} fit${
+        entity ? '' : ' · then a place'}</span></button>`).join('');
 
   box.innerHTML = (subjects ? `<div class="rgroup">Subjects</div>${subjects}` : '')
     + (doings ? `<div class="rgroup">What they do</div>${doings}` : '')
@@ -1064,9 +1203,16 @@ function drawResults(term) {
     node.onclick = () => ask(node.dataset.label, { id: node.dataset.id });
   });
   box.querySelectorAll('[data-topic]').forEach((node) => {
-    if (node.disabled) return;
-    node.onclick = () => askBrief({ pid6: entity.pid6, name: entityName() },
-                                  node.dataset.topic);
+    node.onclick = async () => {
+      const subject = node.dataset.topic;
+      if (entity) return askBrief({ pid6: entity.pid6, name: entityName() }, subject);
+      openerTopic = subject;
+      subjectUnspent = true;
+      $('q').value = '';
+      matches = []; active = -1; drawResults('');
+      await openerPick('place');
+      $('inner').scrollIntoView({ block: 'start' });
+    };
   });
   box.querySelectorAll('[data-fn]').forEach((node) => {
     node.onclick = () => ask(`Who spends on ${node.dataset.fn}?`, { fn: node.dataset.fn });
@@ -1097,12 +1243,11 @@ function functionsMatching(term) {
 }
 
 /* A subject typed into the search box is a brief waiting for a place. Athena's
-   people arrive knowing the issue and the town, not the name of the fire
+   people arrive knowing the issue and the city, not the name of the fire
    district, and this is the row that turns "housing" into an answer. */
 function topicsMatching(term) {
-  if (!term || term.length < 3 || !TOPICS) return [];
-  const needle = term.toLowerCase();
-  return TOPICS.filter((t) => t.includes(needle) || needle.includes(t)).slice(0, 4);
+  if (!term || !TOPIC_INDEX.topics) return [];
+  return PFSubjects.resolve(term, TOPIC_INDEX).slice(0, 4);
 }
 
 function countiesMatching(term) {
@@ -1181,12 +1326,19 @@ function choose(match) {
   /* Selecting a government anywhere completes the opener sentence. Without
      this, "search by name instead" focused the search box and abandoned the
      sentence half-written, and a subject clicked before a place was never
-     consumed unless the place came from the town list. */
+     consumed unless the place came from the city list. */
   openerPlace = { pid6: match.pid6, name: match.common_name || match.legal_name };
   paintOpener();
-  if (pendingSubject) {
-    const subject = pendingSubject;
-    pendingSubject = null;
+  /* A subject named before a government was found completes here. Somebody who
+     typed "unhoused", picked the subject, then searched for the city has said
+     both halves of the sentence and should not have to press a third button.
+
+     Only once, though. The subject stays in the sentence after the brief is
+     answered, and firing on it again would mean every later search for a
+     government silently reopened a brief nobody asked for a second time. */
+  if (openerTopic && subjectUnspent) {
+    const subject = openerTopic;
+    subjectUnspent = false;
     setTimeout(() => askBrief(openerPlace, subject), 0);
   } else {
     openerReady();
@@ -1245,128 +1397,113 @@ async function loadPresets() {
    government types, and the 36 named things governments actually do. Somebody
    who wants fire protection cannot get there from a list of names, because the
    districts that provide it are precisely the ones nobody can name. */
-let BROWSE = null, placeFilter = '';
-let browseAll = { counties: false, functions: false, places: false };
+let BROWSE = null;
+let browseAll = { counties: false, functions: false, open: false };
 
 async function drawBrowse() {
   BROWSE ||= await api('/api/browse');
   const counties = browseAll.counties ? BROWSE.counties : BROWSE.counties.slice(0, 8);
   const functions = browseAll.functions ? BROWSE.functions : BROWSE.functions.slice(0, 12);
 
-  /* The town list has its own filter rather than sharing the search box above.
-     Typing "Bend" here means the town and everything with a claim on it; typing
-     it up there means the city government alone. Conflating the two is what
-     made a search box over 1,529 names the only way in. */
-  const term = placeFilter.trim().toLowerCase();
-  const hits = (BROWSE.places || []).filter(
-    (p) => !term || p.name.toLowerCase().includes(term) ||
-                    p.county.toLowerCase().includes(term));
-  const places = (browseAll.places || term) ? hits.slice(0, 60) : hits.slice(0, 8);
+  /* The rail carries the map lab and nothing else by default.
+     It used to carry eight headings: subjects, cities, functions, counties,
+     types, statewide questions, the lab, and the tray. Every one of them was a
+     way of naming a subject or a place, which is the same two things the box
+     above and the sentence in the middle already ask for, so the rail was a
+     directory of doors into a room the reader was already standing in.
 
+     What survives is the part that is not reachable any other way. Trying a
+     measure on a layer and being told what it can see is the prototyping
+     motion, and it is not a question about a government, so no search for a
+     name will ever produce it. The rest is still here, one fold down, because
+     browsing 36 counties is occasionally the right move and never the first
+     one. */
   $('presets').innerHTML = `
-    <div class="empty-hint">Start with what you are working on and where. Nobody
-    arrives able to name a rural fire district, and districts are <b>two thirds</b>
-    of Oregon's governments &mdash; but a typical address sits inside about
-    <b>ten</b> of them, and they are the ones who would have to act.</div>
+    <div class="empty-hint">Districts are <b>two thirds</b> of Oregon's
+    governments and nobody arrives able to name one, so start with the subject
+    and the place. A typical address sits inside about <b>ten</b> governments.</div>
     <div class="browse">
-      <h3>What you are working on</h3>
-      ${entity ? '' : `<p class="none">Pick a subject, then a town below. You get the
-        governments with a claim on it and what this data cannot say.</p>`}
-      <div class="tags">${(TOPICS || []).map((t) => `
-        <button class="tag" data-subject="${esc(t)}"
-                title="${entity ? 'Brief for ' + esc(entityName())
-                                : 'Pick this, then a town'}"
-                >${esc(t)}</button>`).join('')}
+      <h3>Map lab</h3>
+      <p class="none">Try a layer before committing to it. Pick one measure to draw
+      it, or two of the same kind to put them side by side. Every panel says how
+      much of the extent it can actually see.</p>
+      <select class="filter" id="lab-layer" aria-label="Boundary layer">
+        ${(MEASURES.layers || []).map((l) => `<option value="${esc(l)}"${
+          l === labLayer ? ' selected' : ''}>${esc(l.replace('_', ' '))}</option>`).join('')}
+      </select>
+      <div class="tags">${(MEASURES.measures || []).map((m) => `
+        <button class="tag${labPicked.includes(m.id) ? ' on' : ''}"
+                data-measure="${esc(m.id)}"
+                title="${esc(m.source || '')}${m.needs ? ' · needs a ' + m.needs.replace('_', ' ') : ''}"
+                >${esc(m.label)}${m.needs === 'service_area' ? ' ' + esc(DEFAULT_AREA)
+                  : m.needs === 'function' ? ' ' + esc(DEFAULT_FUNCTION) : ''}</button>`).join('')}
       </div>
+      <button class="more" data-lab="catalogue">What can this layer show at all?</button>
+      ${labPicked.length ? `<button class="more" data-lab="draw">Draw ${
+        labPicked.length === 2 ? 'both' : 'it'}</button>` : ''}
 
-      <h3>Where you live</h3>
-      <input class="filter" id="place-filter" type="search" placeholder="Your town"
-             autocomplete="off" spellcheck="false" aria-label="Filter towns">
-      ${places.map((p) => `
-        <button class="row" data-place="${esc(p.pid6)}" data-name="${esc(p.name)}">
-          <span>${esc(p.name)}<i>${esc(p.county)}</i></span>
-          <span class="n">${esc(p.governments)} governments</span>
-        </button>`).join('')}
-      ${hits.length > places.length
-        ? `<button class="more" data-more="places">Show all ${hits.length} towns</button>`
-        : (term && !hits.length
-            ? `<p class="none">No town by that name has a stack established. The
-               boundary files reach ${(BROWSE.places || []).length} of Oregon's towns.</p>`
-            : '')}
+      <details class="fold"${browseAll.open ? ' open' : ''} id="browse-fold">
+        <summary>Browse everything</summary>
 
-      <h3>What they do</h3>
-      <div class="tags">${functions.map((f) => `
-        <button class="tag" data-fn="${esc(f.name)}"
-                title="${esc(f.governments)} governments · ${esc(f.area)}">${esc(f.name)}</button>`).join('')}
-      </div>
-      ${BROWSE.functions.length > functions.length
-        ? `<button class="more" data-more="functions">Show all ${BROWSE.functions.length}</button>` : ''}
+        <h3>Across Oregon</h3>
+        ${(MODE.presets || []).filter((p) => (MODE.shared || []).includes(p.id)).map((p) => `
+          <button class="row" data-shared="${esc(p.id)}" data-label="${esc(p.label)}">
+            <span>${esc(p.label)}</span>
+          </button>`).join('')}
 
-      <h3>What is filed under a county</h3>
-      ${counties.map((c) => `
-        <button class="row" data-county="${esc(c.name)}" data-pid6="${esc(c.pid6)}">
-          <span>${esc(c.name)}</span><span class="n">${esc(c.governments)} governments</span>
-        </button>`).join('')}
-      ${BROWSE.counties.length > counties.length
-        ? `<button class="more" data-more="counties">Show all 36 counties</button>` : ''}
+        <h3>What they do</h3>
+        <div class="tags">${functions.map((f) => `
+          <button class="tag" data-fn="${esc(f.name)}"
+                  title="${esc(f.governments)} governments · ${esc(f.area)}">${esc(f.name)}</button>`).join('')}
+        </div>
+        ${BROWSE.functions.length > functions.length
+          ? `<button class="more" data-more="functions">Show all ${BROWSE.functions.length}</button>` : ''}
 
-      <h3>By type</h3>
-      ${BROWSE.types.map((t) => `
-        <button class="row" data-type="${esc(t.name)}">
-          <span>${esc(t.name)}</span><span class="n">${esc(t.count)}</span>
-        </button>`).join('')}
+        <h3>What is filed under a county</h3>
+        ${counties.map((c) => `
+          <button class="row" data-county="${esc(c.name)}" data-pid6="${esc(c.pid6)}">
+            <span>${esc(c.name)}</span><span class="n">${esc(c.governments)} governments</span>
+          </button>`).join('')}
+        ${BROWSE.counties.length > counties.length
+          ? `<button class="more" data-more="counties">Show all 36 counties</button>` : ''}
 
-      <h3>Across Oregon</h3>
-      ${(MODE.presets || []).filter((p) => (MODE.shared || []).includes(p.id)).map((p) => `
-        <button class="row" data-shared="${esc(p.id)}" data-label="${esc(p.label)}">
-          <span>${esc(p.label)}</span>
-        </button>`).join('')}
+        <h3>By type</h3>
+        ${BROWSE.types.map((t) => `
+          <button class="row" data-type="${esc(t.name)}">
+            <span>${esc(t.name)}</span><span class="n">${esc(t.count)}</span>
+          </button>`).join('')}
+      </details>
     </div>`;
 
-  /* Redrawn on every keystroke, so the value is restored and the caret put back
-     at the end rather than losing the field the moment the second letter lands. */
-  const filter = $('place-filter');
-  if (filter) {
-    filter.value = placeFilter;
-    filter.oninput = () => { placeFilter = filter.value; drawBrowse();
-                             $('place-filter').focus(); };
-    if (placeFilter) filter.setSelectionRange(placeFilter.length, placeFilter.length);
-  }
-  /* Picking a town both answers the question and selects the town, so the pane
-     turns into that government's questions. A door that answers once and leaves
-     the reader back at the doors is a dead end: the stack is the beginning of
-     the session, not the end of it. */
-  $('presets').querySelectorAll('[data-place]').forEach((node) => {
-    node.onclick = async () => {
-      if (pendingSubject) {
-        const subject = pendingSubject;
-        pendingSubject = null;
-        await askBrief({ pid6: node.dataset.place, name: node.dataset.name }, subject);
-      } else {
-        await ask(`Which governments serve ${node.dataset.name}?`,
-                  { id: 'serving', pid6: node.dataset.place });
-      }
-      const match = (ENTITIES || []).find((e) => e.pid6 === node.dataset.place)
-        || await api('/api/presets?pid6=' + node.dataset.place).then((r) => r.entity);
-      if (match) choose(match);
-    };
-  });
+  /* The fold's own state, so opening it and then clicking "show all 36
+     counties" does not redraw it shut underneath the click. */
+  const fold = $('browse-fold');
+  if (fold) fold.ontoggle = () => { browseAll.open = fold.open; };
   $('presets').querySelectorAll('[data-shared]').forEach((node) => {
     node.onclick = () => ask(node.dataset.label, { id: node.dataset.shared });
   });
-  /* A subject with a place already chosen is a brief. Without one it scrolls to
-     the town list rather than doing nothing, because a disabled chip that never
-     says why is the same as a broken one. */
-  $('presets').querySelectorAll('[data-subject]').forEach((node) => {
+  const layerPicker = $('lab-layer');
+  if (layerPicker) layerPicker.onchange = () => { labLayer = layerPicker.value; drawBrowse(); };
+  $('presets').querySelectorAll('[data-measure]').forEach((node) => {
     node.onclick = () => {
-      const subject = node.dataset.subject;
-      if (entity) {
-        askBrief({ pid6: entity.pid6, name: entityName() }, subject);
-      } else {
-        pendingSubject = subject;
-        $('place-filter')?.focus();
-        $('place-filter')?.scrollIntoView({ block: 'nearest' });
-      }
+      const id = node.dataset.measure;
+      if (labPicked.includes(id)) labPicked = labPicked.filter((m) => m !== id);
+      else labPicked = [...labPicked, id].slice(-2);
+      drawBrowse();
+    };
+  });
+  $('presets').querySelectorAll('[data-lab]').forEach((node) => {
+    node.onclick = () => {
+      const picked = (MEASURES.measures || []).filter((m) => labPicked.includes(m.id));
+      const needs = picked.find((m) => m.needs);
+      const payload = { layer: labLayer, mode: node.dataset.lab,
+                        measures: node.dataset.lab === 'catalogue' ? [] : labPicked,
+                        service_area: DEFAULT_AREA, function: DEFAULT_FUNCTION };
+      const label = node.dataset.lab === 'catalogue'
+        ? `What can the ${labLayer.replace('_', ' ')} layer show?`
+        : picked.map((m) => m.label + (m.needs === 'service_area' ? ' ' + DEFAULT_AREA
+            : m.needs === 'function' ? ' ' + DEFAULT_FUNCTION : '')).join(' and ');
+      ask(label, { atlas: payload });
     };
   });
   $('presets').querySelectorAll('[data-fn]').forEach((node) => {
@@ -1474,11 +1611,13 @@ async function ask(label, payload) {
 
   const result = payload.compare
     ? await api('/api/compare', payload.compare)
-    : payload.brief
+    : payload.atlas
+      ? await api('/api/atlas', payload.atlas)
+      : payload.brief
       ? await api('/api/brief', payload.brief)
       : payload.fn
       ? await api('/api/function', { name: payload.fn })
-      /* A door names its own subject. The browse panel asks about a town or a
+      /* A door names its own subject. The browse panel asks about a city or a
          county nobody has selected yet, and reading the selection instead sent
          an undefined pid6 — which is why picking a county out of the browse
          panel came back "that government is not in the data". The selection is
