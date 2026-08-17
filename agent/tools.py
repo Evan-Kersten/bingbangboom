@@ -25,7 +25,8 @@ import os
 import re
 import sqlite3
 
-from rules import (THRESHOLDS, TOPIC_CONCORDANCE, caveat, not_computable)
+from rules import (THRESHOLDS, TOPIC_CONCORDANCE, caveat, not_computable,
+                   resolve_topic)
 
 DEFAULT_DB = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "build", "pf.sqlite")
@@ -962,26 +963,42 @@ def get_offices(store, pid6):
 # ----------------------------------------------------------------- topics
 
 def map_topic_to_categories(store, topic):
-    """§12: name the gap, offer the proxy, say how loose the fit is."""
+    """§12: name the gap, offer the proxy, say how loose the fit is.
+
+    The typed word is resolved through the alias index rather than by looking
+    for a concordance key inside it. Nobody arrives with the concordance's
+    vocabulary: the scope of work says unsheltered, or broadband, or deferred
+    maintenance. A subject that fails to resolve never reaches the §12 gap
+    sentence at all, and an empty result reads as "this data has nothing" when
+    the truth is that it has a loose proxy and needs to say how loose.
+    """
     key = topic.strip().lower()
-    entry = next((v for k, v in TOPIC_CONCORDANCE.items() if k in key), None)
+    resolved = resolve_topic(key)
 
     caveats = [caveat("topic_gap"), caveat("topic_no_dollar_figure")]
-    if "homeless" in key:
+    if "homeless" in key or "homelessness" in resolved:
         caveats.append(caveat("dp03_cannot_measure_homelessness"))
 
-    if not entry:
+    if not resolved:
         return envelope(
             "map_topic_to_categories",
-            data={"topic": topic, "categories": [], "fit": "none",
+            data={"topic": topic, "matched": None, "also": [], "categories": [],
+                  "fit": "none",
                   "note": "No category in this data corresponds to that topic."},
             caveats=caveats,
             blocked=[not_computable("issue_level_spending")])
 
-    categories, fit, note = entry
+    # The rest are named rather than dropped. "fire" is structural and wildland,
+    # they sit on different categories with different fit, and picking one
+    # silently is the §14 ambiguity failure with the ambiguity hidden.
+    matched, also = resolved[0], resolved[1:]
+    categories, fit, note = TOPIC_CONCORDANCE[matched]
+    if also:
+        caveats.append(caveat("topic_reads_as_several"))
     return envelope(
         "map_topic_to_categories",
-        data={"topic": topic, "categories": categories, "fit": fit, "note": note},
+        data={"topic": topic, "matched": matched, "also": also,
+              "categories": categories, "fit": fit, "note": note},
         caveats=caveats,
         blocked=[not_computable("issue_level_spending")])
 

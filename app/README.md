@@ -47,6 +47,53 @@ New Bridge Water Supply District has no spending breakdown, so that question is
 not offered for it. An interface that promises an answer and then explains the
 absence has already wasted the click.
 
+## The front door is a subject and a place
+
+Everything starts from one sentence: *working on a subject in a place*. That is
+what somebody scoping a piece of work has, and it is not a government name.
+Two thirds of Oregon's governments are special districts and nobody arrives
+able to name one, so a search box over 1,529 names is a door only for people
+who already know the answer.
+
+**A typed subject resolves through an alias index.** The concordance is keyed by
+seventeen words. Scopes of work are written in different ones: unsheltered,
+broadband, deferred maintenance, behavioral health. `rules.TOPIC_ALIASES` maps
+those onto the seventeen, and `rules.resolve_topic` is the resolver.
+
+This is not a search convenience. §12 says an issue answer opens on the gap
+between the subject and the Census categories, and **a subject that fails to
+resolve never reaches that sentence** — the reader gets an empty pane, concludes
+this data has no view on their subject, and goes to a source that will hand them
+a number with no gap attached. A miss here routes around every refusal in the
+system, which is why the vocabulary is asserted in `test_tools.py` rather than
+left to whoever remembers to add a word.
+
+An alias may name more than one subject and both are offered. "fire" is
+structural and wildland; they land on different categories with different fit,
+and choosing one silently is the §14 ambiguity failure with the ambiguity
+hidden. The answer says which reading it took and what else the word could have
+meant.
+
+**Fit rides on the chip, before the click.** Every subject shows whether the
+data stands in for it well, moderately or weakly. "Can this be measured at all"
+is the first question in a prototyping session, and making somebody open a
+subject to discover it is a loose proxy wastes the move.
+
+**`subjects.js` is the second implementation** of `resolve_topic`, for the same
+reason `comparison.js` is the second implementation of the comparison: a
+pre-rendered build has no server, so the browser decides which brief a reader
+gets. `test_parity.py` drives both over every alias and fails on any
+disagreement. The vocabulary itself is not duplicated — it arrives from
+`/api/topics`, one definition in `rules.py`.
+
+**The rail carries the map lab and nothing else by default.** It used to carry
+eight headings, every one of them another way to name a subject or a place,
+which made it a directory of doors into a room the reader was already standing
+in. What survives is the part reachable no other way: trying a measure on a
+layer and being told what it can see is not a question about a government, so
+no search for a name will ever produce it. The rest is one fold down, because
+browsing 36 counties is occasionally the right move and never the first one.
+
 ## Keyboard
 
 `/` focuses search. `Enter` sends, `Shift+Enter` adds a line.
@@ -54,9 +101,16 @@ absence has already wasted the click.
 ## Testing
 
 ```
-python3 app/test_server.py    # 29 checks, no browser needed
+python3 app/test_server.py    # 179 checks, no browser needed
+python3 app/test_parity.py    # 461 checks, drives the browser code through node
 ```
 
-Calls the handlers directly. Asserts that presets return real figures, that
-refusals survive into the interface rather than being smoothed away, and that
-the gating actually withholds what it should.
+`test_server.py` calls the handlers directly. It asserts that presets return
+real figures, that refusals survive into the interface rather than being
+smoothed away, and that the gating actually withholds what it should.
+
+`test_parity.py` is the reason two implementations of anything are acceptable
+here. It runs Python and JavaScript over the same comparisons and the same
+typed subjects, and fails on any disagreement in refusal state, answer
+sentence, caveat codes, table rows, every SVG text node, or which subject a
+word resolves to.

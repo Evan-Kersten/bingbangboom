@@ -45,8 +45,8 @@ python3 app/export_static.py --out site --clean   # ~60s, ~385 MB
 The full suite, all of which must pass before a push:
 
 ```
-python3 agent/test_tools.py        # 263    python3 app/test_server.py    # 179
-python3 agent/test_orchestrator.py #  44    python3 app/test_parity.py    # 452
+python3 agent/test_tools.py        # 289    python3 app/test_server.py    # 179
+python3 agent/test_orchestrator.py #  44    python3 app/test_parity.py    # 461
 python3 agent/test_viz.py          #  88    python3 evals/run.py          #  22
 python3 agent/test_reports.py      #  53    python3 etl/verify.py         #  58
 python3 agent/test_blocks.py       #  45    python3 etl/test_project.py   #   6
@@ -69,19 +69,34 @@ These have each been broken at least once and cost real time to find.
 
 **Python and JavaScript must render identically.** `agent/` renders answers for
 the server; `app/comparison.js` re-renders comparisons in the browser so a
-reader can pick any set of governments without a round trip. `app/test_parity.py`
-runs both through node and compares refusal state, answer sentence, caveat
-codes, table rows and **every SVG text node**. Change one side, change the other.
+reader can pick any set of governments without a round trip, and
+`app/subjects.js` resolves a typed subject there because a pre-rendered build
+has no server to ask which brief to open. `app/test_parity.py` runs both through
+node and compares refusal state, answer sentence, caveat codes, table rows,
+**every SVG text node**, and which subject every alias resolves to. Change one
+side, change the other.
 
 **No API key may ever reach the static site.** The exported build is public.
 Free text needs a server; that is not a limitation to engineer around.
 
 **One definition per list.** The question list, the set of entity-independent
-answers and the availability manifest each have exactly one definition
-(`server.preset_shell()`, `server.ENTITY_INDEPENDENT`, `tools.availability()`)
-and are sent to the page at runtime. The page used to keep its own copy of the
-question list and it drifted: a question shipped and the exported interface
-never offered it. Do not reintroduce a second copy.
+answers, the availability manifest and the subject vocabulary each have exactly
+one definition (`server.preset_shell()`, `server.ENTITY_INDEPENDENT`,
+`tools.availability()`, `brief.topic_index()`) and are sent to the page at
+runtime. The page used to keep its own copy of the question list and it
+drifted: a question shipped and the exported interface never offered it. Do not
+reintroduce a second copy. `subjects.js` duplicates the matching *algorithm*,
+under a parity test, and never the vocabulary.
+
+**A subject that does not resolve routes around every refusal here.** The §12
+concordance is keyed by seventeen words and nobody arrives with them: a scope of
+work says unsheltered, or broadband, or deferred maintenance.
+`rules.TOPIC_ALIASES` maps those onto the seventeen and `rules.resolve_topic` is
+the only resolver. This is not search polish. An unresolved subject never
+reaches the §12 gap sentence, so the reader sees an empty pane, reads it as
+"this data has no view on my subject", and leaves for a source that will give
+them a number with no gap attached. Adding a subject to the concordance without
+adding the words people use for it is the same bug as not adding it at all.
 
 **A preset must never be offered without its data.** §15.1. The availability
 manifest gates them, and `blocks.next_questions` gates the follow-up chips

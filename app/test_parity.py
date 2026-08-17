@@ -113,6 +113,83 @@ def python_answer(store, request):
     }
 
 
+def resolve_in_node(index, terms):
+    """The browser's answer for each typed term."""
+    script = f"""
+const fs = require('fs');
+require({json.dumps(os.path.join(HERE, 'subjects.js'))});
+const index = JSON.parse(fs.readFileSync({json.dumps('INDEX')}, 'utf8'));
+const terms = JSON.parse(fs.readFileSync({json.dumps('TERMS')}, 'utf8'));
+process.stdout.write(JSON.stringify(terms.map((t) => PFSubjects.resolve(t, index))));
+"""
+    paths = []
+    for name, value in (("INDEX", index), ("TERMS", terms)):
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
+            json.dump(value, fh)
+            paths.append(fh.name)
+        script = script.replace(json.dumps(name), json.dumps(paths[-1]))
+    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as fh:
+        fh.write(script)
+        paths.append(fh.name)
+    try:
+        done = subprocess.run(["node", paths[-1]], capture_output=True, text=True)
+        if done.returncode:
+            raise RuntimeError(done.stderr.strip()[-800:])
+        return json.loads(done.stdout)
+    finally:
+        for path in paths:
+            os.unlink(path)
+
+
+def subject_parity():
+    """A typed subject must resolve to the same topics in both implementations.
+
+    In a pre-rendered build this is not a search nicety. The page has no server
+    to ask, so subjects.js decides which brief a reader gets, and a term that
+    resolves differently there sends them to the wrong subject or to none.
+    """
+    import brief as BR
+    import rules as R
+
+    print("\na typed subject resolves the same in both implementations")
+    index = BR.topic_index()
+
+    # Every alias and every topic, so a word added to the concordance is covered
+    # here the day it is added rather than whenever somebody remembers to.
+    terms = sorted(set(index["topics"]) | set(index["aliases"]))
+    # Plus the shapes that separate the passes: half-typed words, plurals, a
+    # subject inside a sentence, the short aliases that a substring match broke
+    # on, and terms that must resolve to nothing at all.
+    terms += ["pol", "wat", "unh", "beh", "tra", "hea", "car", "it", "ems", "911",
+              "encampments", "policing", "roads in Bend", "housing situation",
+              "wildfire risk in Bend", "light rai", "broadband access",
+              "Portland", "Multnomah", "xyzzy", "", "  ", "a", "zz",
+              "PUBLIC SAFETY", "  Public   Safety  ", "childcare"]
+
+    js = resolve_in_node(index, terms)
+    disagreed = [(term, R.resolve_topic(term), got)
+                 for term, got in zip(terms, js)
+                 if R.resolve_topic(term) != got]
+    check(f"all {len(terms)} terms resolve identically", not disagreed,
+          "" if not disagreed else
+          f"\n      {disagreed[0][0]!r} py={disagreed[0][1]} js={disagreed[0][2]}"
+          f"\n      and {len(disagreed) - 1} more")
+
+    # A subject that resolves to nothing is a reader who never reaches the §12
+    # gap sentence, so the vocabulary is asserted rather than assumed present.
+    for term, expected in (("police", "public safety"), ("unhoused", "homelessness"),
+                           ("broadband", "technology"), ("stormwater", "sewer"),
+                           ("roads", "transportation"), ("fentanyl", "opioid")):
+        got = R.resolve_topic(term)
+        check(f"{term!r} reaches {expected}", got and got[0] == expected, str(got))
+
+    check("'fire' names both readings rather than choosing one",
+          R.resolve_topic("fire") == ["public safety", "wildfire"],
+          str(R.resolve_topic("fire")))
+    check("a word in no concordance resolves to nothing",
+          R.resolve_topic("xyzzy") == [], str(R.resolve_topic("xyzzy")))
+
+
 def main():
     store = S.STORE
 
@@ -267,6 +344,8 @@ def main():
     check("Portland and Medford return Portland and Medford",
           names == {"Portland", "Medford"}, str(sorted(names)))
     check("and nobody else is in the table", len(names) == 2, str(sorted(names)))
+
+    subject_parity()
 
     print(f"\n{checks - len(failures)}/{checks} checks passed")
     if failures:

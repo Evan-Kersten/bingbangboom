@@ -1131,6 +1131,17 @@ def answer_brief(pid6, topic):
         opening = (f"This data records Census functional categories, not programmes, so "
                    f"there is no figure for {data['topic']} in it. The closest categories "
                    f"are {' and '.join(data['categories'])}. {data['fit_meaning']}")
+        # §14. A word that names more than one subject was resolved to one of
+        # them, and the reader has to be able to see that a choice was made and
+        # which way it went. "fire" is structural and wildland; they sit on
+        # different categories with different fit, and answering one silently
+        # is the ambiguity failure with the ambiguity hidden.
+        if data.get("matched") and data["matched"] != data["topic"]:
+            opening += f" Read as {data['matched']}."
+        if data.get("also"):
+            opening += (f" It could also have meant {' or '.join(data['also'])}, which "
+                        "this data files elsewhere; ask again by that name for those "
+                        "categories.")
     else:
         opening = (f"No category in this data corresponds to {data['topic']}, so nothing "
                    "here measures it. What follows is the stack of governments serving "
@@ -1197,10 +1208,12 @@ def answer_brief(pid6, topic):
              "measured over": where}
             for i in data["conditions"]]})
 
-    # The deliverable is usually a conversation, so the last table is the one a
-    # reader takes into the room.
+    # Every gap this data leaves closes in a document somebody else holds, so
+    # the last table is the list of documents to go and get. Named for the
+    # analysis it unblocks rather than for a meeting: this is the step between
+    # a scoping pass and real work, and the reader is at a desk.
     blocks.append({"kind": "table", "rows": [
-        {"take this into the room": q} for q in data["questions"]]})
+        {"what to ask for next": q} for q in data["questions"]]})
 
     blocks.append(B.limits([result]))
     blocks.append(B.next_questions(STORE, pid6))
@@ -1866,7 +1879,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             # list is: a second copy in the page drifts the moment a topic is
             # added to the concordance.
             import brief as BR
-            return self._json({"topics": BR.topics()})
+            return self._json(BR.topic_index())
 
         if parsed.path == "/api/browse":
             import browse_data

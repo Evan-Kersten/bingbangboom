@@ -22,7 +22,7 @@ shares four with 2023. Change between vintages is not period-over-period.
 And the estimates carry margins of error that are, at place level, frequently
 larger than the differences a map would invite a reader to see. For median
 household income the median margin is 22% of the estimate and one place in eight
-has a margin wider than half its value. A choropleth of 240 towns on that is
+has a margin wider than half its value. A choropleth of 240 cities on that is
 substantially a picture of sampling noise, so every figure here comes with its
 margin and a flag saying whether it can carry weight.
 """
@@ -70,7 +70,7 @@ DOLLAR_UNITS = {"dollars"}
 #     median household income 65%               poverty            13%
 #     uninsured                9%               unemployment        5%
 #
-# An unemployment map of Oregon's towns would colour twenty of four hundred and
+# An unemployment map of Oregon's cities would colour twenty of four hundred and
 # twenty and leave the rest grey, and a reader would read the twenty as the
 # pattern. Counties survive everything at 67% and up, so the refusal names them
 # as the grain that works rather than leaving the reader with nothing.

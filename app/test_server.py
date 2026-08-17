@@ -508,7 +508,7 @@ def main():
                                    for r in conditions[0]["rows"]),
           str(conditions[:1])[:160])
     asks = [b for b in brief["blocks"] if b["kind"] == "table"
-            and b["rows"] and "take this into the room" in b["rows"][0]]
+            and b["rows"] and "what to ask for next" in b["rows"][0]]
     check("and the brief ends with what to ask, not with a number", bool(asks))
 
     # §15.1: never offer a question whose data is absent. The subject list is

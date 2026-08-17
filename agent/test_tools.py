@@ -351,10 +351,17 @@ def main():
     # A topic the concordance does not cover is answered, not refused: §12 says
     # a bare refusal is less useful than a labelled approximation, and the stack
     # is still the honest half of the answer.
-    unknown = T.TOOLS["place_topic_brief"](store, estacada, "broadband")
+    #
+    # This was "broadband" until the alias index reached it, which is the
+    # correct outcome and not a reason to weaken the assertion: the case being
+    # tested is a word with genuinely nothing behind it, and the vocabulary
+    # gaining a word is exactly what should shrink that set over time.
+    unknown = T.TOOLS["place_topic_brief"](store, estacada, "immigration")
     check("an uncovered topic returns the gap and still names the governments",
           unknown["data"]["fit"] == "none" and not unknown["data"]["categories"]
           and unknown["data"]["stack"], str(unknown["data"]["fit"]))
+    check("and a word the alias index reaches is no longer uncovered",
+          T.map_topic_to_categories(store, "broadband")["data"]["fit"] != "none")
 
     # §4: conditions are not the government's record, and a figure whose margin
     # swamps it must not be quotable.
@@ -566,7 +573,7 @@ def main():
     check("with the withheld geographies named, not silently grey",
           "withheld_for_margin" in codes(good) or good["data"]["withheld"] == 0)
 
-    # 20 of 420 Oregon towns have an unemployment estimate tight enough to bin.
+    # 20 of 420 Oregon cities have an unemployment estimate tight enough to bin.
     thin = C.render_community_map(store, "DP03_0009P", geo_level="place")
     check("a place-level unemployment map is refused",
           thin["data"].get("svg") is None and "too_thin_to_map" in codes(thin))
@@ -845,6 +852,46 @@ def main():
     result = T.map_topic_to_categories(store, "unicycle licensing")
     check("an unmapped topic still refuses a figure",
           "issue_level_spending" in blocked_codes(result) and result["data"]["fit"] == "none")
+
+    # The words a scope of work is written in, against the words the
+    # concordance is keyed by. A subject that fails to resolve never reaches the
+    # §12 gap sentence at all: the reader gets nothing, reads it as "this data
+    # has no view on my subject", and goes somewhere that will hand them a
+    # number with no gap attached. That is the one failure mode that routes
+    # around every refusal in the system, so the vocabulary is asserted.
+    print("\nthe words somebody actually types reach a subject (§12)")
+    for typed, expected in (("unsheltered", "homelessness"),
+                            ("encampments", "homelessness"),
+                            ("police", "public safety"),
+                            ("law enforcement", "public safety"),
+                            ("roads", "transportation"),
+                            ("stormwater", "sewer"),
+                            ("broadband", "technology"),
+                            ("fentanyl", "opioid"),
+                            ("behavioral health", "mental health"),
+                            ("deferred maintenance", "infrastructure")):
+        result = T.map_topic_to_categories(store, typed)
+        check(f"{typed!r} is read as {expected}",
+              result["data"]["matched"] == expected, str(result["data"]["matched"]))
+        check(f"and {typed!r} still refuses a dollar figure for the subject",
+              "issue_level_spending" in blocked_codes(result))
+
+    # §14: a word naming two subjects is answered as one of them and says so.
+    result = T.map_topic_to_categories(store, "fire")
+    check("'fire' is answered as one reading", result["data"]["matched"] == "public safety")
+    check("and the other reading is named rather than dropped",
+          result["data"]["also"] == ["wildfire"], str(result["data"]["also"]))
+    check("and the answer is told to say which reading it took",
+          "topic_reads_as_several" in codes(result))
+    check("a word with one reading carries no such caveat",
+          "topic_reads_as_several" not in codes(
+              T.map_topic_to_categories(store, "police")))
+
+    # The concordance key itself must keep winning outright. Without the exact
+    # pass running first, "water" picks up wastewater from the alias list and
+    # drinking water is offered the sewer concordance.
+    check("an exact subject beats every alias",
+          T.map_topic_to_categories(store, "water")["data"]["matched"] == "water")
 
     print("\ncompare_entities (§12)")
     result = T.compare_entities(store, [portland, baker_county])
