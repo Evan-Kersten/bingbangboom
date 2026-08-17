@@ -83,6 +83,14 @@ CAVEATS = {
         "largest, with a mean population around 24,000 against 4,100 for 2022. A "
         "statewide picture wants a census year. A current picture of big governments "
         "wants the latest year and must say it is not the whole state."),
+    "peer_pool_mixed_vintage": (
+        "8",
+        "The entity's figure carries its own year, but the peer statistic it is compared "
+        "against does not have one: the pool is built from whichever year each peer last "
+        "reported, so a median can blend two or three vintages. Say the entity's year and "
+        "say the pool spans several. The comparison is still worth making, because the "
+        "alternative is discarding most of the pool, but it is a comparison against what "
+        "peers most recently reported rather than against a single moment."),
     "workforce_partial": (
         "8",
         "Only top employment functions are listed. A function not listed is not necessarily "

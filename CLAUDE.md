@@ -45,7 +45,7 @@ python3 app/export_static.py --out site --clean   # ~60s, ~385 MB
 The full suite, all of which must pass before a push:
 
 ```
-python3 agent/test_tools.py        # 258    python3 app/test_server.py    # 179
+python3 agent/test_tools.py        # 263    python3 app/test_server.py    # 179
 python3 agent/test_orchestrator.py #  44    python3 app/test_parity.py    # 452
 python3 agent/test_viz.py          #  88    python3 evals/run.py          #  22
 python3 agent/test_reports.py      #  53    python3 etl/verify.py         #  58
@@ -142,6 +142,20 @@ refusal is by measure kind rather than by a warning, because a warning is advice
 `atlas.catalogue` is the artifact a discovery phase actually wants: every measure
 on a layer with its verdict and its coverage, so a decision to build a layer is
 made against measurement rather than against whichever example the demo used.
+
+**Each entity is shown at its own latest year, and the year rides on the row.**
+Every single-year table already holds exactly one year per entity, whichever the
+source last reported, so this is the data's shape rather than a choice the ETL
+makes. Portland's spending is 2023 and its workforce 2024, and both appear in
+one answer. A comparison across entities is therefore a comparison across years,
+which is acceptable because each figure states its own.
+
+Disclosing the entity's year is necessary and not sufficient. **The peer median
+beside it has no single year**: the pool is whichever year each peer last
+reported, so a median blends two or three vintages. `peer_pool_mixed_vintage`
+says so wherever a peer statistic is placed next to an entity figure. Discarding
+the pool to get one vintage would throw away most of it, so the comparison
+stands and is labelled for what it is.
 
 **The one join between money and people.** Finance is filed by financial
 function and workforce by employment function, and `function_bridge` is the only

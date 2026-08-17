@@ -1398,7 +1398,8 @@ def answer_preset(preset_id, pid6=None, county=None):
                 f"{fmt.count(lead['peer_n'])} peers, which is "
                 f"{abs(lead['gap']):.0f} points {direction}.")})
             blocks.append({"kind": "table", "rows": [
-                {"service area": a["label"], "share here": fmt.percent(a["share"]),
+                {"service area": a["label"], "year": a.get("year") or "not stated",
+                 "share here": fmt.percent(a["share"]),
                  "peer median": fmt.percent(a["peer_median_share"]),
                  "gap": _gap(a["gap"]), "amount": fmt.money(a["value"])}
                 for a in rated]})
@@ -1526,6 +1527,7 @@ def answer_preset(preset_id, pid6=None, county=None):
             add(staff)
             blocks.append({"kind": "table", "rows": [
                 {"job": r["role"] or r["function_name"],
+                 "year": r.get("year") or "not stated",
                  "staff": fmt.count(r["headcount"]),
                  "share of payroll": fmt.percent(r["pct_of_total"]),
                  f"{data_units(staff)} per staff member": _ratio(r["per_staff"]) or "no denominator",

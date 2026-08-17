@@ -202,6 +202,33 @@ def main():
         check(f"{name.title()} is drawn as its own boundary",
               drawn["basis"] == "own_boundary" and drawn["svg"], str(drawn["basis"]))
 
+    print("\nevery entity is shown at its own latest year, and says which (§8)")
+    # The policy for this product: show each government at whichever year it last
+    # reported rather than holding everything back to a common one, and disclose
+    # the year on the figure. Portland's spending is 2023 and its workforce 2024,
+    # and both appear in one answer.
+    import explore as _explore
+    breakdown = _explore.drill(store, portland)
+    areas = breakdown["data"]["areas"]
+    check("a service-area row carries the year it was reported",
+          all(a.get("year") for a in areas), str(areas[:1]))
+    staff = _explore.staffing(store, portland)
+    check("and a workforce row carries its own, which is often a different year",
+          all(f.get("year") for f in staff["data"]["functions"]),
+          str(staff["data"]["functions"][:1]))
+    check("the two really can differ for one government",
+          areas[0]["year"] != staff["data"]["functions"][0]["year"],
+          f"{areas[0]['year']} vs {staff['data']['functions'][0]['year']}")
+
+    # Disclosing the entity's year is necessary and not sufficient. The peer
+    # median it is compared against has no single year at all: the pool is
+    # whichever year each peer last reported.
+    check("and the peer pool says it blends vintages",
+          "peer_pool_mixed_vintage" in codes(breakdown))
+    pool_years = {r["year"] for r in store.rows(
+        "SELECT DISTINCT year FROM spending_by_service_area")}
+    check("which it does, in this build", len(pool_years) > 1, str(sorted(pool_years)))
+
     print("\nmoney against people, across the one crosswalk between them (§8)")
     fire = T.TOOLS["cost_per_head"](store, portland, "Fire Protection")
     data = fire["data"]

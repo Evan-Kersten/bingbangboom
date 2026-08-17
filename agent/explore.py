@@ -308,6 +308,11 @@ def drill(store, pid6, service_area=None, function_name=None):
         stats = peer_stats(store, gov_type, "service_area_share", area["service_area"])
         rows.append({
             "label": area["service_area"],
+            # The entity's own year. Every government is shown at whichever year
+            # it last reported, so two entities in one answer can be two years
+            # apart and the year has to ride on the row rather than sit in a
+            # header that only describes the first one.
+            "year": area["year"],
             "value": area["total"],
             "share": area["percentage"],
             "peer_median_share": stats["median"] if stats else None,
@@ -316,6 +321,13 @@ def drill(store, pid6, service_area=None, function_name=None):
             "expandable": area["service_area"] in has_functions,
         })
 
+    # Every row above carries its own year. The peer median beside it does not
+    # have one: the pool is whichever year each peer last reported, so it can
+    # blend two or three vintages. Disclosing the entity's year is necessary and
+    # is not sufficient, because the number it is being compared against is the
+    # one that has no single year.
+    if any(r["peer_median_share"] is not None for r in rows):
+        caveats.append(caveat("peer_pool_mixed_vintage"))
     if flags.get("other_share_high"):
         caveats.append(caveat("other_share_high"))
     if gov_type in T.SINGLE_CATEGORY_TYPES:
@@ -1055,9 +1067,9 @@ def staffing(store, pid6):
 
     profile = store.row("SELECT * FROM workforce_profile WHERE pid6=?", pid6)
     functions = store.rows(
-        "SELECT function_name, headcount, headcount_yoy, average_wage, pct_of_total, "
-        "total_payroll FROM workforce_top_functions WHERE pid6=? AND headcount > 0 "
-        "ORDER BY headcount DESC", pid6)
+        "SELECT function_name, year, headcount, headcount_yoy, average_wage, "
+        "pct_of_total, total_payroll FROM workforce_top_functions "
+        "WHERE pid6=? AND headcount > 0 ORDER BY headcount DESC", pid6)
 
     if not profile or not functions:
         return T.envelope("staffing", entity=entity, caveats=[{
