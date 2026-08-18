@@ -1,9 +1,15 @@
 name: Build and deploy the interface
 
 # Builds the store, pre-renders every answer, and publishes the result to
-# GitHub Pages. The rendered site is roughly 256 MB across 27,000 files, so it
+# GitHub Pages. The rendered site is roughly 405 MB across 30,000 files, so it
 # is uploaded straight to Pages as an artifact and never committed: keeping it
 # out of git is what stops the repository growing by that much on every push.
+#
+# Most of that is drawings. The county map a brief opens on is written once and
+# referenced rather than embedded in each of the 4,080 briefs, which is the
+# difference between 405 MB and 649 MB; if this number starts climbing again,
+# look for a picture that is identical across many answers and inlined in all
+# of them. Pages will serve a site up to 1 GB, so there is room and not a lot.
 #
 # Nothing here needs installing. The whole pipeline is the Python standard
 # library, so the only setup step is having Python at all.
@@ -72,6 +78,7 @@ jobs:
           python3 agent/test_blocks.py
           python3 app/test_server.py
           python3 app/test_parity.py
+          python3 app/test_tables.py
           python3 evals/run.py --route
 
       - name: Pre-render the interface

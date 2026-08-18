@@ -172,7 +172,8 @@ def main():
     check("an unwritten report renders its purposes, not blank sections",
           html.count("To write here") == len(plan["data"]["sections"]))
     check("charts are embedded", "<svg" in html)
-    check("bound rules are rendered", "rules bound to this section" in html)
+    check("what a section cannot tell you is rendered",
+          "What this cannot tell you" in html)
 
     written = R.render_report(plan, prose={"scope": "The data covers inputs, not results."})
     check("supplied prose replaces the purpose for that section",

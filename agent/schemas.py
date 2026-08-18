@@ -667,6 +667,40 @@ SCHEMAS = [
         },
     },
     {
+        "name": "render_point_map",
+        "description": "Draw governments as pins over the county outlines, one pin per "
+                       "office, sized by the measure. Use this where a boundary map "
+                       "refuses or where the governments doing the work are special "
+                       "districts: 1,029 of Oregon's 1,529 governments have no boundary "
+                       "anywhere in this data, so every choropleth here omits two thirds "
+                       "of them, and fire protection draws at one county in thirty-six "
+                       "for exactly that reason while drawing at 300 governments here. "
+                       "A pin is the city on the government's mailing address. It is "
+                       "where the office is and never the ground served: a rural fire "
+                       "district filed at a Eugene address covers land outside Eugene "
+                       "entirely. Never describe a pin as coverage, a catchment or a "
+                       "service area, and never read pin density as service density. "
+                       + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "metric": {"type": "string",
+                           "description": "A map metric, service-area metric or function "
+                                          "metric, as returned by atlas_measures."},
+                "gov_type": {"type": "string",
+                             "description": "Optional: County, Municipal, School District "
+                                            "or Special District. Omit for all of them."},
+                "county": {"type": "string",
+                           "description": "Optional county to scope and frame to."},
+                "service_area": {"type": "string",
+                                 "description": "Required by a service-area metric."},
+                "function": {"type": "string",
+                             "description": "Required by a function metric."},
+            },
+            "required": ["metric"],
+        },
+    },
+    {
         "name": "render_function_map",
         "description": "Map one named function on the boundary layer that holds most of "
                        "the work, which is the right level below a service-area map. Police "

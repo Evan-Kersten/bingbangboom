@@ -87,6 +87,13 @@ MARKS = {
     "match_confidence": ("\u2020", "rests on a match below the high-confidence threshold"),
     "partial_breakdown": ("\u2021", "a share of a partial breakdown"),
     "basis_dependent": ("\u00a7", "a different basis would reorder this"),
+    # \u00a715.3 puts an uncertainty on the number rather than in a column beside it.
+    # This replaced a "safe to quote" column reading yes six times: a derived
+    # verdict, in its own column, restating a margin already printed one cell to
+    # the left. The mark says the same thing where the reader is looking and
+    # gives the space back to something that is not already on the row.
+    "wide_margin": ("\u00b1", "the margin is wide enough that this figure "
+                              "cannot be ranked or quoted on its own"),
 }
 
 

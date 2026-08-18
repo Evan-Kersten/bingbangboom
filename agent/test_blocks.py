@@ -48,8 +48,8 @@ def main():
               order.index("answer") < min(
                   [order.index(k) for k in ("figure", "chart", "map", "table")
                    if k in order] or [99]), str(order))
-        check(f"{question_type} ends with limits then next",
-              order[-2:] == ["limits", "next"], str(order))
+        check(f"{question_type} ends with notes then next",
+              order[-2:] == ["notes", "next"], str(order))
 
     print("\ncompose orders and drops")
     entity = T._entity(store, baker)
@@ -93,7 +93,7 @@ def main():
           B.validate("financial_interpretation", [
               {"kind": "interpretation"}, {"kind": "answer"},
               {"kind": "figure", "value": "$2.0B", "legend": []},
-              {"kind": "chart"}, {"kind": "limits"}, {"kind": "next"}]) == [])
+              {"kind": "chart"}, {"kind": "notes"}, {"kind": "next"}]) == [])
 
     print("\n§15.3 marks")
     marked = B.figure("Spending", fmt.money(2_040_000_000), marks={"partial_breakdown"})

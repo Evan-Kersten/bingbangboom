@@ -35,7 +35,7 @@ No dependencies. Standard library only, so there is nothing to install.
 
 ```
 python3 etl/build.py          # ~20s, writes build/ from the files in the root
-python3 etl/verify.py         # 58 assertions about the built store
+python3 etl/verify.py         # 63 assertions about the built store
 python3 app/server.py         # http://localhost:8000
 python3 app/export_static.py --out site --clean   # ~60s, ~385 MB
 ```
@@ -45,14 +45,15 @@ python3 app/export_static.py --out site --clean   # ~60s, ~385 MB
 The full suite, all of which must pass before a push:
 
 ```
-python3 agent/test_tools.py        # 289    python3 app/test_server.py    # 179
+python3 agent/test_tools.py        # 300    python3 app/test_server.py    # 184
 python3 agent/test_orchestrator.py #  44    python3 app/test_parity.py    # 461
-python3 agent/test_viz.py          #  88    python3 evals/run.py          #  22
-python3 agent/test_reports.py      #  53    python3 etl/verify.py         #  58
+python3 agent/test_viz.py          #  88    python3 app/test_tables.py    #  28
+python3 agent/test_reports.py      #  53    python3 etl/verify.py         #  63
 python3 agent/test_blocks.py       #  45    python3 etl/test_project.py   #   6
+                                            python3 evals/run.py          #  22
 ```
 
-CI runs exactly these ten. `evals/run.py --route` is the CI form: without a
+CI runs exactly these eleven. `evals/run.py --route` is the CI form: without a
 model it checks that each trap question routes to the right tools, which is
 what can be asserted deterministically. The answer assertions need `--model`
 and an API key, and they are what tell you whether a caveat that reached the
@@ -102,6 +103,40 @@ adding the words people use for it is the same bug as not adding it at all.
 manifest gates them, and `blocks.next_questions` gates the follow-up chips
 against the same dict.
 
+**Most rules are written for the writer, not the reader.** The catalogue in
+`rules.py` is imperative because a model is being told what to do: name the
+driver before the label, decline the distance calculation, never divide one row
+by one row. Rendering all of them is what produced a disclosure headed "11 rules
+bind this answer" in which the two that would have changed a conclusion were
+buried among nine that could not.
+
+`rules.READER_NOTES` is the subset that reaches a reader: the ones that are a
+*fact about the data* and change what somebody concludes or does next, phrased
+declaratively. `blocks.notes` renders those, capped, minus any the answer
+already states in prose. Everything else still reaches the model in full and
+still travels on the response under `rules`, because separating "the caveat
+never reached the answer" from "the caveat reached it and the answer broke the
+rule anyway" needs the whole record. A code absent from `READER_NOTES` is
+model-only, which is the safe default for the hundred-odd codes tools raise
+inline.
+
+**A column that says the same thing in every row is a sentence.** `app/tables.js`
+draws every table block in the thread and lifts a constant column into a line
+above the table. Nine governments each carrying "nothing, which usually means
+another government holds this here" is one fact rendered nine times, and it
+buries the two rows that do carry a figure. The lift is measured and stops the
+moment one row differs, so a value is moved and never dropped, and the last
+column standing is always kept.
+
+**It takes two rows to be constant.** One row is a record, and every column of
+it is trivially the same in every row. Lifting on that turned Estacada's single
+silent government into a caption holding most of the record above a table
+holding the rest, so `layout` returns early below two rows. Places with one
+silent body are common, not an edge case.
+
+`agent/reports.py` deliberately does not use these rules: the full report is a
+document with its own stylesheet, and this is interface behaviour.
+
 **Absence is not zero.** §9. An entity reporting nothing in a category is
 usually evidence that another government holds that responsibility. A blank must
 never render as `$0`, and a reported zero must be said to be a reported zero.
@@ -140,6 +175,32 @@ The three refusals are ranked and the order matters. Mostly-absence beats a thin
 extent beats needing a county, because the weakest reason reads as the most
 fixable, and fire protection reported as "scope it to a county" sends a reader
 to a map that will be just as empty for a reason nobody stated.
+
+**Two thirds of Oregon's governments have no boundary, so they get a pin.**
+1,029 of the 1,529 are special districts and fewer than twenty carry a polygon
+anywhere in this data, which means every choropleth here silently omits most of
+the state's governments. `entity_point` places 1,388 of them by matching the
+city on the government's mailing address to a place polygon and taking its
+centroid: no geocoder, no network, and 91% coverage. `maps.points` draws them
+over the county outlines, sized by quantile because the values span six orders
+of magnitude and any scale continuous in the value puts nine hundred at the
+floor.
+
+This is what the boundary layers structurally cannot do. Fire protection draws
+at **one county in thirty-six** and at **300 governments** as pins, because the
+districts doing the work are exactly the ones with no polygon.
+
+**A pin is an office and never a service area.** It is where the mail goes. A
+rural fire district filed at a Eugene address covers ground outside Eugene
+entirely, and a district serving three counties has one pin. `pin_is_an_office`
+travels on every drawing of these rows, is in `READER_NOTES`, and is written
+into the frame beneath the map, because a dot on a map reads as the location of
+the thing and no caveat elsewhere undoes that.
+
+`_base_markup` caches the state's paths per frame. A county-scoped point map
+projects the same 36 counties through a different transform, so the cache key
+gained the projection identity; without it the second caller got the first
+caller's paths at the wrong scale.
 
 **A layer is vetted before it is committed to.** `agent/atlas.py` is the
 prototyping surface: every mappable measure in one registry, each drawn only

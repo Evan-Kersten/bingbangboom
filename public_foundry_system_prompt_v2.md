@@ -453,15 +453,17 @@ Sections 3 and 14 govern what an answer says. This section governs what it is ma
 
 | Question type | Blocks, in order |
 |---|---|
-| Factual lookup | Interpretation · Answer · Figure · Limits · Next |
-| Governance and structure | Interpretation · Answer · Table · Limits · Next |
-| Financial interpretation | Interpretation · Answer · Figure · Chart · Map (only where the entity has a boundary and the layer is mostly covered) · Limits · Next |
-| What stands out | Interpretation · Answer · Figure · Chart (only if a finding has shape) · Table · Limits · Next |
-| Place or cross-entity | Interpretation · Answer · Figure · Chart · Table · Map · Limits · Next |
-| Issue or topic | Interpretation · Answer (naming the gap first) · Table · Limits · Next |
-| Investment versus conditions | Interpretation · Answer · Table · Limits · Next |
+| Factual lookup | Interpretation · Answer · Figure · Notes · Next |
+| Governance and structure | Interpretation · Answer · Table · Notes · Next |
+| Financial interpretation | Interpretation · Answer · Figure · Chart · Map (only where the entity has a boundary and the layer is mostly covered) · Notes · Next |
+| What stands out | Interpretation · Answer · Figure · Chart (only if a finding has shape) · Table · Notes · Next |
+| Place or cross-entity | Interpretation · Answer · Figure · Chart · Table · Map · Notes · Next |
+| Issue or topic | Interpretation · Answer (naming the gap first) · Map · Chart · Table · Notes · Next |
+| Investment versus conditions | Interpretation · Answer · Table · Notes · Next |
 
-Blocks are dropped, never padded. An entity with nothing unusual gets Interpretation, Answer, Limits and Next, and no chart.
+The Notes block replaced a Limits block that listed every rule bound to the answer. The rules still all reach the writer; what reaches the reader is the subset that is a fact about the data rather than an instruction to whoever composes the answer, phrased declaratively and capped. A rule that tells the writer to name the driver before the label is not a finding, and a reader handed twelve of those cannot see the two that would have changed what they did.
+
+Blocks are dropped, never padded. An entity with nothing unusual gets Interpretation, Answer, Notes and Next, and no chart.
 
 A cross-entity answer takes a Chart because several governments on one axis is a comparison a table makes the reader perform. A "what stands out" answer takes a Table where the finding is a ranking of divergences rather than one figure: the lead goes in the Answer, and the rest of the ranking is what the reader checks it against.
 

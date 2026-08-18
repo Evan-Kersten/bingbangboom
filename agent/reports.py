@@ -19,7 +19,8 @@ with nothing to say is dropped rather than padded.
 import format as fmt
 import tools as T
 import viz
-from rules import caveat, denominator, not_computable, per_unit_label
+from rules import (caveat, denominator, not_computable, per_unit_label,
+                   reader_note)
 
 # §10: absolute spending ranks by entity size and answers nothing. Each basis
 # produces a different and defensible ordering, so the basis is stated, never
@@ -637,17 +638,28 @@ def render_report(plan, prose=None):
                     f"<td>{viz.esc(row.get(c, ''))}</td>" for c in columns) + "</tr>")
             parts.append("</tbody></table>")
 
-        constraints = section.get("caveats", []) + section.get("not_computable", [])
-        if constraints:
-            parts.append('<details class="rules"><summary>'
-                         f'{len(constraints)} rules bound to this section</summary><ul>')
-            for rule in section.get("caveats", []):
-                parts.append(f'<li><code>{viz.esc(rule["rule"])}</code> '
-                             f'{viz.esc(rule["guidance"])}</li>')
-            for rule in section.get("not_computable", []):
-                parts.append(f'<li class="never"><code>{viz.esc(rule["rule"])}</code> '
-                             f'Never: {viz.esc(rule["reason"])}</li>')
-            parts.append("</ul></details>")
+        # What this section cannot tell the reader, in the reader's words.
+        #
+        # This was "N rules bound to this section", listing every caveat and
+        # prohibition the tools attached. Most of those are instructions to
+        # whoever writes the section rather than facts for whoever reads it, and
+        # a document that repeats twelve of them under every heading buries the
+        # two that would have changed a conclusion. The rules still all reach
+        # the writer through the same envelope; rules.READER_NOTES is the subset
+        # that survives into the document.
+        seen, shown = set(), []
+        for rule in (section.get("caveats", []) + section.get("not_computable", [])):
+            if rule["code"] in seen:
+                continue
+            seen.add(rule["code"])
+            text = reader_note(rule["code"])
+            if text:
+                shown.append(text)
+        if shown:
+            parts.append('<aside class="notes"><h3>What this cannot tell you</h3><ul>')
+            for text in shown[:4]:
+                parts.append(f'<li>{viz.esc(text)}</li>')
+            parts.append("</ul></aside>")
 
         parts.append("</section>")
 
@@ -687,9 +699,16 @@ REPORT_CSS = """
   padding: 6px 12px 6px 0; border-bottom: 1px solid var(--pf-grid, #e1e0d9);
   font-variant-numeric: tabular-nums;
 }
-.pf-report .rules { font-size: 12.5px; color: var(--pf-ink-2, #52514e); }
-.pf-report .rules summary { cursor: pointer; color: var(--pf-muted, #898781); font-size: 12px; }
-.pf-report .rules ul { margin: 10px 0 0; padding-left: 18px; display: flex; flex-direction: column; gap: 7px; }
+.pf-report .notes {
+  border-left: 2px solid var(--pf-axis, #d6d3cd); padding-left: 16px;
+  font-size: 12.5px; color: var(--pf-ink-2, #52514e);
+}
+.pf-report .notes h3 {
+  margin: 0 0 8px; font-size: 10.5px; font-weight: 600; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--pf-muted, #898781);
+}
+.pf-report .notes ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.pf-report .notes li { line-height: 1.55; }
 .pf-report .rules code {
   font-size: 11px; padding: 1px 5px; border-radius: 3px;
   background: var(--pf-track, #e6e5df); margin-right: 6px;

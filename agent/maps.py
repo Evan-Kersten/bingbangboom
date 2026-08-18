@@ -408,13 +408,30 @@ BASE_TOLERANCE = 6.0
 _BASE_MARKUP = {}
 
 
-def _base_markup(base, project, width, height, dim_base):
+def _base_markup(base, project, width, height, dim_base, cache_key=None):
     """The state behind a locator, rendered once and reused.
 
     Identical on every one of these and 35 KB of path data each time. Cached on
-    the frame it was drawn for, which is the only thing that varies.
+    the frame it was drawn for, which used to be the only thing that varied.
+
+    It is not any more. A point map framed to one county projects the same 36
+    counties through a completely different transform, and the old key —
+    width, height, dimness, count — could not tell those two apart, so the
+    second caller got the first caller's paths at the wrong scale. `cache_key`
+    is how a caller says which projection this is; passing None skips the cache
+    entirely, which is right for a frame drawn once.
     """
-    key = (width, height, dim_base, len(base))
+    if cache_key is None:
+        fill = viz.token("track" if dim_base else "nodata")
+        parts = []
+        for feature in base:
+            path = _path(feature["geometry"], project, tolerance=BASE_TOLERANCE)
+            if path:
+                parts.append(f'<path d="{path}" fill="{fill}" '
+                             f'stroke="{viz.token("surface")}" stroke-width="0.6"/>')
+        return "".join(parts)
+
+    key = (width, height, dim_base, len(base), cache_key)
     if key not in _BASE_MARKUP:
         fill = viz.token("track" if dim_base else "nodata")
         parts = []
@@ -505,3 +522,171 @@ def locator(base, subject, title, subtitle, width=680, height=420,
     svg = viz.frame(width, grown, top + "".join(body),
                     f"{title}. {subtitle or ''} {note or ''}")
     return {"svg": svg, "drawn": len(drawn)}
+
+
+# The smallest and largest a pin may be drawn. Below the floor a circle is a
+# speck and reads as a rendering artifact; above the ceiling one government
+# covers three counties and the map becomes a picture of it alone.
+PIN_MIN_R = 2.2
+PIN_MAX_R = 11.0
+
+# Five sizes against five quantiles, matching the choropleth's five colour bins.
+# Radii, not areas, are spaced so the *areas* step evenly: a circle twice as wide
+# reads as four times as much, and stepping the radius evenly is the standard
+# way a symbol map overstates its top end.
+PIN_LEGEND_BAND = 42
+PIN_RADII = [round((PIN_MIN_R ** 2
+                    + i * (PIN_MAX_R ** 2 - PIN_MIN_R ** 2) / 4) ** 0.5, 1)
+             for i in range(5)]
+
+
+def points(base, rows, title, subtitle, formatter=fmt.money, width=680,
+           height=460, note=None, highlight_pid6=None, frame_to=None):
+    """Governments as pins over the county outlines.
+
+    The only form that can draw a special district at all. Two thirds of
+    Oregon's governments are special districts, none of them has a boundary
+    anywhere in this data, and a choropleth of the layers that do have one is a
+    map with two thirds of the state's governments missing from it. A point is
+    coarse and it is not nothing.
+
+    A pin is an office. It is the centroid of the city on the government's
+    mailing address, so a rural fire district filed at a Eugene address lands in
+    Eugene and serves ground outside it entirely. Nothing about a dot on a map
+    communicates that, which is why the caller is required to pass `note` and
+    why the frame is drawn with a stated basis rather than a bare title.
+
+    Area encodes magnitude, so the radius goes as the square root: a circle
+    twice as wide reads as four times as much, and mapping the value to the
+    radius directly is the standard way a proportional-symbol map overstates its
+    top end. Colour is held constant for the same reason — one hue, one meaning,
+    and size doing all the work.
+    """
+    placed = [r for r in rows if r.get("lon") is not None and r.get("value") is not None]
+    if not placed:
+        return {"svg": viz.refusal(title, note or "Nothing to place."), "drawn": 0}
+
+    top, offset = viz.header(title, subtitle, width)
+    map_height = height - offset - LOCATOR_BAND - PIN_LEGEND_BAND
+    # Fit the frame to the extent asked for, not always to the state. A map
+    # scoped to one county that draws all of Oregon spends 95% of the picture on
+    # ground the reader excluded, and the pins they came for end up in a corner
+    # a centimetre across. The base still carries every county, so the
+    # neighbours stay visible at the edges and the county is not floating.
+    fitted = frame_to or base
+    project = _project([{"geometry": f["geometry"]} for f in fitted], width, map_height)
+    # The base is every county even when the frame is one of them, so the
+    # neighbours show at the edges and the county is not floating in white. That
+    # means most of the base falls outside the frame, and without a clip it
+    # paints over the title, the legend and the note beneath.
+    clip = f"pf-pins-{abs(hash((width, map_height, len(fitted)))) % 100000}"
+    body = [f'<clipPath id="{clip}"><rect x="0" y="0" width="{width}" '
+            f'height="{map_height}"/></clipPath>',
+            f'<g transform="translate(0,{offset + 4})" clip-path="url(#{clip})">']
+    # Cached only when the frame is the whole state, which is the case that
+    # repeats across the corpus. A county frame is drawn once and computing it
+    # is cheaper than reasoning about whether its key is unique.
+    body.append(_base_markup(base, project, width, map_height, True,
+                             cache_key=None if frame_to else "state"))
+
+    # The county the frame was fitted to, outlined. Fitting to its bounding box
+    # brings several neighbours into view at that zoom, and without the outline
+    # a reader cannot tell which of the shapes in front of them is the one they
+    # scoped to, which makes every pin ambiguous about whether it is inside.
+    for feature in (frame_to or []):
+        path = _path(feature["geometry"], project, tolerance=BASE_TOLERANCE)
+        if path:
+            body.append(f'<path d="{path}" fill="{viz.token("nodata")}" '
+                        f'stroke="{viz.token("ink-2")}" stroke-width="1.2"/>')
+
+    # Quantile bins, not a continuous scale. Special-district spending runs from
+    # a thousand dollars to nine hundred million, and any scale continuous in
+    # the value — linear, or square-rooted for area — puts nine hundred of these
+    # at the floor and one at the ceiling, which draws a map of Portland with
+    # some dust around it. Five sizes against five quantiles is the same
+    # decision the choropleth makes for colour, for the same reason, and it is
+    # readable: a reader compares a pin to the legend, not to a ruler.
+    values = sorted(r["value"] for r in placed)
+    breaks = quantile_bins(values, len(PIN_RADII))
+    # Eight hundred pins at the size that suits eighty is a green mass over the
+    # Willamette Valley and nothing readable underneath it. The top of the scale
+    # shrinks as the count grows, so a county of forty districts draws large and
+    # legible and the whole state draws small and dense, which is what those two
+    # maps respectively are.
+    scale = 1.0 if len(placed) <= 120 else max(0.45, (120 / len(placed)) ** 0.4)
+    radii = [max(1.4, r * scale) for r in PIN_RADII]
+    radius = lambda value: radii[bin_index(value, breaks)]
+
+    # Largest first so a small pin lands on top of a big one rather than
+    # underneath it. Without this the dense end of the Willamette Valley reads
+    # as three circles instead of forty.
+    drawn = sorted(placed, key=lambda r: r["value"], reverse=True)
+    marked = None
+    for row in drawn:
+        x, y = project(row["lon"], row["lat"])
+        r = radius(row["value"])
+        if highlight_pid6 and row.get("pid6") == highlight_pid6:
+            marked = (x, y, r)
+        body.append(
+            f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{r:.1f}" '
+            f'fill="{viz.token("s1")}" fill-opacity="0.45" '
+            f'stroke="{viz.token("surface")}" stroke-width="0.4">'
+            f'<title>{viz.esc(row.get("name", ""))}: {viz.esc(formatter(row["value"]))}'
+            f'</title></circle>')
+    if marked:
+        x, y, r = marked
+        body.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{r + 4:.1f}" fill="none" '
+                    f'stroke="{viz.token("ink")}" stroke-width="1.4"/>')
+
+    body.append("</g>")
+    body.append(f'<g transform="translate(0,{offset + 4})">')
+
+    # The legend sits under the map rather than on it. Oregon is widest across
+    # the north and a legend in the corner of the frame lands on the coast
+    # range, where the pins are densest.
+    # Relative to the group, which is already translated down past the header.
+    legend_y = map_height + 14
+    # Indented by half a label. The first entry's text is centred on its circle,
+    # and starting at zero put half of "0.227%" at negative x, where the frame
+    # clipped it to ".227%" and invented a number.
+    x = 16
+
+    # De-duplicated by the label a reader actually sees. Quantile breaks collapse
+    # whenever a measure is concentrated: nearly every fire district spends
+    # nearly all of its budget on fire, so four of the five breaks format to
+    # 100% and a legend printing 100% four times beside four different circles
+    # says the sizes mean nothing while looking like it says they mean something.
+    # Where the steps genuinely coincide there is one entry, which is true.
+    seen, entries = set(), []
+    for step, r in zip([values[0]] + list(breaks), radii):
+        text = formatter(step)
+        if text in seen:
+            continue
+        seen.add(text)
+        entries.append((text, r))
+    for text, r in entries:
+        body.append(f'<circle cx="{x + PIN_MAX_R:.1f}" cy="{legend_y:.1f}" '
+                    f'r="{r:.1f}" fill="{viz.token("s1")}" fill-opacity="0.55"/>')
+        body.append(viz.text_el(x + PIN_MAX_R, legend_y + PIN_MAX_R + 12,
+                                text, size=10, fill="muted", anchor="middle"))
+        x += 2 * PIN_MAX_R + 46
+    if len(entries) > 1:
+        body.append(viz.text_el(x + 6, legend_y + 4, "and up", size=10, fill="muted"))
+    else:
+        # One distinct step means every pin is the same size and the sizing is
+        # carrying nothing. Saying so is better than a legend of one circle.
+        body.append(viz.text_el(x + 6, legend_y + 4,
+                                "every one of these reports about the same share",
+                                size=10, fill="muted"))
+    body.append("</g>")
+
+    lines = viz.wrap(note, 92) if note else []
+    grown = height + max(0, len(lines) - 1) * 14
+    y = grown - 12 - (len(lines) - 1) * 14
+    for line in lines:
+        body.append(viz.text_el(0, y, line, size=11, fill="muted"))
+        y += 14
+
+    svg = viz.frame(width, grown, top + "".join(body),
+                    f"{title}. {subtitle or ''} {note or ''}")
+    return {"svg": svg, "drawn": len(placed)}

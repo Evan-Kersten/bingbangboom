@@ -260,6 +260,29 @@ def main():
     check("and the sample year skews to the larger governments", big > small * 2,
           f"2023 mean population {big}, 2022 mean {small}")
 
+    print("\nthe point layer places what no boundary file can")
+    placed = one("SELECT COUNT(*) FROM entity_point")
+    total = one("SELECT COUNT(*) FROM entities")
+    check("nine in ten governments have a pin", placed / total > 0.88,
+          f"{placed} of {total}")
+    districts = one("SELECT COUNT(*) FROM entity_point p JOIN entities e "
+                    "ON e.pid6=p.pid6 WHERE e.gov_type_name='Special District'")
+    # The reason this table exists. Special districts are two thirds of the
+    # corpus and geo_entity holds none of them, so before the pins they could
+    # not appear on any map at all.
+    check("including 800+ special districts", districts > 800, str(districts))
+    # The Multnomah precinct dissolve recovers a handful, and only a handful.
+    # The gap between these two numbers is the whole argument for the pins.
+    bounded = one("SELECT COUNT(*) FROM geo_entity g JOIN entities e ON e.pid6=g.pid6 "
+                  "WHERE e.gov_type_name='Special District'")
+    check("against fewer than twenty with a boundary of any kind",
+          bounded < 20, f"{bounded} bounded, {districts} placed")
+    check("every pin lands inside Oregon's bounding box",
+          one("SELECT COUNT(*) FROM entity_point WHERE lon BETWEEN -125 AND -116 "
+              "AND lat BETWEEN 41.9 AND 46.3") == placed)
+    check("a pin is derived from the address and says so",
+          one("SELECT COUNT(*) FROM entity_point WHERE basis <> 'address_city'") == 0)
+
     print(f"\n{checks - len(failures)}/{checks} checks passed")
     if failures:
         print(f"\nFAILED: {len(failures)}")
