@@ -784,3 +784,120 @@ def multi_series(title, subtitle, series, formatter=fmt.money, width=680, height
 
     return frame(width, max(height, legend_y + 30), "".join(body),
                  f"{title}. {subtitle or ''}".strip())
+
+
+# The reported total is not always operating plus capital. It reaches within a
+# point of it for 1,251 of 1,529 governments and falls short for the rest —
+# Oregon's own filing accounts for 79.8% of its total this way. Folding the
+# remainder into operating would be the convenient thing and would misstate the
+# denominator every share on the page is drawn against, so it is drawn.
+SPLIT_TOKENS = ("s1", "s3", "dim")
+
+
+def split_bar(title, subtitle, parts, headline=None, headline_label=None,
+              headline_share=None, peer=None, peer_label=None,
+              formatter=fmt.money, width=680, note=None):
+    """One quantity divided into named pieces, with the piece that matters said.
+
+    A pie chart of two numbers is a worse bar chart, and a bar chart of two
+    numbers loses the thing a reader came for, which is the ratio. This draws
+    the whole as one bar so the pieces are read against each other and against
+    the total at once, and states the share of interest as a figure above it,
+    because a reader who wants the number should never have to estimate it off
+    a length.
+
+    `peer` draws the same share for the government's peer group as a second,
+    recessive track underneath. It is the only comparison this form makes, and
+    it is deliberately not a tick inside the bar: the pieces start at different
+    x positions, so a mark placed inside would be read against whichever
+    segment it happened to land in.
+    """
+    parts = [p for p in parts if (p.get("value") or 0) > 0]
+    if not parts:
+        return None
+    total = sum(p["value"] for p in parts)
+    if total <= 0:
+        return None
+
+    top, offset = header(title, subtitle, width)
+    body = [top]
+    y = offset
+
+    if headline is not None:
+        body.append(text_el(0, y + 30, headline, size=30, fill="ink",
+                            weight="600", tabular=True))
+        if headline_label:
+            body.append(text_el(0, y + 50, headline_label, size=11.5, fill="muted"))
+        y += 62
+
+    height = 30
+    x = 0.0
+    for index, part in enumerate(parts):
+        share = part["value"] / total
+        segment = share * width
+        colour = part.get("token") or SPLIT_TOKENS[min(index, len(SPLIT_TOKENS) - 1)]
+        # Square joins between segments, rounded only at the two outer ends, so
+        # the bar reads as one quantity cut up rather than as separate bars.
+        radius = 4 if index == len(parts) - 1 else 0
+        body.append(f'{bar_path(x, y, segment, height, radius=radius)} '
+                    f'fill="{token(colour)}"><title>{esc(part["label"])}: '
+                    f'{esc(formatter(part["value"]))}, {share * 100:.1f}%'
+                    f'</title></path>')
+        x += segment
+    y += height + 10
+
+    # The legend carries the money, because the segment carries only the share
+    # and the two are the reason this is one figure rather than two.
+    for index, part in enumerate(parts):
+        share = part["value"] / total
+        colour = part.get("token") or SPLIT_TOKENS[min(index, len(SPLIT_TOKENS) - 1)]
+        body.append(f'<rect x="0" y="{y + 2}" width="10" height="10" rx="2" '
+                    f'fill="{token(colour)}"/>')
+        body.append(text_el(16, y + 11, part["label"], size=11.5, fill="ink-2"))
+        # Two columns, not one string. "$6M   63%" set as a single right-anchored
+        # run collapsed its spaces in SVG and read as one number.
+        body.append(text_el(width - 56, y + 11, formatter(part["value"]),
+                            size=11.5, fill="ink-2", anchor="end", tabular=True))
+        body.append(text_el(width, y + 11, fmt.percent(share * 100),
+                            size=11.5, fill="ink", anchor="end", tabular=True))
+        y += 19
+        if part.get("detail"):
+            body.append(text_el(16, y + 9, part["detail"], size=11, fill="muted"))
+            y += 16
+
+    if peer is not None and headline_share is not None:
+        # Two tracks from a common origin, not a tick inside the bar above. The
+        # segments up there start at different x positions, so a mark dropped
+        # into them is read against whichever one it lands in; these two share a
+        # zero and a scale and are the only comparison this form makes. The
+        # entity's track wears the capital colour so the eye carries across.
+        y += 16
+        track = 9
+        body.append(text_el(0, y, "Capital share against the peer group",
+                            size=11, fill="ink-2", weight="600"))
+        y += 10
+        for label, value, colour in (
+                ("this government", headline_share, parts[1]["token"]
+                 if len(parts) > 1 and parts[1].get("token") else SPLIT_TOKENS[1]),
+                (peer_label or "peer median", peer, "dim")):
+            body.append(f'<rect x="0" y="{y + 4}" width="{width}" height="{track}" '
+                        f'rx="{track / 2}" fill="{token("track")}"/>')
+            marked = max(0.0, min(1.0, value / 100.0)) * width
+            body.append(f'{bar_path(0, y + 4, marked, track, radius=track / 2)} '
+                        f'fill="{token(colour)}"><title>{esc(label)}: '
+                        f'{value:.1f}%</title></path>')
+            y += track + 15
+            body.append(text_el(0, y, label, size=11, fill="muted"))
+            body.append(text_el(width, y, fmt.percent(value), size=11, fill="muted",
+                                anchor="end", tabular=True))
+            y += 8
+
+    if note:
+        y += 10
+        for line in wrap(note, 96):
+            body.append(text_el(0, y + 8, line, size=11, fill="muted"))
+            y += 14
+
+    return frame(width, y + 10, "".join(body),
+                 f"{title}. {subtitle or ''} "
+                 + ", ".join(f"{p['label']} {formatter(p['value'])}" for p in parts))

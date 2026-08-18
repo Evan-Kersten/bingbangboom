@@ -352,6 +352,48 @@ def main():
     check("values above the last break land in the top bin",
           maps.bin_index(99, [10, 20]) == 2)
 
+    print("\na framed map does not carry the state it cropped out")
+    # The tolerance in _path is in output pixels, so scoping a point map to one
+    # county magnifies the whole state by about thirty and the simplification
+    # that removed most of Oregon's coastline at state scale removes nothing.
+    # Every scale answer in the static build carried 96 KB of thirty-five
+    # counties drawn off-canvas, and the file went from 111 KB to 29 KB.
+    import tools as _T
+    store_ = _T.Store()
+    framed = _T.render_point_map(store_, metric="total_spending", county="Multnomah")
+    check("a county-framed point map is a fraction of the size it was",
+          len(framed["data"]["svg"]) < 60000, str(len(framed["data"]["svg"])))
+    # What is dropped is only what is outside the frame. The neighbours that
+    # remain are the context the map is read against.
+    check("and the counties still in frame are still drawn",
+          framed["data"]["svg"].count("<path") >= 3,
+          str(framed["data"]["svg"].count("<path")))
+    check("a ring wholly outside the frame is dropped",
+          maps._path({"coordinates": [[[(0, 0), (1, 0), (1, 1), (0, 1), (0, 0)]]]},
+                     lambda x, y: (x - 900, y), clip=(680, 400)) == "")
+    check("and one inside it is kept",
+          maps._path({"coordinates": [[[(0, 0), (60, 0), (60, 60), (0, 60), (0, 0)]]]},
+                     lambda x, y: (x, y), clip=(680, 400)) != "")
+
+    print("\na quantity cut into named pieces")
+    split = viz.split_bar(
+        "A government: running costs against construction", "Reported expenditure, 2023",
+        [{"label": "Operating", "value": 900}, {"label": "Capital", "value": 100}],
+        headline="10%", headline_label="went into capital",
+        headline_share=10.0, peer=25.0, peer_label="peer median")
+    check("the pieces are drawn in proportion to the whole", split.count("<path") >= 2)
+    check("and each piece states its money and its share",
+          "$900" in split and "90%" in split, split[:200])
+    # The two tracks share a zero; a tick inside the composition bar would land
+    # in whichever segment happened to be under it and be read against that.
+    check("the peer comparison is a second track, not a mark inside the bar",
+          "Capital share against the peer group" in split and "peer median" in split)
+    check("a piece worth nothing is not drawn as a piece",
+          viz.split_bar("t", None, [{"label": "a", "value": 5},
+                                    {"label": "b", "value": 0}]).count("<rect") == 1)
+    check("and nothing at all returns nothing rather than an empty frame",
+          viz.split_bar("t", None, [{"label": "a", "value": 0}]) is None)
+
     print(f"\n{checks - len(failures)}/{checks} checks passed")
     if failures:
         print(f"\nFAILED: {len(failures)}")

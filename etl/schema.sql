@@ -191,7 +191,17 @@ CREATE TABLE financial_functions (
     service_area              TEXT,
     operating_expenditures    DOUBLE,
     capital_expenditures      DOUBLE,
-    pct_of_entity_total       DOUBLE
+    -- The share the source derives, kept for the record and not read by
+    -- anything. It is broken for 527 of 3,645 rows: Harney County's Health is
+    -- filed at -3,871% against $2.9M of positive spending, and 442 rows exceed
+    -- 100%. Whatever denominator the source used, it is not one these figures
+    -- are a share of.
+    pct_of_entity_total       DOUBLE,
+    -- The share computed here instead: this function's operating plus capital
+    -- over the entity's own operating plus capital. That is the same basis the
+    -- service-area shares use, so the two levels of the drill finally stack
+    -- rather than being two different fractions of two different wholes.
+    share_of_total            DOUBLE
 );
 
 -- The crosswalk between the finance taxonomy and the workforce taxonomy, and

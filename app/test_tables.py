@@ -204,6 +204,53 @@ def main():
         check("and whose caption is still the shared sentence",
               "usually means another government" in html["html"].split("<table>")[0])
 
+    print("\na pre-rendered atlas file is found by the key it was written under")
+    # The bug this pins: the browser keys the fetch by the selected function and
+    # the export keys the file by it too, in two implementations, and they have
+    # to agree exactly. When they did not, every function but the default 404ed
+    # and the lab's coverage panel came up empty in the static build only.
+    import export_static as E
+    import tools as TL
+    names = sorted({r["function_name"] for r in S.STORE.rows(
+        "SELECT DISTINCT function_name FROM financial_functions")})
+    areas = sorted({r["service_area"] for r in S.STORE.rows(
+        "SELECT DISTINCT service_area FROM financial_functions")})
+    # The browser's function, lifted out of index.html and inlined rather than
+    # copied, so the assertion is against the one the page actually ships.
+    page = open(os.path.join(HERE, "index.html")).read()
+    start = page.index("function selectorKey(body) {")
+    source = page[start:page.index("\n}", start) + 2]
+    script = source + f"""
+const names = JSON.parse(require('fs').readFileSync({json.dumps('NAMES')}, 'utf8'));
+process.stdout.write(JSON.stringify(names.map((n) => selectorKey(n.body))));
+"""
+    cases = ([{"body": {"function": n}} for n in names]
+             + [{"body": {"service_area": a}} for a in areas]
+             + [{"body": {}}])
+    try:
+        paths = []
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
+            json.dump(cases, fh)
+            paths.append(fh.name)
+        script = script.replace(json.dumps("NAMES"), json.dumps(paths[0]))
+        with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as fh:
+            fh.write(script)
+            paths.append(fh.name)
+        done = subprocess.run(["node", paths[1]], capture_output=True, text=True)
+        if done.returncode:
+            raise RuntimeError(done.stderr.strip()[-600:])
+        js = json.loads(done.stdout)
+    finally:
+        for path in paths:
+            os.unlink(path)
+
+    expected = [E.slug(n) for n in names] + [E.slug(a) for a in areas] + [E.slug(None)]
+    disagreed = [(c, e, g) for c, e, g in zip(cases, expected, js) if e != g]
+    check(f"all {len(cases)} selectors key identically in both", not disagreed,
+          str(disagreed[:2]))
+    check("and a measure with no selector is keyed under nothing",
+          expected[-1] == "" and js[-1] == "")
+
     print(f"\n{checks - len(failures)}/{checks} checks passed")
     if failures:
         print(f"\nFAILED: {len(failures)}")

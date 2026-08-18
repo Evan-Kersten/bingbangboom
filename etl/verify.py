@@ -260,6 +260,27 @@ def main():
     check("and the sample year skews to the larger governments", big > small * 2,
           f"2023 mean population {big}, 2022 mean {small}")
 
+    print("\nthe function share is a share of something")
+    # The source's own pctOfEntityTotal is negative for 85 rows and over 100%
+    # for 442. Nothing reads it; share_of_total is recomputed against the
+    # entity's own operating plus capital, which is the basis the service-area
+    # shares already use, so the two levels of the drill are one fraction.
+    check("no recomputed share is negative",
+          one("SELECT COUNT(*) FROM financial_functions WHERE share_of_total < 0") == 0)
+    check("and the source column that was is still stored, unread",
+          one("SELECT COUNT(*) FROM financial_functions "
+              "WHERE pct_of_entity_total < 0") > 0)
+    # Four rows exceed 100% because the two expenditure totals disagree, which
+    # is the documented trap rather than a new one. If this grows, the
+    # denominator has moved.
+    check("almost none exceeds the whole",
+          one("SELECT COUNT(*) FROM financial_functions "
+              "WHERE share_of_total > 100.5") < 10)
+    check("a function share and its service area share are on one basis",
+          one("SELECT COUNT(*) FROM financial_functions f JOIN operating_vs_capital o "
+              "ON o.pid6 = f.pid6 WHERE f.share_of_total IS NOT NULL "
+              "AND o.total_expenditure IS NULL") == 0)
+
     print("\nthe point layer places what no boundary file can")
     placed = one("SELECT COUNT(*) FROM entity_point")
     total = one("SELECT COUNT(*) FROM entities")

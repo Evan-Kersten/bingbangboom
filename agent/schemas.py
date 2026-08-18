@@ -79,6 +79,24 @@ SCHEMAS = [
         },
     },
     {
+        "name": "capital_split",
+        "description": "Split one entity's reported expenditure into operating, capital and "
+                       "whatever the source files under neither, with the capital share and "
+                       "its peer median. Use this before characterising a government as a "
+                       "high or low spender: a government mid-construction and a government "
+                       "running the same services out of the same total look identical on "
+                       "every service-area share and are different things. The three pieces "
+                       "do not always reach the reported total, and the shortfall is "
+                       "returned as unclassified rather than folded into operating; do not "
+                       "call it operating and do not recompute the capital share against "
+                       "operating plus capital alone. " + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {"pid6": PID},
+            "required": ["pid6"],
+        },
+    },
+    {
         "name": "compare_entities",
         "description": "Compare several entities on one metric. Flags mixed government "
                        "types, which are usually not comparable, and names entities missing "
@@ -664,6 +682,51 @@ SCHEMAS = [
                                          "legitimate answer."},
             },
             "required": ["pid6", "topic"],
+        },
+    },
+    {
+        "name": "expenditure_tree",
+        "description": "Where one government's money goes, at both levels the source "
+                       "supports: every service area, and the named functions inside "
+                       "each. Each row carries its share of the row above it, so police "
+                       "protection reads as 20% of what a county puts into public safety "
+                       "and 3% of its budget, which are two different findings. There is "
+                       "no year-over-year column and there cannot be: every entity here "
+                       "carries one year of service-area and function detail, and the "
+                       "history holds a total per year with no split inside it. Each "
+                       "area also says how much of itself its functions account for, "
+                       "because 852 of 3,751 area rows have no function detail filed and "
+                       "a reader must not take that gap for a rounding error. "
+                       + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {"pid6": {"type": "string"}},
+            "required": ["pid6"],
+        },
+    },
+    {
+        "name": "inside_service_area",
+        "description": "What one service area is made of across every government in "
+                       "Oregon that reports it: each named function, how many "
+                       "governments report it, what they spend on it, and which types "
+                       "of government hold it. Use this where the question is how a "
+                       "service is delivered rather than what one government spends. "
+                       "Fire protection is 327 governments and $1.1B, police protection "
+                       "is 187 and $1.9B, and the difference is that fire is district "
+                       "work and policing is city and county work. Never add these "
+                       "totals together and never state one as a share of the service "
+                       "area: a city paying a district for the work reports the payment "
+                       "while the district reports the spending, so the same dollar is "
+                       "in both rows. Use drill for one government's own split. "
+                       + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "service_area": {"type": "string",
+                                 "description": "One of the twelve service areas, as "
+                                                "returned by get_spending_breakdown."},
+            },
+            "required": ["service_area"],
         },
     },
     {

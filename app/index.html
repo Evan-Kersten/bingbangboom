@@ -348,6 +348,20 @@ aside {
   min-width: 52px; text-align: right;
 }
 .lab-row.on .lab-verdict { color: var(--pf-track); }
+/* Cascading, because a function only means anything inside the area holding it.
+   Both were constants in this file, which meant the lab could draw one of the
+   thirty-six named things Oregon's governments do. */
+.lab-pick { display: flex; flex-direction: column; gap: 8px; padding: 4px 8px 12px; }
+.lab-pick label {
+  display: flex; flex-direction: column; gap: 4px; font-size: 11px;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--pf-muted);
+}
+.lab-pick select {
+  font: inherit; font-size: 13px; text-transform: none; letter-spacing: 0;
+  padding: 6px 8px; border-radius: 7px; border: 1px solid var(--edge);
+  background: var(--pf-panel); color: var(--pf-ink);
+}
+.lab-pick .more { padding: 0; align-self: flex-start; }
 .lab-do { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 0 8px 4px; }
 .lab-do .go {
   font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
@@ -559,6 +573,15 @@ tr:last-child td { border-bottom: 0; }
    with the figure beside it and a reader scanning for the figure had to read
    the whole row. */
 td.lead { color: var(--pf-ink); font-weight: 550; }
+/* A row inside another. The indent is the whole signal, so it is generous
+   enough to read at a glance and the child is set quieter than the parent it
+   belongs to. */
+tr.child td.lead {
+  padding-left: calc(var(--depth, 1) * 18px);
+  font-weight: 400; color: var(--pf-ink-2);
+}
+tr.child td { color: var(--pf-muted); }
+tr.child td.num { color: var(--pf-ink-2); }
 th.lead { color: var(--pf-ink-2); }
 
 /* Quantities line up on their right edge so magnitudes can be compared down the
@@ -600,6 +623,19 @@ td.verdict .dot.muted { background: var(--pf-dim); }
 }
 .interp .nm { font-size: 13px; font-weight: 620; color: var(--pf-ink); }
 .interp .assume { color: var(--pf-warning); }
+
+/* The claim a brief opens on. It is the first thing read and it has to look
+   like it: four thousand briefs that opened on a paragraph about Census
+   categories taught readers to start halfway down the page. Set at display
+   size and given room, with the scope limit in ordinary body text directly
+   under it — which is the order that matters, because the limit still lands
+   before the first number anywhere in the answer. */
+p.lead {
+  font-size: 21px; line-height: 1.28; font-weight: 600;
+  color: var(--pf-ink); letter-spacing: -0.012em;
+  margin: 2px 0 2px; max-width: 46ch;
+  text-wrap: balance;
+}
 
 /* §15.1 figure: the answer as a quantity. Proportional figures at display size;
    tabular-nums would make the digits look loose. */
@@ -860,6 +896,16 @@ async function readJson(path) {
   return response.json();
 }
 
+/* A pre-rendered atlas file is keyed by what was selected as well as by the
+   measure. Police protection and fire protection are the same measure with a
+   different argument, and keying on the measure alone meant one of the 36
+   functions had a map and the other 35 silently returned it. Kept in step with
+   export_static.py by hand, and asserted in app/test_tables.py. */
+function selectorKey(body) {
+  const selector = body.function || body.service_area;
+  return selector ? '-' + String(selector).toLowerCase().replace(/[^a-z0-9]+/g, '-') : '';
+}
+
 async function staticApi(path, body) {
   if (path === '/api/mode') return readJson('data/mode.json');
 
@@ -944,12 +990,25 @@ async function staticApi(path, body) {
      catalogue. Every pair of the same kind is far more combinations than a
      static build should carry, so a pair asks for the server rather than
      shipping a hundred files nobody opens. */
+  if (path === '/api/inside_area') {
+    try {
+      return await readJson('data/inside/' + body.service_area.toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-') + '.json');
+    } catch { return { blocks: [{ kind: 'answer', text:
+      'That service area is not in this build.' }], rules: [], trace: [] }; }
+  }
+
+  if (path === '/api/functions') {
+    try { return await readJson('data/functions.json'); } catch { return { areas: {} }; }
+  }
+
   if (path === '/api/atlas') {
     if (body.mode === 'catalogue') {
-      return readJson(`data/atlas/catalogue-${body.layer}.json`);
+      return readJson(`data/atlas/catalogue-${body.layer}${selectorKey(body)}.json`);
     }
     if ((body.measures || []).length === 1) {
-      return readJson(`data/atlas/${body.layer}-${body.measures[0]}.json`);
+      return readJson(
+        `data/atlas/${body.layer}-${body.measures[0]}${selectorKey(body)}.json`);
     }
     return { blocks: [{ kind: 'answer', text:
       'Two panels side by side are assembled on request, so they need the '
@@ -1030,10 +1089,13 @@ const FIT_OF = (topic) => (TOPIC_INDEX.fit || {})[topic] || 'none';
 /* What each layer is, said as the reader would say it. "government" is the odd
    one and needs the most saying: it is pins rather than shading, and a pin is an
    office rather than a service area. */
+/* Three layers, and only one of them shades ground for a government. A county
+   genuinely is the ground it covers and all 36 join exactly; a city polygon is
+   the right shape for a survey measure, which was observed over that ground,
+   and the wrong shape for a government's budget. Everything else is a pin. */
 const LAYER_LABELS = {
   county: 'over county boundaries',
-  place: 'over city boundaries',
-  school_district: 'over school district boundaries',
+  place: 'over city boundaries \u2014 survey measures only',
   government: 'as pins, one per government office',
 };
 /* Whether the subject in the sentence is still waiting on a place. */
@@ -1046,6 +1108,7 @@ async function loadOpener() {
   TOPIC_INDEX = await api('/api/topics');
   TOPICS = TOPIC_INDEX.topics || [];
   MEASURES = await api('/api/measures');
+  FUNCTIONS = await api('/api/functions');
   $('opener-place').onclick = () => openerPick('place');
   $('opener-topic').onclick = () => openerPick('topic');
   paintOpener();
@@ -1188,7 +1251,26 @@ function askBrief(place, topic) {
    every general-purpose government reports, and Police Protection is the
    function inside it that draws; a lab that opened on a refusing default would
    look broken rather than careful. */
+/* Where the lab opens, not where it is stuck. Public safety is the one area
+   almost every general-purpose government reports, and police protection draws
+   on every layer, so a lab that opens on either shows a picture rather than a
+   refusal. Both are now the first value of a picker over all twelve areas and
+   all thirty-six functions. */
 const DEFAULT_AREA = 'Public Safety', DEFAULT_FUNCTION = 'Police Protection';
+let FUNCTIONS = { areas: {} }, labArea = DEFAULT_AREA, labFunction = DEFAULT_FUNCTION;
+
+/* Which selector, if any, the current picks need told to them. A measure names
+   what it needs; two measures needing different things is a pair the lab does
+   not offer, so the first one that needs something decides. */
+function labNeeds() {
+  const picked = (MEASURES.measures || []).filter((m) => labPicked.includes(m.id));
+  const needing = picked.find((m) => m.needs);
+  return needing ? needing.needs : null;
+}
+
+function labSelectors() {
+  return { service_area: labArea, function: labFunction };
+}
 const SERIES = ['s1', 's2', 's3', 's4'];
 const MAX_COMPARE = 4;
 let comparison = [], AREAS = null, matches = [], active = -1, armedChip = -1;
@@ -1555,6 +1637,7 @@ function labMeasures() {
          it says the layer would be mostly absence, which is worth knowing before
          anybody builds it.`
       : 'Measuring what this layer can carry&hellip;'}</p>
+    ${labSelectorMarkup()}
     <div class="lab-do">
       ${labPicked.length ? `<button class="go" data-lab="draw">Draw ${
         labPicked.length === 2 ? 'both' : 'it'}</button>` : ''}
@@ -1569,11 +1652,41 @@ function labMeasures() {
       ${s.rows.map((m) => labRow(m)).join('')}`).join('')}`;
 }
 
+/* The picker for whatever the current selection needs, and nothing when it
+   needs nothing. Public safety is a service area holding five named functions,
+   and the difference between police protection and fire protection is the
+   difference between city work and district work: one is 187 governments and
+   the other is 327, mostly special districts. Both used to be a constant in
+   this file, so of the thirty-six functions in this data exactly one could be
+   drawn. The area picker cascades into the function picker, because a function
+   only means something inside the area that holds it. */
+function labSelectorMarkup() {
+  const needs = labNeeds();
+  if (!needs) return '';
+  const areas = Object.keys(FUNCTIONS.areas || {}).sort();
+  if (!areas.length) return '';
+  const inside = (FUNCTIONS.areas[labArea] || []);
+  return `
+    <div class="lab-pick">
+      <label>Service area
+        <select id="lab-area">${areas.map((a) => `<option${
+          a === labArea ? ' selected' : ''}>${esc(a)}</option>`).join('')}</select>
+      </label>
+      ${needs === 'function' ? `<label>Function
+        <select id="lab-function">${inside.map((f) => `<option value="${esc(f.name)}"${
+          f.name === labFunction ? ' selected' : ''}>${esc(f.name)} · ${
+          esc(f.governments)}</option>`).join('')}</select>
+      </label>
+      <button class="more" data-lab="inside">What else is inside ${esc(labArea)}?</button>`
+        : ''}
+    </div>`;
+}
+
 function labRow(m) {
   const cover = LAB_COVERAGE[m.id];
   const on = labPicked.includes(m.id);
-  const selector = m.needs === 'service_area' ? DEFAULT_AREA
-                 : m.needs === 'function' ? DEFAULT_FUNCTION : '';
+  const selector = m.needs === 'service_area' ? labArea
+                 : m.needs === 'function' ? labFunction : '';
   /* A refused measure stays pickable. The refusal drawn in the frame, with the
      count of boundaries that would have carried a value, is a more useful thing
      to put in front of somebody scoping a layer than a disabled control. */
@@ -1614,15 +1727,16 @@ function labCrossesKinds() {
    the whole panel on fifteen coverage measurements would make changing the
    layer feel broken. */
 async function loadLabCoverage() {
-  if (labCoverageFor === labLayer || labCoverageBusy) return;
+  const key = [labLayer, labArea, labFunction].join('|');
+  if (labCoverageFor === key || labCoverageBusy) return;
   labCoverageBusy = true;
   try {
     const result = await api('/api/atlas', {
       measures: [], mode: 'catalogue', layer: labLayer,
-      service_area: DEFAULT_AREA, function: DEFAULT_FUNCTION });
+      ...labSelectors() });
     LAB_COVERAGE = {};
     (result.catalogue || []).forEach((row) => { LAB_COVERAGE[row.id] = row; });
-    labCoverageFor = labLayer;
+    labCoverageFor = key;
   } finally {
     labCoverageBusy = false;
   }
@@ -1699,6 +1813,32 @@ async function drawBrowse() {
   $('presets').querySelectorAll('[data-shared]').forEach((node) => {
     node.onclick = () => ask(node.dataset.label, { id: node.dataset.shared });
   });
+  const areaPicker = $('lab-area');
+  if (areaPicker) {
+    areaPicker.onchange = () => {
+      labArea = areaPicker.value;
+      /* The function must belong to the area. Keeping the old one across a
+         change would ask for police protection inside Utilities, which is a
+         combination with no rows behind it and refuses for a reason that
+         sounds like a data gap rather than a mistake. */
+      const inside = FUNCTIONS.areas[labArea] || [];
+      if (!inside.some((f) => f.name === labFunction)) {
+        labFunction = inside.length ? inside[0].name : null;
+      }
+      LAB_COVERAGE = {}; labCoverageFor = null;
+      drawBrowse();
+      loadLabCoverage();
+    };
+  }
+  const functionPicker = $('lab-function');
+  if (functionPicker) {
+    functionPicker.onchange = () => {
+      labFunction = functionPicker.value;
+      LAB_COVERAGE = {}; labCoverageFor = null;
+      drawBrowse();
+      loadLabCoverage();
+    };
+  }
   const layerPicker = $('lab-layer');
   if (layerPicker) {
     layerPicker.onchange = () => {
@@ -1721,17 +1861,20 @@ async function drawBrowse() {
       drawBrowse();
     };
   });
-  $('presets').querySelectorAll('[data-lab]').forEach((node) => {
+  $('presets').querySelectorAll('[data-lab="inside"]').forEach((node) => {
+    node.onclick = () => ask(`What is inside ${labArea}?`, { inside_area: labArea });
+  });
+  $('presets').querySelectorAll('[data-lab]:not([data-lab="inside"])').forEach((node) => {
     node.onclick = () => {
       const picked = (MEASURES.measures || []).filter((m) => labPicked.includes(m.id));
       const needs = picked.find((m) => m.needs);
       const payload = { layer: labLayer, mode: node.dataset.lab,
                         measures: node.dataset.lab === 'catalogue' ? [] : labPicked,
-                        service_area: DEFAULT_AREA, function: DEFAULT_FUNCTION };
+                        ...labSelectors() };
       const label = node.dataset.lab === 'catalogue'
         ? `What can the ${labLayer.replace('_', ' ')} layer show?`
-        : picked.map((m) => m.label + (m.needs === 'service_area' ? ' ' + DEFAULT_AREA
-            : m.needs === 'function' ? ' ' + DEFAULT_FUNCTION : '')).join(' and ');
+        : picked.map((m) => m.label + (m.needs === 'service_area' ? ' ' + labArea
+            : m.needs === 'function' ? ' ' + labFunction : '')).join(' and ');
       ask(label, { atlas: payload });
     };
   });
@@ -1842,6 +1985,8 @@ async function ask(label, payload) {
     ? await api('/api/compare', payload.compare)
     : payload.atlas
       ? await api('/api/atlas', payload.atlas)
+    : payload.inside_area
+      ? await api('/api/inside_area', { service_area: payload.inside_area })
       : payload.brief
       ? await api('/api/brief', payload.brief)
       : payload.fn
@@ -1882,7 +2027,7 @@ const BLOCK = {
       ${b.assumption ? `<span class="assume">${esc(b.assumption)}</span>` : ''}
     </div>`,
 
-  answer: (b) => `<p>${esc(b.text)}</p>`,
+  answer: (b) => `<p${b.lead ? ' class="lead"' : ''}>${esc(b.text)}</p>`,
 
   figure: (b) => `<div class="figure">
       <div class="lbl">${esc(b.label)}${b.year ? ' · ' + esc(b.year) : ''}</div>

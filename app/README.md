@@ -88,6 +88,29 @@ gets. `test_parity.py` drives both over every alias and fails on any
 disagreement. The vocabulary itself is not duplicated — it arrives from
 `/api/topics`, one definition in `rules.py`.
 
+**The brief opens on a claim, and the claim is one line.** `brief.narrative`
+returns a claim, a finding and a texture; `answer_brief` renders the claim as an
+`answer` block with `lead: true`, set at display size. The claim carries no
+money and no share and asserts nothing measured — it says *who*, which is the §9
+material this data supports — and the gap sentence lands directly under it,
+before the first figure anywhere in the answer. That is §5's precedence kept
+where it matters, which is that no reader carries away a number without its
+scope, rather than kept as a rule about which paragraph is physically first. It
+matters because four thousand briefs opening on the same paragraph about Census
+categories taught readers to start halfway down the page.
+
+The claims are specific because they are ranked by what changes a reader's next
+move, and about a third of them name what the off-stack bodies actually are:
+"6 fire districts file Public Safety spending near Estacada. Not one is on
+Estacada's own list." Named by the Census category they file under and never by
+the topic — the headline sits above the sentence that draws that distinction, so
+it has to stand without it. Over a sample of 120 place-and-subject pairs, 108
+claims are distinct.
+
+Every table carries a caption that says what to look for rather than restating a
+rule: the share column ranks the stack and the dollar column ranks it by which
+government is biggest, and a reader scanning the dollars gets the wrong answer.
+
 **The rail carries the map lab and nothing else by default.** It used to carry
 eight headings, every one of them another way to name a subject or a place,
 which made it a directory of doors into a room the reader was already standing
@@ -110,16 +133,26 @@ out to be a stated reason, so finding out which layers were worth building meant
 walking the whole list one dead map at a time.
 
 The numbers are the argument for putting them up front. On counties every one of
-the fifteen measures draws. On places three do, and on school districts five,
-and the reasons differ: nine refuse because Oregon's 378 cities are specks at
-state scale or because most of them report nothing in the category, and three
-refuse because the survey margin is too wide to bin. That table is the artifact,
-not any map in it.
+the fifteen measures draws; as pins, nine do. `place` is offered for the four
+survey measures and the eleven fiscal ones are listed there as "not on this
+layer", which is the account somebody deciding whether to build a city layer
+wants — not a map, but the reason there will not be one. That table is the
+artifact, not any map in it.
 
-**The government layer is pins, not shading.** It exists because the polygons do
-not: 1,029 of Oregon's governments are special districts and fewer than twenty
-have a boundary in this data, so every other layer here omits two thirds of the
-state's governments. A pin is the city on a government's mailing address, which
+`atlas.layers()` is the one definition of what the picker offers, derived from
+`FISCAL_LAYERS` and `SURVEY_LAYERS` rather than restated here or in the page. A
+hand-written copy in `index.html` is how a layer gets added to the registry and
+never becomes selectable.
+
+**Everything that is not a county is pins.** Shading is for counties and for
+survey measures on city polygons, and for nothing else. A county genuinely is
+the ground it covers and all 36 join exactly; 378 city polygons at state scale
+compared land areas, and school districts joined by name at 156 of 223. Both are
+governments with an address, and a pin says where each one is without claiming
+to say how far it reaches. It exists because the polygons do not: 1,029 of
+Oregon's governments are special districts and fewer than twenty have a boundary
+in this data, so every shaded layer omits two thirds of the state's
+governments. A pin is the city on a government's mailing address, which
 is where its office is and never the ground it serves, and that sentence is
 written into the frame under the map rather than left to a note.
 
@@ -129,6 +162,20 @@ thirty-six, and at 300 governments as pins.
 A refused measure stays pickable. The refusal drawn in the frame, with the count
 of boundaries behind it, is a more useful thing to hand somebody scoping a layer
 than a disabled control.
+
+**The service area and the function are pickers, not constants.** They were two
+string literals in `index.html`, which meant the lab could draw one of the
+thirty-six named things Oregon's governments do. The area picker cascades into
+the function picker, because a function only means something inside the area
+holding it, and the list comes from `/api/functions` at runtime rather than a
+second copy in the page.
+
+What that opens up is the level below a service area. Public safety is a heading;
+police protection, fire protection and corrections are the work, and they behave
+completely differently. The share-of-budget map runs 0.2% to 100% for fire
+protection, because the top of that range is single-purpose districts that exist
+to do nothing else, and 0.6% to 20% for police protection, because it is a
+department inside a general-purpose government. One map, two shapes of delivery.
 
 ## How a table is drawn
 
@@ -161,9 +208,9 @@ audience; this is interface behaviour.
 ## Testing
 
 ```
-python3 app/test_server.py    # 184 checks, no browser needed
+python3 app/test_server.py    # 198 checks, no browser needed
 python3 app/test_parity.py    # 461 checks, drives the browser code through node
-python3 app/test_tables.py    #  28 checks on how a table block is drawn
+python3 app/test_tables.py    #  30 checks on how a table block is drawn
 ```
 
 `test_server.py` calls the handlers directly. It asserts that presets return

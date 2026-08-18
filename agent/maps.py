@@ -90,11 +90,19 @@ def _project(features, width, height, padding=12):
     return project
 
 
-def _path(geometry, project, tolerance=0.6):
+def _path(geometry, project, tolerance=0.6, clip=None):
     """Emit an SVG path, dropping points closer together than a pixel or so.
 
     At map scale, coordinate precision beyond roughly half a pixel is invisible
     and costs a large multiple in file size.
+
+    `clip` is a (width, height) frame, and a ring lying wholly outside it is
+    dropped rather than emitted for the renderer to hide. This matters only for
+    a framed map and it matters a great deal there: the tolerance is in output
+    pixels, so scoping a point map to one county magnifies the whole state by
+    about thirty and the simplification that removed most of Oregon's coastline
+    at state scale removes nothing at all. Every scale answer in the static
+    build carried 96 KB of thirty-five counties drawn off-canvas.
     """
     parts = []
     for polygon in geometry["coordinates"]:
@@ -108,6 +116,14 @@ def _path(geometry, project, tolerance=0.6):
                     last = (x, y)
             if len(points) < 3:
                 continue
+            if clip:
+                xs = [x for x, _ in points]
+                ys = [y for _, y in points]
+                # A margin, because a ring that ends just off the edge still
+                # contributes the stroke along it.
+                if (max(xs) < -8 or min(xs) > clip[0] + 8
+                        or max(ys) < -8 or min(ys) > clip[1] + 8):
+                    continue
             parts.append("M" + " L".join(f"{x:.1f},{y:.1f}" for x, y in points) + " Z")
     return " ".join(parts)
 
@@ -425,7 +441,8 @@ def _base_markup(base, project, width, height, dim_base, cache_key=None):
         fill = viz.token("track" if dim_base else "nodata")
         parts = []
         for feature in base:
-            path = _path(feature["geometry"], project, tolerance=BASE_TOLERANCE)
+            path = _path(feature["geometry"], project, tolerance=BASE_TOLERANCE,
+                         clip=(width, height))
             if path:
                 parts.append(f'<path d="{path}" fill="{fill}" '
                              f'stroke="{viz.token("surface")}" stroke-width="0.6"/>')
@@ -436,7 +453,8 @@ def _base_markup(base, project, width, height, dim_base, cache_key=None):
         fill = viz.token("track" if dim_base else "nodata")
         parts = []
         for feature in base:
-            path = _path(feature["geometry"], project, tolerance=BASE_TOLERANCE)
+            path = _path(feature["geometry"], project, tolerance=BASE_TOLERANCE,
+                         clip=(width, height))
             if path:
                 parts.append(f'<path d="{path}" fill="{fill}" '
                              f'stroke="{viz.token("surface")}" stroke-width="0.6"/>')

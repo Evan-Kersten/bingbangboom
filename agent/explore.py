@@ -234,7 +234,7 @@ def drill(store, pid6, service_area=None, function_name=None):
             "drill", entity=entity,
             data={"level": "line_item", "service_area": row["service_area"],
                   "function": function_name, "year": row["year"],
-                  "share_of_entity": row["pct_of_entity_total"],
+                  "share_of_entity": row["share_of_total"],
                   "total": total,
                   # Percentages in this tree are 0 to 100, the way the source
                   # files carry them and the way fmt.percent reads them.
@@ -266,7 +266,7 @@ def drill(store, pid6, service_area=None, function_name=None):
             functions.append({
                 "label": row["function_name"],
                 "value": (row["operating_expenditures"] or 0) + (row["capital_expenditures"] or 0),
-                "share_of_entity": row["pct_of_entity_total"],
+                "share_of_entity": row["share_of_total"],
                 "peer_median": stats["median"],
                 "peer_n": stats["n"],
                 "peer_degenerate": int(stats["median"] is None),
@@ -1698,3 +1698,181 @@ def cost_per_head(store, pid6, function_name):
         caveats=caveats,
         blocked=[not_computable("outcome_or_performance")],
         vintage={"finance": money["year"], "workforce": staff["year"]})
+
+
+def inside_service_area(store, service_area):
+    """What a service area is made of, across every government that reports it.
+
+    `drill` answers this for one government: here is what Bend puts inside
+    Public Safety. This answers it for the state, and the two are different
+    questions. One government's split is a budget. Oregon's split is a picture
+    of who delivers the service, and the shape of it is not what a reader
+    expects: fire protection is reported by 327 governments and police
+    protection by 187, and yet police is the larger number. Fire is district
+    work, spread thin across hundreds of small bodies; policing is concentrated
+    in cities and counties. That single comparison is the argument for having
+    this view at all, and nothing in the product produced it before.
+
+    Never a share of the service area. §9 forbids summing across governments,
+    and a percentage here would need exactly that sum as its denominator: the
+    same dollar appears twice wherever one government pays another to do the
+    work. Each function's own total is real; the whole they would make is not.
+    """
+    rows = store.rows(
+        "SELECT f.function_name AS name, "
+        "       COUNT(DISTINCT f.pid6) AS governments, "
+        "       SUM(COALESCE(f.operating_expenditures, 0) "
+        "         + COALESCE(f.capital_expenditures, 0)) AS total, "
+        "       SUM(COALESCE(f.capital_expenditures, 0)) AS capital, "
+        "       MIN(f.year) AS first_year, MAX(f.year) AS last_year "
+        "FROM financial_functions f WHERE f.service_area = ? "
+        "GROUP BY f.function_name HAVING total > 0 ORDER BY total DESC",
+        service_area)
+    if not rows:
+        return T.envelope("inside_service_area", caveats=[{
+            "code": "no_such_service_area", "rule": "§2",
+            "guidance": f"No function in this data is filed under {service_area}. "
+                        "Call get_spending_breakdown for the areas that exist."}])
+
+    functions = []
+    for row in rows:
+        # Which government types carry it, in order of how much they carry.
+        # This is the finding for most areas: the same function is a city job in
+        # one place and a district's whole reason for existing in another.
+        types = store.rows(
+            "SELECT e.gov_type_name AS type, COUNT(*) AS n, "
+            "       SUM(COALESCE(f.operating_expenditures, 0) "
+            "         + COALESCE(f.capital_expenditures, 0)) AS total "
+            "FROM financial_functions f JOIN entities e ON e.pid6 = f.pid6 "
+            "WHERE f.function_name = ? AND COALESCE(f.operating_expenditures, 0) "
+            "    + COALESCE(f.capital_expenditures, 0) > 0 "
+            "GROUP BY e.gov_type_name ORDER BY total DESC", row["name"])
+        functions.append({
+            "name": row["name"],
+            "governments": row["governments"],
+            "total": row["total"],
+            "capital_share": (100.0 * row["capital"] / row["total"]
+                              if row["total"] else None),
+            "years": sorted({row["first_year"], row["last_year"]} - {None}),
+            "held_by": [{"type": t["type"], "governments": t["n"], "total": t["total"]}
+                        for t in types],
+        })
+
+    years = sorted({y for f in functions for y in f["years"]})
+    caveats = [caveat("inputs_not_outcomes"), caveat("two_expenditure_measures"),
+               {"code": "functions_do_not_sum", "rule": "§9",
+                "guidance": "These function totals are not parts of one number and must "
+                            "not be added. A city paying a district to do the work "
+                            "reports the payment and the district reports the spending, "
+                            "so the same dollar is in both rows, and no share of the "
+                            "service area can be computed from them."}]
+    if len(years) > 1:
+        caveats.append({
+            "code": "years_differ", "rule": "§8",
+            "guidance": f"These rows span {years[0]} to {years[-1]}, one year per "
+                        "government rather than one year across the state. Read the "
+                        "totals as a level and not as a moment."})
+    return T.envelope(
+        "inside_service_area",
+        data={"service_area": service_area, "functions": functions,
+              "governments": store.row(
+                  "SELECT COUNT(DISTINCT pid6) AS n FROM financial_functions "
+                  "WHERE service_area = ?", service_area)["n"],
+              "years": years},
+        caveats=caveats,
+        blocked=[not_computable("service_area_yoy")])
+
+
+def expenditure_tree(store, pid6):
+    """Where the money goes, at both levels the source supports.
+
+    Service areas, and the named functions inside each one. The workbook this
+    is modelled on shows the same hierarchy with a year-over-year column beside
+    it; there is no such column here and there cannot be. Every entity in this
+    extract carries exactly one year of service-area and function detail, and
+    the entity's own history holds a total per year with no split inside it, so
+    a growth rate for Public Safety is not a figure this data is withholding,
+    it is a figure that does not exist. §8 says so and this respects it.
+
+    What is offered instead is the share of the parent, which the hierarchy
+    makes meaningful and a flat list does not: police protection is 20% of what
+    Multnomah County puts into public safety and 3% of its budget, and those two
+    sentences are different findings.
+
+    Functions do not always account for their area. 852 of 3,751 area rows have
+    no function detail at all and 213 have some but under 90%, so each area
+    carries how much of itself its functions explain rather than letting a
+    reader read the gap as a rounding error.
+    """
+    entity = T._entity(store, pid6)
+    if not entity:
+        return T.envelope("expenditure_tree", caveats=[{
+            "code": "entity_not_found", "rule": "§14",
+            "guidance": "This pid6 is not in the data."}])
+
+    areas = store.rows(
+        "SELECT service_area, total, percentage, year FROM spending_by_service_area "
+        "WHERE pid6=? AND total > 0 ORDER BY total DESC", pid6)
+    if not areas:
+        return T.envelope("expenditure_tree", entity=entity, caveats=[{
+            "code": "no_breakdown", "rule": "§2",
+            "guidance": "This government reports no spending by service area."}])
+
+    functions = {}
+    for row in store.rows(
+            "SELECT service_area, function_name, operating_expenditures AS operating, "
+            "       capital_expenditures AS capital, share_of_total, year "
+            "FROM financial_functions WHERE pid6=?", pid6):
+        total = (row["operating"] or 0) + (row["capital"] or 0)
+        if total <= 0:
+            continue
+        functions.setdefault(row["service_area"], []).append({
+            "name": row["function_name"], "total": total,
+            "capital": row["capital"] or 0,
+            "capital_share": 100.0 * (row["capital"] or 0) / total,
+            "share_of_entity": row["share_of_total"], "year": row["year"]})
+
+    tree, unexplained = [], 0
+    for area in areas:
+        inside = sorted(functions.get(area["service_area"], []),
+                        key=lambda f: f["total"], reverse=True)
+        covered = sum(f["total"] for f in inside)
+        for f in inside:
+            f["share_of_parent"] = 100.0 * f["total"] / area["total"] if area["total"] else None
+        if not inside:
+            unexplained += 1
+        tree.append({
+            "name": area["service_area"], "total": area["total"],
+            "share_of_entity": area["percentage"], "year": area["year"],
+            "functions": inside,
+            # How much of the area its own functions account for. Below one this
+            # is not a rounding error, it is detail the source did not file.
+            "explained": (covered / area["total"]) if area["total"] else None,
+        })
+
+    caveats = [caveat("inputs_not_outcomes"), caveat("two_expenditure_measures"),
+               caveat("absence_means_another_entity")]
+    if unexplained:
+        caveats.append({
+            "code": "no_function_detail", "rule": "§8",
+            "guidance": f"{unexplained} of these service areas have no function detail "
+                        "in this extract. The area total is real; the split inside it "
+                        "was not filed, which is not the same as the area having one "
+                        "function."})
+    thin = [t["name"] for t in tree
+            if t["explained"] is not None and 0 < t["explained"] < 0.9]
+    if thin:
+        caveats.append({
+            "code": "functions_under_explain_area", "rule": "§8",
+            "guidance": "The functions filed under "
+                        + ", ".join(thin[:3])
+                        + " account for less than nine tenths of the area's own total, so "
+                          "the rows below it do not add up to the row above and the "
+                          "remainder is unfiled rather than unspent."})
+    return T.envelope(
+        "expenditure_tree", entity=entity,
+        data={"areas": tree, "year": areas[0]["year"],
+              "areas_without_detail": unexplained},
+        caveats=caveats,
+        blocked=[not_computable("service_area_yoy")],
+        vintage={"finance": areas[0]["year"]})
