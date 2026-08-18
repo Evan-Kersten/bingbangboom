@@ -45,7 +45,20 @@ SELECTOR = {"service_area": "service_area", "function": "function"}
 # any of the three source files, so a finer grain is unavailable however fine the
 # boundaries in the repository are.
 SURVEY_LAYERS = ("county", "place")
-FISCAL_LAYERS = ("county", "place", "school_district")
+
+# "government" is a point layer, not a boundary one. It exists because 1,029 of
+# Oregon's special districts have no polygon anywhere in this data and are
+# therefore absent from every choropleth in this registry: a fiscal map of
+# Oregon's local governments that silently omits two thirds of them is the
+# mostly-absence failure this module was built to catch, committed by the tool
+# doing the catching. A pin says where a government's office is and nothing
+# else, which is far less than a boundary and far more than leaving it out.
+#
+# Survey measures are not offered on it. DP03 describes a geography and a pin is
+# a government; drawing a poverty rate on a government's office would attach a
+# population's conditions to a body that did not produce them, which is the §4
+# pairing the whole module refuses elsewhere.
+FISCAL_LAYERS = ("county", "place", "school_district", "government")
 
 
 def measures():
@@ -167,6 +180,27 @@ def draw(store, measure_id, layer="county", county=None, **selectors):
                         + (" There are no tract-level rows in this survey data, so a "
                            "finer grain is unavailable however fine the boundaries are."
                            if measure["kind"] == "survey" else "")}])
+
+    if layer == "government":
+        result = T.render_point_map(store, metric=measure_id, county=county,
+                                    gov_type=selectors.get("gov_type"),
+                                    service_area=selectors.get("service_area"),
+                                    function=selectors.get("function"))
+        data = result["data"]
+        panel = {
+            "measure": measure_id, "label": _labelled(measure, selectors),
+            "kind": "fiscal", "drawn": bool(data.get("drawn")),
+            "svg": data.get("svg"), "covered": data.get("placed"),
+            "total": data.get("total"), "coverage": data.get("coverage"),
+            "layer_share": None, "refused_because": None if data.get("drawn") else "unplaced",
+            "reason": None if data.get("drawn") else data.get("reason"),
+            "source": measure["source"] + ", placed by address",
+        }
+        return T.envelope("atlas_draw",
+                          data={"panel": panel, "layer": layer, "county": county,
+                                "selectors": selectors},
+                          caveats=result.get("caveats", []),
+                          blocked=result.get("not_computable", []))
 
     if measure["kind"] == "survey":
         result = C.render_community_map(store, code=measure_id, geo_level=layer,
@@ -296,7 +330,8 @@ def catalogue(store, layer="county", county=None, **selectors):
                        if panel["total"] else "nothing to draw")
             + (f", {fmt.percent(100 * panel['layer_share'])} of the subject is on "
                "this layer" if panel.get("layer_share") is not None else "")
-            + ("" if panel["drawn"] else f" — {panel['reason'][:140]}"),
+            + ("" if panel["drawn"]
+               else f" — {(panel['reason'] or 'not drawn')[:140]}"),
             "source": panel["source"],
         })
     drawn = sum(1 for r in rows if r["verdict"] == "drawn")

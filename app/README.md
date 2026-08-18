@@ -116,6 +116,16 @@ state scale or because most of them report nothing in the category, and three
 refuse because the survey margin is too wide to bin. That table is the artifact,
 not any map in it.
 
+**The government layer is pins, not shading.** It exists because the polygons do
+not: 1,029 of Oregon's governments are special districts and fewer than twenty
+have a boundary in this data, so every other layer here omits two thirds of the
+state's governments. A pin is the city on a government's mailing address, which
+is where its office is and never the ground it serves, and that sentence is
+written into the frame under the map rather than left to a note.
+
+Fire protection is the case that makes the argument: it draws at one county in
+thirty-six, and at 300 governments as pins.
+
 A refused measure stays pickable. The refusal drawn in the frame, with the count
 of boundaries behind it, is a more useful thing to hand somebody scoping a layer
 than a disabled control.

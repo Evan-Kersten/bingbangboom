@@ -223,6 +223,22 @@ CAVEATS = {
         "12",
         "Never state or imply a dollar amount for this topic. The figure does not exist in "
         "the source and cannot be derived from it."),
+    "pin_is_an_office": (
+        "9",
+        "Every pin on this map is the centroid of the city on the government's mailing "
+        "address, which is where its office is and not the ground it serves. A rural fire "
+        "protection district filed at a Eugene address covers land outside Eugene "
+        "entirely, and a district serving three counties has one pin in whichever city "
+        "takes its post. Never describe a pin as coverage, a boundary, a catchment or a "
+        "service area, and never read the density of pins in a county as the density of "
+        "the service. What this map supports is where the governments doing a thing are "
+        "based and how large they are; nothing about extent can be read off it."),
+    "points_place_what_polygons_cannot": (
+        "9",
+        "This layer exists because 1,029 of Oregon's special districts have no boundary "
+        "anywhere in this data and never appear on a choropleth at all. A point map "
+        "includes them at the cost of saying only where each one is based. That trade is "
+        "the reason to use it and the limit on what it can answer."),
     "topic_reads_as_several": (
         "14",
         "The word asked about names more than one subject in this concordance, and they map "
@@ -711,6 +727,15 @@ READER_NOTES = {
         "Outstanding debt is a balance rather than an annual shortfall, and most "
         "of it is borrowing against capital a government intends to hold for "
         "decades.",
+    "pin_is_an_office":
+        "Each pin is the city on that government's mailing address, which is where its "
+        "office is and not the ground it serves. A rural fire district filed at a Eugene "
+        "address covers land outside Eugene entirely, so read these as where the "
+        "governments are based, never as coverage.",
+    "points_place_what_polygons_cannot":
+        "This is the only layer that can show special districts at all. They are two "
+        "thirds of Oregon's governments and none of them has a boundary in this data, so "
+        "the choice here is a point or nothing.",
     "catalogue_is_a_snapshot":
         "Coverage is a property of this build of the data. A refreshed source "
         "can change a verdict here, so record the date beside any layer "

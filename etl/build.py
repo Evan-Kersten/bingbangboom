@@ -87,6 +87,54 @@ def norm(text):
     return re.sub(r"[^a-z0-9]", "", expand(text))
 
 
+def city_key(text):
+    """A place name reduced to what an address and a shapefile agree on.
+
+    The extract writes SAINT HELENS and MILTON FREEWATER where the Census layer
+    has St. Helens and Milton-Freewater, so the punctuation and the spelled-out
+    saint both come out. The legal suffix goes too, because NAMELSAD carries
+    "Bend city" and no envelope ever does.
+    """
+    text = (text or "").upper()
+    text = re.sub(r"\bSAINT\b", "ST", text)
+    text = re.sub(r"[^A-Z0-9]+", " ", text)
+    text = re.sub(r"\b(CITY|TOWN|CDP|VILLAGE)\b", " ", text)
+    return " ".join(text.split())
+
+
+def _centroid_of(geometry):
+    """Area-weighted centre of a polygon's largest ring.
+
+    The largest ring rather than all of them: a coastal city with an island
+    would otherwise place its pin in the water between the two.
+    """
+    rings = geometry.get("coordinates") or []
+    if geometry.get("type") == "Polygon":
+        rings = [rings]
+    best, best_area = None, 0.0
+    for polygon in rings:
+        if not polygon or not polygon[0]:
+            continue
+        ring = polygon[0]
+        area = sum(ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1]
+                   for i in range(len(ring) - 1))
+        if abs(area) > best_area:
+            best, best_area = ring, abs(area)
+    if not best or best_area < 1e-12:
+        return None
+    signed = sum(best[i][0] * best[i + 1][1] - best[i + 1][0] * best[i][1]
+                 for i in range(len(best) - 1)) / 2
+    if abs(signed) < 1e-12:
+        return None
+    cx = sum((best[i][0] + best[i + 1][0])
+             * (best[i][0] * best[i + 1][1] - best[i + 1][0] * best[i][1])
+             for i in range(len(best) - 1))
+    cy = sum((best[i][1] + best[i + 1][1])
+             * (best[i][0] * best[i + 1][1] - best[i + 1][0] * best[i][1])
+             for i in range(len(best) - 1))
+    return (cx / (6 * signed), cy / (6 * signed))
+
+
 def loose(text):
     """Normalized key with the characters Census scans confuse folded together.
 
@@ -166,6 +214,17 @@ def load_entities():
                     "school_district_type": record.get("schoolDistrictTypeName"),
                     "source_file": label,
                 })
+
+    # The mailing address, which the fiscal payload does not carry and the
+    # simplified roster does. It is the only locator in this data for the 1,029
+    # special districts that have no boundary anywhere, so it is worth the
+    # second file.
+    addresses = {}
+    with open(os.path.join(REPO, GOV_CSV), newline="") as fh:
+        for record in csv.DictReader(fh):
+            addresses[str(record["gov_census_pid6"])] = record.get("gov_address_city")
+    for entity in entities:
+        entity["address_city"] = addresses.get(entity["pid6"])
     return entities, raw
 
 
@@ -620,6 +679,39 @@ def build_geometry(entities, out_dir):
             geo_rows.append(dict(zip(
                 ("pid6", "layer", "geo_id", "match_method", "confidence"), row)))
 
+    # Every government carries a mailing address, and the city in it can be
+    # matched to a place polygon whose centroid stands as a pin. That is the
+    # only way two thirds of Oregon's governments get onto a map at all: 1,029
+    # special districts have no boundary in this data and never will without a
+    # boundary file that does not exist, so the choice is a point or nothing.
+    #
+    # No geocoder and no network. The city named in the address, normalised
+    # against the same place layer already loaded above. It resolves 91% of the
+    # corpus; the rest are addresses in unincorporated communities with no
+    # polygon of their own, and they are left unplaced rather than nudged to the
+    # nearest thing that would have matched.
+    #
+    # A pin is the office, never the service area. The rule that says so is
+    # attached wherever one is drawn.
+    place_centroids = {}
+    for feature in layers["place"]["features"]:
+        centre = _centroid_of(feature["geometry"])
+        if not centre:
+            continue
+        props = feature["properties"]
+        for label in (props.get("NAME"), props.get("NAMELSAD")):
+            if label:
+                place_centroids.setdefault(city_key(label), (props["GEOID"], centre))
+
+    point_rows = []
+    for entity in entities:
+        found = place_centroids.get(city_key(entity.get("address_city")))
+        if not found:
+            continue
+        geoid, (lon, lat) = found
+        point_rows.append({"pid6": entity["pid6"], "lon": lon, "lat": lat,
+                           "place_geoid": geoid, "basis": "address_city"})
+
     # Multnomah precinct splits carry special-district membership per polygon.
     # Dissolving them is the only special-district geography available, and it
     # covers one county, so it is written out but deliberately not joined.
@@ -628,7 +720,7 @@ def build_geometry(entities, out_dir):
     with open(os.path.join(out_dir, "geo", "multnomah_precinct_splits.geojson"), "w") as fh:
         json.dump(precincts, fh)
 
-    return geo_rows, layers, precincts
+    return geo_rows, point_rows, layers, precincts
 
 
 # --------------------------------------------------------------- assembly
@@ -798,8 +890,9 @@ def main():
 
     tables["function_bridge"] = build_function_bridge()
 
-    geo_rows, layers, precincts = build_geometry(entities, out_dir)
+    geo_rows, point_rows, layers, precincts = build_geometry(entities, out_dir)
     tables["geo_entity"] = geo_rows
+    tables["entity_point"] = point_rows
 
     tables["data_availability"] = build_availability(
         entities, tables, office_matches, geo_rows, dp03_rows)

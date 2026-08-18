@@ -15,6 +15,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import format as fmt
+import rules
 import tools as T
 
 failures = []
@@ -893,6 +894,47 @@ def main():
     check("an exact subject beats every alias",
           T.map_topic_to_categories(store, "water")["data"]["matched"] == "water")
 
+    print("\ngovernments are placed as pins where no boundary exists (§9)")
+    # The gap this layer closes. Fire protection is district work and 243 of the
+    # districts doing it have no boundary anywhere, so every choropleth of it
+    # refuses or draws almost nothing. The same measure on pins draws hundreds.
+    boundary = T.render_function_map(store, "Fire Protection")
+    pins = T.render_point_map(store, metric="function_share", function="Fire Protection")
+    check("fire protection cannot be drawn on any boundary layer",
+          not boundary["data"].get("drawn"), str(boundary["data"].get("layer")))
+    check("and is drawn on hundreds of governments as pins",
+          pins["data"]["drawn"] and pins["data"]["placed"] > 250,
+          str(pins["data"].get("placed")))
+
+    # The rule that has to travel with every one of these. A dot on a map reads
+    # as the location of the thing, and this one is the location of its post.
+    check("a pin map always says a pin is an office",
+          "pin_is_an_office" in codes(pins))
+    check("and says so in the frame, not only in a caveat",
+          "mailing address" in pins["data"]["svg"])
+    check("the office rule reaches the reader rather than only the model",
+          rules.reader_note("pin_is_an_office") is not None)
+
+    districts = T.render_point_map(store, metric="total_spending",
+                                   gov_type="Special District")
+    check("special districts, invisible on every polygon layer, are drawn",
+          districts["data"]["placed"] > 800, str(districts["data"]["placed"]))
+    check("and the map says how many of them are missing from it",
+          districts["data"]["placed"] < districts["data"]["total"]
+          and "map_is_partial" in codes(districts))
+
+    # Scoping frames the county rather than the state. Without it the reader
+    # excluded 35 counties and got a map that is 95% the ground they excluded.
+    scoped = T.render_point_map(store, metric="total_spending",
+                                gov_type="Special District", county="LANE")
+    check("a county scope draws fewer governments than the state",
+          0 < scoped["data"]["placed"] < districts["data"]["placed"])
+    check("and names the county in the subtitle", "Lane County" in scoped["data"]["svg"])
+
+    check("a measure nothing reports refuses rather than drawing an empty state",
+          not T.render_point_map(store, metric="function_share",
+                                 function="Not A Real Function")["data"]["drawn"])
+
     print("\ncompare_entities (§12)")
     result = T.compare_entities(store, [portland, baker_county])
     check("mixing a city and a county is flagged", "mixed_entity_types" in codes(result))
@@ -937,6 +979,7 @@ def main():
                               "form": "entities_over_time"},
         "who_spends_on": {"function_name": "Fire Protection"},
         "render_function_map": {"function": "Police Protection"},
+        "render_point_map": {"metric": "total_spending"},
         "place_topic_brief": {"pid6": portland, "topic": "housing"},
         "cost_per_head": {"pid6": portland, "function_name": "Fire Protection"},
         "atlas_measures": {},

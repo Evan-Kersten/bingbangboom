@@ -1027,6 +1027,15 @@ let TOPICS = null, TOPIC_INDEX = {}, openerPlace = null, openerTopic = null;
    measured at all" is the first question in a prototyping session and a reader
    should not have to click a subject to find out that it is a loose proxy. */
 const FIT_OF = (topic) => (TOPIC_INDEX.fit || {})[topic] || 'none';
+/* What each layer is, said as the reader would say it. "government" is the odd
+   one and needs the most saying: it is pins rather than shading, and a pin is an
+   office rather than a service area. */
+const LAYER_LABELS = {
+  county: 'over county boundaries',
+  place: 'over city boundaries',
+  school_district: 'over school district boundaries',
+  government: 'as pins, one per government office',
+};
 /* Whether the subject in the sentence is still waiting on a place. */
 let subjectUnspent = false;
 /* The map lab's state. Two picks maximum: §15.4 says two measures are two
@@ -1646,8 +1655,7 @@ async function drawBrowse() {
       <h3>Map lab</h3>
       <select class="filter" id="lab-layer" aria-label="Boundary layer">
         ${(MEASURES.layers || []).map((l) => `<option value="${esc(l)}"${
-          l === labLayer ? ' selected' : ''}>over ${esc(l.replace('_', ' '))
-          }${l === 'place' ? 's' : l === 'county' ? ' boundaries' : 's'}</option>`).join('')}
+          l === labLayer ? ' selected' : ''}>${esc(LAYER_LABELS[l] || l)}</option>`).join('')}
       </select>
       ${labMeasures()}
 
@@ -1849,7 +1857,9 @@ async function ask(label, payload) {
                                      county: payload.county })
         : await api('/api/ask', { question: label });
 
-  turn.querySelector('.a').innerHTML = render(result);
+  const answer = turn.querySelector('.a');
+  answer.innerHTML = render(result);
+  fillDeferredMaps(answer).then(scroll);
   turn.querySelectorAll('.chip').forEach((chip) => {
     chip.onclick = () => {
       const preset = [...document.querySelectorAll('.preset')]
@@ -1887,8 +1897,14 @@ const BLOCK = {
      relationship §4 forbids and the way to prevent it is to have nowhere to put
      one. This sits outside the frame and is written by the composer, which is
      the same arrangement the tables have. */
-  map: (b) => `<div class="card pf-viz">${
-    b.caption ? `<div class="tnote"><span>${esc(b.caption)}</span></div>` : ''}${b.svg}</div>`,
+  /* `src` rather than `svg` in a pre-rendered build. The same county map is the
+     answer for every place inside that county, and embedding it in each of the
+     4,080 briefs was 260 MB of one picture written out repeatedly. The block
+     carries a reference, the page fetches it once, and the served mode still
+     sends the SVG inline because there is nothing to deduplicate against. */
+  map: (b) => `<div class="card pf-viz" ${b.src ? `data-map="${esc(b.src)}"` : ''}>${
+    b.caption ? `<div class="tnote"><span>${esc(b.caption)}</span></div>` : ''}${
+    b.svg || ''}</div>`,
   report: (b) => `<div class="report pf-viz">${b.html}</div>`,
   list: (b) => `<ul>${b.items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>`,
 
@@ -1908,6 +1924,24 @@ const BLOCK = {
   next: (b) => `<div class="next">${
     b.questions.map((q) => `<button class="chip">${esc(q)}</button>`).join('')}</div>`,
 };
+
+/* Fills in any map block that arrived as a reference. Runs after the thread is
+   in the DOM so the picture appears in place rather than holding up the rest of
+   the answer, which is the right trade: every other block is already useful. */
+const MAP_CACHE = {};
+async function fillDeferredMaps(root) {
+  for (const node of root.querySelectorAll('[data-map]')) {
+    const src = node.dataset.map;
+    try {
+      MAP_CACHE[src] ||= await readJson('data/' + src);
+      node.insertAdjacentHTML('beforeend', MAP_CACHE[src].svg);
+    } catch (error) {
+      node.insertAdjacentHTML('beforeend',
+        '<p class="none">That map is not in this build.</p>');
+    }
+    node.removeAttribute('data-map');
+  }
+}
 
 function render(result) {
   const parts = (result.blocks || []).map((b) => (BLOCK[b.kind] ? BLOCK[b.kind](b) : ''));

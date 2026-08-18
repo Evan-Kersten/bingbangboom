@@ -17,6 +17,7 @@ server. The exported interface says so in the same place the served one does.
 """
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -86,7 +87,7 @@ def export(out_dir):
     # "unhoused" lands on the homelessness file that is already there.
     write(os.path.join(data_dir, "topics.json"), BR.topic_index())
     write(os.path.join(data_dir, "measures.json"),
-          {"measures": A.measures(), "layers": ["county", "place", "school_district"]})
+          {"measures": A.measures(), "layers": ["county", "place", "school_district", "government"]})
     write(os.path.join(data_dir, "mode.json"), {
         "mode": "static",
         "entities": len(entities),
@@ -128,18 +129,38 @@ def export(out_dir):
     # governments serve it is the question answering itself.
     stacked = [row["place_pid6"] for row in store.rows(
         "SELECT DISTINCT place_pid6 FROM serves_place")]
+
+    # The brief opens on a county map, and that map is the same picture for
+    # every place inside the same county on the same category. Embedded once per
+    # brief it was 4,080 copies of roughly 200 distinct drawings, which took the
+    # build from 386 MB to 649 MB on its own. Written once and referenced, the
+    # briefs go back to about a tenth of that and the reader fetches each map at
+    # most once.
+    seen_maps = {}
     for place_pid6 in stacked:
         for topic in BR.topics():
+            answer = S.answer_brief(place_pid6, topic)
+            for block in answer["blocks"]:
+                if block["kind"] != "map" or not block.get("svg"):
+                    continue
+                key = hashlib.sha1(block["svg"].encode()).hexdigest()[:16]
+                if key not in seen_maps:
+                    path = os.path.join(data_dir, "maps", f"{key}.json")
+                    total += write(path, {"svg": block["svg"]})
+                    seen_maps[key] = True
+                    written += 1
+                block["src"] = f"maps/{key}.json"
+                del block["svg"]
             total += write(
-                os.path.join(data_dir, place_pid6, f"brief-{topic}.json"),
-                S.answer_brief(place_pid6, topic))
+                os.path.join(data_dir, place_pid6, f"brief-{topic}.json"), answer)
             written += 1
-    print(f"  {len(stacked)} cities x {len(BR.topics())} subjects, {total/1e6:.0f} MB so far")
+    print(f"  {len(stacked)} cities x {len(BR.topics())} subjects over "
+          f"{len(seen_maps)} distinct maps, {total/1e6:.0f} MB so far")
 
     # The map lab: every measure on every layer it is valid on, plus the
     # catalogue per layer. A refusal is pre-rendered too, because "this layer
     # would be mostly absence" is the answer a discovery phase came for.
-    for layer in ("county", "place", "school_district"):
+    for layer in ("county", "place", "school_district", "government"):
         total += write(os.path.join(data_dir, "atlas", f"catalogue-{layer}.json"),
                        S.answer_atlas([], layer=layer, mode="catalogue",
                                       service_area=S.DEFAULT_AREA,

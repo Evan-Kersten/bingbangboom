@@ -1551,6 +1551,134 @@ MAP_METRICS = {
         fmt.rate, "Average annual wage"),
 }
 
+# Which government types a point map may be scoped to. "All" is offered because
+# the honest headline of this layer is that it holds every type at once, which
+# is the thing no other layer here can say.
+POINT_TYPES = ("Special District", "School District", "Municipal", "County", None)
+
+
+def render_point_map(store, metric="total_spending", gov_type=None, county=None,
+                     service_area=None, function=None, highlight_pid6=None):
+    """Governments as pins over the county outlines.
+
+    The layer that exists because the polygons do not. 1,029 of Oregon's 1,529
+    governments are special districts, none of them carries a boundary in this
+    data, and every choropleth here is therefore a map with two thirds of the
+    state's governments absent from it. A pin locates a government's office and
+    nothing else, which is a great deal less than a boundary and a great deal
+    more than leaving it off.
+
+    Gated by measurement like every other map, but on what a point map can
+    actually fail at: how many of the governments in scope carry both a value
+    and a placement. A pin map does not have the choropleth's other failure —
+    a place too small to see — because a circle has its own size.
+    """
+    if metric in MAP_METRICS:
+        sql, formatter, label = MAP_METRICS[metric]
+        params = ()
+    elif metric in SERVICE_AREA_MAP_METRICS:
+        if not service_area:
+            return envelope("render_point_map", data={"drawn": False}, caveats=[{
+                "code": "service_area_required", "rule": "§15.1",
+                "guidance": f"{metric} is a service-area measure and needs one named."}])
+        sql, formatter, label = SERVICE_AREA_MAP_METRICS[metric]
+        label = f"{label} {service_area}"
+        params = (service_area,)
+    elif metric in FUNCTION_MAP_METRICS:
+        # The level a boundary map most often refuses at, and the level a point
+        # map is least troubled by: fire protection draws on one county in
+        # thirty-six because the districts doing it have no polygon, and every
+        # one of those districts has an address.
+        if not function:
+            return envelope("render_point_map", data={"drawn": False}, caveats=[{
+                "code": "function_required", "rule": "§15.1",
+                "guidance": f"{metric} is a function measure and needs one named."}])
+        sql, formatter, label = FUNCTION_MAP_METRICS[metric]
+        label = f"{label} {function}"
+        params = (function,)
+    else:
+        return envelope("render_point_map", data={"drawn": False}, caveats=[{
+            "code": "unknown_metric", "rule": "§15.1",
+            "guidance": f"No map metric '{metric}'."}])
+
+    values = {r["pid6"]: r["value"] for r in store.rows(sql, *params)
+              if r["value"] is not None}
+
+    scope = ["1=1"]
+    args = []
+    if gov_type:
+        scope.append("e.gov_type_name = ?")
+        args.append(gov_type)
+    if county:
+        scope.append("UPPER(e.host_county) = ?")
+        args.append(county.upper())
+    candidates = store.rows(
+        "SELECT e.pid6, COALESCE(e.common_name, e.legal_name) AS name, "
+        "       e.gov_type_name, e.address_city, p.lon, p.lat "
+        "FROM entities e LEFT JOIN entity_point p ON p.pid6 = e.pid6 "
+        "WHERE " + " AND ".join(scope), *args)
+
+    with_value = [dict(r) for r in candidates if r["pid6"] in values]
+    for row in with_value:
+        row["value"] = values[row["pid6"]]
+    placed = [r for r in with_value if r["lon"] is not None]
+
+    where = f" in {county.title()} County" if county else ""
+    kind = f"{gov_type}s" if gov_type else "governments"
+    subtitle = f"{kind} that report it{where}, one pin per office"
+
+    caveats = [caveat("pin_is_an_office"), caveat("points_place_what_polygons_cannot")]
+    unplaced = len(with_value) - len(placed)
+    density = len(placed) / len(with_value) if with_value else 0.0
+
+    # Below the floor the pins are a sample of the governments that report,
+    # which is a different map from the one the title claims.
+    if not placed or density < THRESHOLDS["map_density_minimum"]:
+        reason = (f"{len(placed)} of {len(with_value)} {kind} reporting this measure have "
+                  "an address that resolves to a place in this data, so most of them "
+                  "would be missing from the picture."
+                  if with_value else f"No {kind}{where} report this measure.")
+        return envelope(
+            "render_point_map",
+            data={"drawn": False, "reason": reason, "coverage": density,
+                  "placed": len(placed), "total": len(with_value),
+                  "svg": viz.refusal(label, reason)},
+            caveats=caveats + [{
+                "code": "too_thin_to_map", "rule": "§15.1", "guidance": reason}])
+
+    note = ("A pin is the city on the government's mailing address, not the ground it "
+            "serves. " + (f"{unplaced} of {len(with_value)} have an address in a "
+                          "community with no boundary here and are not drawn."
+                          if unplaced else "Every one of them is placed."))
+    collection, key = maps.load_layer("county")
+    base = [f for f in collection["features"] if f["geometry"]]
+    frame_to = None
+    if county:
+        row = store.row("SELECT geoid FROM entities WHERE gov_type_name='County' "
+                        "AND UPPER(host_county) = ?", county.upper())
+        if row:
+            frame_to = [f for f in base if f["properties"].get(key) == row["geoid"]]
+    drawing = maps.points(base, placed, label, subtitle, formatter=formatter,
+                          note=note, highlight_pid6=highlight_pid6,
+                          frame_to=frame_to or None)
+    caveats.append({
+        "code": "map_is_partial", "rule": "§9",
+        "guidance": f"{len(placed)} of {len(with_value)} {kind} reporting this measure "
+                    "are drawn. The rest have an address in an unincorporated community "
+                    "with no polygon in this data."})
+    return envelope(
+        "render_point_map",
+        data={"drawn": True, "svg": drawing["svg"], "coverage": density,
+              "placed": len(placed), "total": len(with_value), "label": label,
+              "gov_type": gov_type, "county": county,
+              "table": [{"government": r["name"], "type": r["gov_type_name"],
+                         "office in": (r["address_city"] or "").title(),
+                         label: formatter(r["value"])}
+                        for r in sorted(placed, key=lambda r: r["value"],
+                                        reverse=True)[:12]]},
+        caveats=caveats)
+
+
 # Service-area metrics need the area named, so they are parameterised separately.
 SERVICE_AREA_MAP_METRICS = {
     "service_area_share": (
@@ -2024,6 +2152,7 @@ def render_map(store, layer="county", metric="spending_per_resident", county=Non
 
 TOOLS["render_chart"] = render_chart
 TOOLS["render_map"] = render_map
+TOOLS["render_point_map"] = render_point_map
 TOOLS["render_function_map"] = render_function_map
 TOOLS["render_comparison"] = render_comparison
 

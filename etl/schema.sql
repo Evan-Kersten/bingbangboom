@@ -24,6 +24,10 @@ CREATE TABLE entities (
     host_county_pid6         TEXT,
     is_dependent             INTEGER,
     website                  TEXT,
+    -- The city on the government's mailing address. Not a service area and not
+    -- a boundary: it is where the mail goes, and it is what entity_point is
+    -- derived from.
+    address_city             TEXT,
     sd_lea                   TEXT,
     school_district_type     TEXT,
     source_file              TEXT NOT NULL
@@ -267,6 +271,23 @@ CREATE TABLE dp03_variables (
 
 -- Which entities can be drawn on a map, and on what basis.
 DROP TABLE IF EXISTS geo_entity;
+-- Where a government's office is, from the city in its mailing address matched
+-- to a place polygon. The only locator this data has for the 1,029 special
+-- districts that carry no boundary of their own, and the reason a point layer
+-- exists at all.
+--
+-- This is an office, never a service area. A rural fire district filed at a
+-- Eugene address serves ground outside Eugene entirely, and every drawing of
+-- these rows carries the rule that says so.
+DROP TABLE IF EXISTS entity_point;
+CREATE TABLE entity_point (
+    pid6        TEXT PRIMARY KEY,
+    lon         DOUBLE,
+    lat         DOUBLE,
+    place_geoid TEXT,   -- the place whose centroid stands in for the address
+    basis       TEXT    -- address_city
+);
+
 CREATE TABLE geo_entity (
     pid6         TEXT PRIMARY KEY,
     layer        TEXT,    -- county | place | school_district

@@ -1002,10 +1002,14 @@ def answer_atlas(measure_ids, layer="county", county=None, service_area=None,
             c["guidance"] for c in result["caveats"]
             if c["code"] == "no_investment_against_conditions")})
     elif panels:
+        # The government layer draws pins, not shapes, and calling them
+        # boundaries is the one word that would let a reader take a pin for an
+        # extent, which is the entire thing this layer must not be read as.
+        units = "governments" if layer == "government" else "boundaries"
         drawn = [p for p in panels if p["drawn"]]
         headline = " ".join(
             f"{p['label']}: " + (
-                f"drawn over {p['covered']} of {p['total']} boundaries."
+                f"drawn over {p['covered']} of {p['total']} {units}."
                 if p["drawn"] else "refused.")
             for p in panels)
         blocks.append({"kind": "answer", "text": headline})
@@ -1017,7 +1021,7 @@ def answer_atlas(measure_ids, layer="county", county=None, service_area=None,
         if drawn:
             blocks.append({"kind": "table", "rows": [
                 {"panel": p["label"], "kind": p["kind"],
-                 "boundaries carrying a value": f"{p['covered']} of {p['total']}",
+                 f"{units} carrying a value": f"{p['covered']} of {p['total']}",
                  "source": p["source"]} for p in panels]})
     blocks.append(B.notes([result]))
     ordered = B.compose("place_or_cross_entity", [b for b in blocks if b])
@@ -1992,7 +1996,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if parsed.path == "/api/measures":
             import atlas as A
             return self._json({"measures": A.measures(),
-                               "layers": ["county", "place", "school_district"]})
+                               "layers": ["county", "place", "school_district", "government"]})
 
         if parsed.path == "/api/topics":
             # One definition, sent at runtime, for the same reason the preset

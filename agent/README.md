@@ -4,7 +4,7 @@ Forty-one typed tools over the store built by `etl/`, the §4 formatter, and the
 orchestrator that routes a question and runs the tool loop.
 
 ```
-python3 agent/test_tools.py         # 289 checks
+python3 agent/test_tools.py         # 300 checks
 python3 agent/test_orchestrator.py  # 44 checks, uses a scripted model
 python3 agent/test_viz.py           # 88 checks on the render layer
 python3 agent/test_reports.py       # 53 checks on report composition
@@ -208,6 +208,31 @@ share of the money the drawn layer holds travels on every result and is stated
 in the answer: a county police map is 35% of what Oregon's local governments
 report on policing, and saying so is the difference between a map of county
 policing and a claim about policing.
+
+`render_point_map` is the layer that exists because the polygons do not. 1,029
+of Oregon's 1,529 governments are special districts and fewer than twenty carry
+a boundary anywhere in this data, so every choropleth above silently omits two
+thirds of the state's governments. A pin is the centroid of the city on a
+government's mailing address: 1,388 of 1,529 placed, no geocoder, no network.
+
+The measure of what it adds is fire protection. On boundaries it draws at one
+county in thirty-six, because the districts doing the work are exactly the ones
+with no polygon. As pins it draws at 300 governments.
+
+**A pin is an office, never a service area.** A rural fire district filed at a
+Eugene address covers ground outside Eugene entirely, and a district serving
+three counties has one pin in whichever city takes its post. `pin_is_an_office`
+travels on every result, reaches the reader through `READER_NOTES`, and is
+written into the frame beneath the map, because a dot on a map reads as the
+location of the thing and a caveat somewhere else does not undo that.
+
+Sizes are quantile bins rather than a continuous scale, matching what the
+choropleth does with colour and for the same reason: special-district spending
+runs from a thousand dollars to nine hundred million, and any scale continuous
+in the value puts nine hundred pins at the floor and one at the ceiling. The
+legend de-duplicates its steps, because a measure like share-of-spending-on-fire
+collapses four of five breaks to 100% and a legend printing 100% four times
+beside four different circles claims a distinction it does not have.
 
 `gallery.py` renders every form to one page. The validator checks colour; it does
 not catch a label collision, a legend sitting on an axis, or a map drawing over
