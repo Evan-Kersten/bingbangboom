@@ -130,6 +130,20 @@ A refused measure stays pickable. The refusal drawn in the frame, with the count
 of boundaries behind it, is a more useful thing to hand somebody scoping a layer
 than a disabled control.
 
+**The service area and the function are pickers, not constants.** They were two
+string literals in `index.html`, which meant the lab could draw one of the
+thirty-six named things Oregon's governments do. The area picker cascades into
+the function picker, because a function only means something inside the area
+holding it, and the list comes from `/api/functions` at runtime rather than a
+second copy in the page.
+
+What that opens up is the level below a service area. Public safety is a heading;
+police protection, fire protection and corrections are the work, and they behave
+completely differently. The share-of-budget map runs 0.2% to 100% for fire
+protection, because the top of that range is single-purpose districts that exist
+to do nothing else, and 0.6% to 20% for police protection, because it is a
+department inside a general-purpose government. One map, two shapes of delivery.
+
 ## How a table is drawn
 
 `app/tables.js` draws every table block the thread shows, both the ones the
@@ -163,7 +177,7 @@ audience; this is interface behaviour.
 ```
 python3 app/test_server.py    # 184 checks, no browser needed
 python3 app/test_parity.py    # 461 checks, drives the browser code through node
-python3 app/test_tables.py    #  28 checks on how a table block is drawn
+python3 app/test_tables.py    #  30 checks on how a table block is drawn
 ```
 
 `test_server.py` calls the handlers directly. It asserts that presets return

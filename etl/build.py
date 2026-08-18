@@ -432,6 +432,8 @@ def build_fiscal_tables(raw, type_counts):
                     "operating_expenditures": fn.get("operatingExpenditures"),
                     "capital_expenditures": fn.get("capitalExpenditures"),
                     "pct_of_entity_total": fn.get("pctOfEntityTotal"),
+                    # Filled in below, once the entity's own total is known.
+                    "share_of_total": None,
                 })
 
         # --- trends and revenue sources --------------------------------------
@@ -887,6 +889,41 @@ def main():
     dp03_rows, dp03_variables = build_dp03()
     tables["dp03"] = dp03_rows
     tables["dp03_variables"] = dp03_variables
+
+    # The share the source derives is not a share of anything these figures add
+    # up to. 85 of 3,645 rows are negative and 442 exceed 100%: Harney County's
+    # Health function is filed at -3,871% against $2.9M of positive operating
+    # spending, and a map sized by that draws a circle for a negative number.
+    #
+    # Recomputed here against the entity's own operating plus capital, which is
+    # the denominator the service-area shares already use. That takes the sane
+    # rows from 3,171 to 3,591 and, more usefully, makes the service-area share
+    # and the function share two levels of one fraction instead of two
+    # unrelated ones. The source column stays, unread, because a figure this
+    # wrong is worth being able to point at.
+    totals = {row["pid6"]: row["total_expenditure"]
+              for row in tables.get("operating_vs_capital", [])
+              if row.get("total_expenditure")}
+    recomputed = unpriced = 0
+    for row in tables.get("financial_functions", []):
+        denominator = totals.get(row["pid6"])
+        spend = (row.get("operating_expenditures") or 0) + (row.get("capital_expenditures") or 0)
+        if denominator and spend:
+            row["share_of_total"] = 100.0 * spend / denominator
+            recomputed += 1
+        else:
+            unpriced += 1
+    note_defect(
+        "function_share_not_a_share",
+        "financial_functions.pctOfEntityTotal is negative for 85 rows and above 100% "
+        "for 442 of 3,645. Harney County Health is filed at -3,871% against positive "
+        "spending, so whatever denominator the source used, these figures are not a "
+        "share of it.",
+        527,
+        f"share_of_total recomputed for {recomputed} rows against the entity's own "
+        f"operating plus capital, which is the basis the service-area shares use. "
+        f"{unpriced} rows have no denominator and carry NULL. The source column is "
+        "stored and never read.")
 
     tables["function_bridge"] = build_function_bridge()
 

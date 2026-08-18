@@ -667,6 +667,31 @@ SCHEMAS = [
         },
     },
     {
+        "name": "inside_service_area",
+        "description": "What one service area is made of across every government in "
+                       "Oregon that reports it: each named function, how many "
+                       "governments report it, what they spend on it, and which types "
+                       "of government hold it. Use this where the question is how a "
+                       "service is delivered rather than what one government spends. "
+                       "Fire protection is 327 governments and $1.1B, police protection "
+                       "is 187 and $1.9B, and the difference is that fire is district "
+                       "work and policing is city and county work. Never add these "
+                       "totals together and never state one as a share of the service "
+                       "area: a city paying a district for the work reports the payment "
+                       "while the district reports the spending, so the same dollar is "
+                       "in both rows. Use drill for one government's own split. "
+                       + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "service_area": {"type": "string",
+                                 "description": "One of the twelve service areas, as "
+                                                "returned by get_spending_breakdown."},
+            },
+            "required": ["service_area"],
+        },
+    },
+    {
         "name": "render_point_map",
         "description": "Draw governments as pins over the county outlines, one pin per "
                        "office, sized by the measure. Use this where a boundary map "

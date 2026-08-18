@@ -18,6 +18,7 @@ server. The exported interface says so in the same place the served one does.
 
 import argparse
 import hashlib
+import re
 import json
 import os
 import shutil
@@ -36,6 +37,20 @@ import reports as R  # noqa: E402
 # rather than fire, because fire refuses on every layer and a demo that opened
 # on a refusal would read as broken rather than as careful.
 DEFAULT_FUNCTION = "Police Protection"
+
+
+def slug(text):
+    """The suffix a pre-rendered atlas file is keyed by, past its measure.
+
+    Police protection and fire protection are the same measure with a different
+    argument. Keyed on the measure alone, one function had a map in the build
+    and the other thirty-five silently returned it, and the per-function
+    catalogue 404ed so the lab showed a coverage panel with no verdicts.
+
+    `selectorKey` in index.html computes the same string in the browser, and
+    app/test_tables.py drives both over every function name to keep them equal.
+    """
+    return "-" + re.sub(r"[^a-z0-9]+", "-", text.lower()) if text else ""
 
 
 def write(path, payload):
@@ -160,20 +175,76 @@ def export(out_dir):
     # The map lab: every measure on every layer it is valid on, plus the
     # catalogue per layer. A refusal is pre-rendered too, because "this layer
     # would be mostly absence" is the answer a discovery phase came for.
-    for layer in ("county", "place", "school_district", "government"):
-        total += write(os.path.join(data_dir, "atlas", f"catalogue-{layer}.json"),
-                       S.answer_atlas([], layer=layer, mode="catalogue",
-                                      service_area=S.DEFAULT_AREA,
-                                      function=DEFAULT_FUNCTION))
+    # Every service area and every function inside it, not one of each. The lab
+    # used to hard-code Police Protection, so 35 of the 36 named things
+    # governments do had no map anywhere in the build; a picker over them is
+    # only real if the files behind it exist.
+    areas = sorted({r["service_area"] for r in store.rows(
+        "SELECT DISTINCT service_area FROM financial_functions")})
+    functions_by_area = {}
+    for row in store.rows(
+            "SELECT service_area, function_name FROM financial_functions "
+            "WHERE COALESCE(operating_expenditures, 0) "
+            "    + COALESCE(capital_expenditures, 0) > 0 "
+            "GROUP BY service_area, function_name"):
+        functions_by_area.setdefault(row["service_area"], []).append(row["function_name"])
+    all_functions = sorted({f for v in functions_by_area.values() for f in v})
+
+    write(os.path.join(data_dir, "functions.json"), {
+        "areas": {area: [{"name": name,
+                          "governments": store.row(
+                              "SELECT COUNT(DISTINCT pid6) AS n FROM financial_functions "
+                              "WHERE function_name = ? AND COALESCE(operating_expenditures, 0)"
+                              " + COALESCE(capital_expenditures, 0) > 0", name)["n"]}
+                         for name in sorted(names)]
+                  for area, names in functions_by_area.items()}})
+
+    # What each service area is made of, across the state. One file per area.
+    for area in areas:
+        total += write(
+            os.path.join(data_dir, "inside",
+                         re.sub(r"[^a-z0-9]+", "-", area.lower()) + ".json"),
+            S.answer_inside_area(area))
         written += 1
+
+    for layer in ("county", "place", "school_district", "government"):
+        # One catalogue per function, not one per layer. Four of the fifteen
+        # rows in it are a measure plus a selector, and their verdicts change
+        # with the selector: fire protection draws at one county and police
+        # protection at thirty-four. A single catalogue per layer answered the
+        # coverage question for whichever function happened to be the default
+        # and 404ed for the other thirty-five, which showed up in the lab as a
+        # panel with no verdicts at all.
+        #
+        # Cheap despite the count: render_map memoizes on its arguments, so the
+        # 144 catalogues are the same few hundred draws read repeatedly.
+        for name in all_functions:
+            total += write(
+                os.path.join(data_dir, "atlas",
+                             f"catalogue-{layer}{slug(name)}.json"),
+                S.answer_atlas([], layer=layer, mode="catalogue",
+                               service_area=S.DEFAULT_AREA, function=name))
+            written += 1
         for measure in A.measures():
             if layer not in measure["layers"]:
                 continue
-            total += write(
-                os.path.join(data_dir, "atlas", f"{layer}-{measure['id']}.json"),
-                S.answer_atlas([measure["id"]], layer=layer,
-                               service_area=S.DEFAULT_AREA, function=DEFAULT_FUNCTION))
-            written += 1
+            # A measure that takes a selector is rendered once per value of it.
+            # A measure that takes none is rendered once, under no key.
+            if measure["needs"] == "service_area":
+                choices = [(area, {"service_area": area}) for area in areas]
+            elif measure["needs"] == "function":
+                choices = [(name, {"function": name}) for name in all_functions]
+            else:
+                choices = [(None, {})]
+            for label, selectors in choices:
+                total += write(
+                    os.path.join(data_dir, "atlas",
+                                 f"{layer}-{measure['id']}{slug(label)}.json"),
+                    S.answer_atlas([measure["id"]], layer=layer,
+                                   service_area=selectors.get("service_area",
+                                                              S.DEFAULT_AREA),
+                                   function=selectors.get("function")))
+                written += 1
 
     for preset_id in sorted(S.ENTITY_INDEPENDENT):
         total += write(os.path.join(data_dir, "shared", f"{preset_id}.json"),

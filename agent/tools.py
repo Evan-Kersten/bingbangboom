@@ -1698,8 +1698,11 @@ SERVICE_AREA_MAP_METRICS = {
 # loosely the same thing.
 FUNCTION_MAP_METRICS = {
     "function_share": (
-        "SELECT pid6, pct_of_entity_total AS value FROM financial_functions "
-        "WHERE function_name = ? AND pct_of_entity_total IS NOT NULL",
+        # share_of_total, never pct_of_entity_total. The source's own share is
+        # negative for 85 rows and above 100% for 442, and a proportional symbol
+        # sized by a negative number is not a smaller circle, it is a wrong one.
+        "SELECT pid6, share_of_total AS value FROM financial_functions "
+        "WHERE function_name = ? AND share_of_total > 0",
         fmt.percent, "Share of spending on"),
     "function_per_resident": (
         "SELECT f.pid6 AS pid6, (COALESCE(f.operating_expenditures, 0) "
@@ -2165,7 +2168,7 @@ def _bind_explore():
                  "compare_service_area", "per_capita_by_service_area",
                  "per_capita_over_time", "who_spends_on", "staffing",
                  "revenue_mix", "debt_load", "compare_change", "trend_panel",
-                 "cost_per_head"):
+                 "cost_per_head", "inside_service_area"):
         TOOLS[name] = getattr(explore, name)
 
 

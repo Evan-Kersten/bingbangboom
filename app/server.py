@@ -1318,6 +1318,68 @@ def answer_brief(pid6, topic):
             "trace": [result["tool"]]}
 
 
+def answer_inside_area(service_area):
+    """What a service area is made of, across Oregon.
+
+    The counterpart to the `inside` preset, which answers this for one
+    government. Statewide the same question is about delivery rather than about
+    a budget, and the answer is usually a surprise: the function with the most
+    governments behind it is rarely the one with the most money, because the
+    many-small-bodies functions and the few-large-bodies functions sit side by
+    side inside one Census heading.
+    """
+    import explore
+    result = explore.inside_service_area(STORE, service_area)
+    data = result["data"]
+    if not data:
+        return {"blocks": [{"kind": "answer", "text": next(
+                    (c["guidance"] for c in result["caveats"]), "No such service area.")}],
+                "question_type": "place_or_cross_entity", "rules": result["caveats"],
+                "violations": [], "trace": [result["tool"]]}
+
+    functions = data["functions"]
+    widest = max(functions, key=lambda f: f["governments"])
+    largest = functions[0]
+    lead = (f"{service_area} is {fmt.count(len(functions))} named functions in this "
+            f"data, reported by {fmt.count(data['governments'])} governments between "
+            f"them.")
+    if widest["name"] != largest["name"]:
+        # The finding, where there is one. Most governments doing a thing and
+        # most money spent on it are different functions more often than not,
+        # and that gap is the difference between district work and city work.
+        top_type = widest["held_by"][0] if widest["held_by"] else None
+        lead += (f" {largest['name']} carries the most money at "
+                 f"{fmt.money(largest['total'])}, but {widest['name']} is reported by "
+                 f"the most governments, {fmt.count(widest['governments'])} of them"
+                 + (f", mostly {top_type['type'].lower()}s" if top_type else "") + ".")
+    blocks = [{"kind": "answer", "text": lead}]
+
+    blocks.append({
+        "kind": "table",
+        "caption": "These are not parts of one number and must not be added. A city "
+                   "paying a district to do the work reports the payment while the "
+                   "district reports the spending, so the same dollar is in both rows.",
+        "rows": [
+            {"function": f["name"],
+             "governments": str(f["governments"]),
+             "reported spending": fmt.money(f["total"]),
+             "capital share": (fmt.percent(f["capital_share"])
+                               if f["capital_share"] is not None else "not stated"),
+             "mostly held by": (
+                 f"{f['held_by'][0]['type']} ({f['held_by'][0]['governments']})"
+                 if f["held_by"] else "not stated")}
+            for f in functions]})
+
+    blocks.append(B.notes([result]))
+    blocks.append({"kind": "next", "questions": [
+        f"Map {f['name']} across Oregon" for f in functions[:3]]})
+    ordered = B.compose("place_or_cross_entity", [b for b in blocks if b])
+    return {"blocks": ordered, "question_type": "place_or_cross_entity",
+            "rules": _all_rules([result]),
+            "violations": B.validate("place_or_cross_entity", ordered),
+            "trace": [result["tool"]]}
+
+
 def answer_function(function_name):
     """Who does this? The answer a name search cannot give.
 
@@ -2009,6 +2071,25 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             import browse_data
             return self._json(browse_data.build(STORE))
 
+        if parsed.path == "/api/functions":
+            # One definition of what lives inside each service area, sent at
+            # runtime like the preset list and the subject vocabulary. The lab
+            # hard-coded a single function name, so of the 36 named things
+            # governments do exactly one could be mapped; a second copy of this
+            # index in the page would put that failure back with more steps.
+            index = {}
+            for row in STORE.rows(
+                    "SELECT service_area, function_name, "
+                    "       COUNT(DISTINCT pid6) AS governments "
+                    "FROM financial_functions "
+                    "WHERE COALESCE(operating_expenditures, 0) "
+                    "    + COALESCE(capital_expenditures, 0) > 0 "
+                    "GROUP BY service_area, function_name "
+                    "ORDER BY service_area, governments DESC"):
+                index.setdefault(row["service_area"], []).append(
+                    {"name": row["function_name"], "governments": row["governments"]})
+            return self._json({"areas": index})
+
         if parsed.path == "/api/service_areas":
             # Ordered by how many governments report them, so the picker opens on
             # the areas a comparison will actually find data in.
@@ -2043,6 +2124,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if parsed.path == "/api/preset":
             return self._json(answer_preset(payload.get("id"), payload.get("pid6"),
                                             payload.get("county")))
+
+        if parsed.path == "/api/inside_area":
+            return self._json(answer_inside_area(payload.get("service_area")))
 
         if parsed.path == "/api/atlas":
             ids = [m for m in (payload.get("measures") or []) if m]

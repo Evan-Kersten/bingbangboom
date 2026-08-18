@@ -980,6 +980,7 @@ def main():
         "who_spends_on": {"function_name": "Fire Protection"},
         "render_function_map": {"function": "Police Protection"},
         "render_point_map": {"metric": "total_spending"},
+        "inside_service_area": {"service_area": "Public Safety"},
         "place_topic_brief": {"pid6": portland, "topic": "housing"},
         "cost_per_head": {"pid6": portland, "function_name": "Fire Protection"},
         "atlas_measures": {},

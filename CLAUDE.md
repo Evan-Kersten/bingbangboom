@@ -35,7 +35,7 @@ No dependencies. Standard library only, so there is nothing to install.
 
 ```
 python3 etl/build.py          # ~20s, writes build/ from the files in the root
-python3 etl/verify.py         # 63 assertions about the built store
+python3 etl/verify.py         # 67 assertions about the built store
 python3 app/server.py         # http://localhost:8000
 python3 app/export_static.py --out site --clean   # ~60s, ~385 MB
 ```
@@ -45,10 +45,10 @@ python3 app/export_static.py --out site --clean   # ~60s, ~385 MB
 The full suite, all of which must pass before a push:
 
 ```
-python3 agent/test_tools.py        # 300    python3 app/test_server.py    # 184
+python3 agent/test_tools.py        # 301    python3 app/test_server.py    # 184
 python3 agent/test_orchestrator.py #  44    python3 app/test_parity.py    # 461
-python3 agent/test_viz.py          #  88    python3 app/test_tables.py    #  28
-python3 agent/test_reports.py      #  53    python3 etl/verify.py         #  63
+python3 agent/test_viz.py          #  88    python3 app/test_tables.py    #  30
+python3 agent/test_reports.py      #  53    python3 etl/verify.py         #  67
 python3 agent/test_blocks.py       #  45    python3 etl/test_project.py   #   6
                                             python3 evals/run.py          #  22
 ```
@@ -175,6 +175,38 @@ The three refusals are ranked and the order matters. Mostly-absence beats a thin
 extent beats needing a county, because the weakest reason reads as the most
 fixable, and fire protection reported as "scope it to a county" sends a reader
 to a map that will be just as empty for a reason nobody stated.
+
+**The source's function share is not a share of anything.**
+`financial_functions.pct_of_entity_total` is negative for 85 rows and above 100%
+for 442 of 3,645. Harney County's Health function is filed at **-3,871%** against
+$2.9M of positive spending, and a proportional symbol sized by that is not a
+smaller circle, it is a wrong one. The ETL recomputes `share_of_total` as the
+function's operating plus capital over the entity's own operating plus capital,
+which takes the sane rows from 3,171 to 3,591 and, more usefully, makes the
+service-area share and the function share two levels of one fraction instead of
+two unrelated ones. The source column is stored and never read. Four rows still
+exceed 100% because the two expenditure totals disagree, which is the documented
+trap rather than a new one.
+
+**The area and the function are selectable, not constants.** They were
+`DEFAULT_AREA` and `DEFAULT_FUNCTION` in `index.html`, so of the 36 named things
+Oregon's governments do exactly one could be drawn. `/api/functions` is the one
+definition of what lives inside each area, sent at runtime like the preset list,
+and the pickers cascade because a function only means something inside the area
+holding it. A pre-rendered atlas file is keyed by the selector as well as the
+measure: police protection and fire protection are the same measure with a
+different argument, and keying on the measure alone meant one function had a map
+and the other thirty-five silently returned it.
+
+`explore.inside_service_area` answers the same question statewide that `drill`
+answers for one government, and the two are different questions. Public Safety
+is five functions: police protection carries the most money at $1.9B across 187
+governments, and fire protection is reported by the most governments, 327 of
+them, 243 of which are special districts. One is city work and the other is
+district work, and that is the shape of how Oregon delivers public safety. The
+function totals must never be added: a city paying a district for the work
+reports the payment while the district reports the spending, so the same dollar
+is in both rows and no share of the service area can be computed from them.
 
 **Two thirds of Oregon's governments have no boundary, so they get a pin.**
 1,029 of the 1,529 are special districts and fewer than twenty carry a polygon
