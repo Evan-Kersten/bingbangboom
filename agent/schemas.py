@@ -79,6 +79,24 @@ SCHEMAS = [
         },
     },
     {
+        "name": "capital_split",
+        "description": "Split one entity's reported expenditure into operating, capital and "
+                       "whatever the source files under neither, with the capital share and "
+                       "its peer median. Use this before characterising a government as a "
+                       "high or low spender: a government mid-construction and a government "
+                       "running the same services out of the same total look identical on "
+                       "every service-area share and are different things. The three pieces "
+                       "do not always reach the reported total, and the shortfall is "
+                       "returned as unclassified rather than folded into operating; do not "
+                       "call it operating and do not recompute the capital share against "
+                       "operating plus capital alone. " + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {"pid6": PID},
+            "required": ["pid6"],
+        },
+    },
+    {
         "name": "compare_entities",
         "description": "Compare several entities on one metric. Flags mixed government "
                        "types, which are usually not comparable, and names entities missing "
@@ -664,6 +682,26 @@ SCHEMAS = [
                                          "legitimate answer."},
             },
             "required": ["pid6", "topic"],
+        },
+    },
+    {
+        "name": "expenditure_tree",
+        "description": "Where one government's money goes, at both levels the source "
+                       "supports: every service area, and the named functions inside "
+                       "each. Each row carries its share of the row above it, so police "
+                       "protection reads as 20% of what a county puts into public safety "
+                       "and 3% of its budget, which are two different findings. There is "
+                       "no year-over-year column and there cannot be: every entity here "
+                       "carries one year of service-area and function detail, and the "
+                       "history holds a total per year with no split inside it. Each "
+                       "area also says how much of itself its functions account for, "
+                       "because 852 of 3,751 area rows have no function detail filed and "
+                       "a reader must not take that gap for a rounding error. "
+                       + ENVELOPE_NOTE,
+        "input_schema": {
+            "type": "object",
+            "properties": {"pid6": {"type": "string"}},
+            "required": ["pid6"],
         },
     },
     {

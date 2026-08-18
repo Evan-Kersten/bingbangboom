@@ -257,6 +257,14 @@ NOT_COMPUTABLE = {
         "a history — see service_area_totals, which runs to seven years for 312 "
         "entities. Say which of the two you are describing; the areas are a snapshot "
         "inside a total that moves."),
+    "capital_split_trend": (
+        "8",
+        "Whether capital spending is rising or falling here is not computable. The "
+        "source files one operating-and-capital split per entity, for a single year, "
+        "with no prior-year split of its own; the total those two sum toward does have "
+        "a history and is a different measure. Capital is the lumpiest series in this "
+        "data — one plant finished or started moves the share by tens of points — so a "
+        "single year is a position in a construction cycle and never a direction."),
     "per_capita_without_population": (
         "6",
         "Per-capita is not computable for an entity with no population or enrollment field."),

@@ -102,7 +102,7 @@ def export(out_dir):
     # "unhoused" lands on the homelessness file that is already there.
     write(os.path.join(data_dir, "topics.json"), BR.topic_index())
     write(os.path.join(data_dir, "measures.json"),
-          {"measures": A.measures(), "layers": ["county", "place", "school_district", "government"]})
+          {"measures": A.measures(), "layers": A.layers()})
     write(os.path.join(data_dir, "mode.json"), {
         "mode": "static",
         "entities": len(entities),
@@ -207,7 +207,7 @@ def export(out_dir):
             S.answer_inside_area(area))
         written += 1
 
-    for layer in ("county", "place", "school_district", "government"):
+    for layer in A.layers():
         # One catalogue per function, not one per layer. Four of the fifteen
         # rows in it are a measure plus a selector, and their verdicts change
         # with the selector: fire protection draws at one county and police

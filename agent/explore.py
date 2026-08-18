@@ -1781,3 +1781,98 @@ def inside_service_area(store, service_area):
               "years": years},
         caveats=caveats,
         blocked=[not_computable("service_area_yoy")])
+
+
+def expenditure_tree(store, pid6):
+    """Where the money goes, at both levels the source supports.
+
+    Service areas, and the named functions inside each one. The workbook this
+    is modelled on shows the same hierarchy with a year-over-year column beside
+    it; there is no such column here and there cannot be. Every entity in this
+    extract carries exactly one year of service-area and function detail, and
+    the entity's own history holds a total per year with no split inside it, so
+    a growth rate for Public Safety is not a figure this data is withholding,
+    it is a figure that does not exist. §8 says so and this respects it.
+
+    What is offered instead is the share of the parent, which the hierarchy
+    makes meaningful and a flat list does not: police protection is 20% of what
+    Multnomah County puts into public safety and 3% of its budget, and those two
+    sentences are different findings.
+
+    Functions do not always account for their area. 852 of 3,751 area rows have
+    no function detail at all and 213 have some but under 90%, so each area
+    carries how much of itself its functions explain rather than letting a
+    reader read the gap as a rounding error.
+    """
+    entity = T._entity(store, pid6)
+    if not entity:
+        return T.envelope("expenditure_tree", caveats=[{
+            "code": "entity_not_found", "rule": "§14",
+            "guidance": "This pid6 is not in the data."}])
+
+    areas = store.rows(
+        "SELECT service_area, total, percentage, year FROM spending_by_service_area "
+        "WHERE pid6=? AND total > 0 ORDER BY total DESC", pid6)
+    if not areas:
+        return T.envelope("expenditure_tree", entity=entity, caveats=[{
+            "code": "no_breakdown", "rule": "§2",
+            "guidance": "This government reports no spending by service area."}])
+
+    functions = {}
+    for row in store.rows(
+            "SELECT service_area, function_name, operating_expenditures AS operating, "
+            "       capital_expenditures AS capital, share_of_total, year "
+            "FROM financial_functions WHERE pid6=?", pid6):
+        total = (row["operating"] or 0) + (row["capital"] or 0)
+        if total <= 0:
+            continue
+        functions.setdefault(row["service_area"], []).append({
+            "name": row["function_name"], "total": total,
+            "capital": row["capital"] or 0,
+            "capital_share": 100.0 * (row["capital"] or 0) / total,
+            "share_of_entity": row["share_of_total"], "year": row["year"]})
+
+    tree, unexplained = [], 0
+    for area in areas:
+        inside = sorted(functions.get(area["service_area"], []),
+                        key=lambda f: f["total"], reverse=True)
+        covered = sum(f["total"] for f in inside)
+        for f in inside:
+            f["share_of_parent"] = 100.0 * f["total"] / area["total"] if area["total"] else None
+        if not inside:
+            unexplained += 1
+        tree.append({
+            "name": area["service_area"], "total": area["total"],
+            "share_of_entity": area["percentage"], "year": area["year"],
+            "functions": inside,
+            # How much of the area its own functions account for. Below one this
+            # is not a rounding error, it is detail the source did not file.
+            "explained": (covered / area["total"]) if area["total"] else None,
+        })
+
+    caveats = [caveat("inputs_not_outcomes"), caveat("two_expenditure_measures"),
+               caveat("absence_means_another_entity")]
+    if unexplained:
+        caveats.append({
+            "code": "no_function_detail", "rule": "§8",
+            "guidance": f"{unexplained} of these service areas have no function detail "
+                        "in this extract. The area total is real; the split inside it "
+                        "was not filed, which is not the same as the area having one "
+                        "function."})
+    thin = [t["name"] for t in tree
+            if t["explained"] is not None and 0 < t["explained"] < 0.9]
+    if thin:
+        caveats.append({
+            "code": "functions_under_explain_area", "rule": "§8",
+            "guidance": "The functions filed under "
+                        + ", ".join(thin[:3])
+                        + " account for less than nine tenths of the area's own total, so "
+                          "the rows below it do not add up to the row above and the "
+                          "remainder is unfiled rather than unspent."})
+    return T.envelope(
+        "expenditure_tree", entity=entity,
+        data={"areas": tree, "year": areas[0]["year"],
+              "areas_without_detail": unexplained},
+        caveats=caveats,
+        blocked=[not_computable("service_area_yoy")],
+        vintage={"finance": areas[0]["year"]})

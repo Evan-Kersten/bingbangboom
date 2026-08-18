@@ -45,8 +45,13 @@
 
   /* Which columns are the same in every row, and which are left to draw.
      Separated from the markup because it is the part with a rule in it. */
+  /* Keys a row may carry that are instructions to the renderer rather than
+     cells. A hierarchy needs to say which level a row is on, and the only other
+     way to carry that is a column of indentation the reader can see. */
+  const CONTROL = ['_depth'];
+
   function layout(rows) {
-    const columns = Object.keys(rows[0] || {});
+    const columns = Object.keys(rows[0] || {}).filter((c) => CONTROL.indexOf(c) < 0);
 
     /* One row is a record, not a table, and every one of its columns is
        trivially "the same in every row". Lifting on that turned Estacada's
@@ -105,7 +110,13 @@
     const leads = kept.length > 1;
     const head = kept.map(
       (c, i) => '<th' + (leads && !i ? ' class="lead"' : '') + '>' + esc(c) + '</th>').join('');
-    const body = rows.map((row) => '<tr>' + kept.map(
+    /* A nested row is indented and set quieter than its parent. Depth is drawn
+       with padding rather than with a marker glyph, because the eye reads the
+       left edge of a column faster than it reads a symbol, and the parent's own
+       total is right there above it to read the child against. */
+    const body = rows.map((row) => '<tr' + (row._depth
+      ? ' class="child" style="--depth:' + Number(row._depth) + '"' : '')
+      + '>' + kept.map(
       (c, i) => ((leads && !i)
         ? '<td class="lead">' + esc(row[c]) + '</td>'
         : cell(row[c]))).join('') + '</tr>').join('');

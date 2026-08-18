@@ -1133,13 +1133,34 @@ def answer_brief(pid6, topic):
     entity = T._entity(STORE, pid6)
     blocks = [B.interpretation(STORE, entity, result.get("vintage"))]
 
+    # A claim, then the gap that qualifies it, then the finding underneath.
+    #
+    # The claim carries no figure and asserts nothing measured — it names who,
+    # which is what §9 material this data can support — and the gap sentence
+    # lands immediately under it, before the first percentage anywhere on the
+    # page. That is §5's precedence kept where it matters, which is that no
+    # reader carries away a number without its scope, rather than kept as a
+    # rule about which paragraph is physically first. It matters because the
+    # thing physically first is what gets read, and four thousand briefs
+    # opening on the same disclaimer taught readers to start halfway down.
+    narrative = BR.narrative(data)
+    blocks.append({"kind": "answer", "text": narrative["headline"], "lead": True})
+
     # The gap, then the proxy, then the count of bodies. Figures come in the
     # table below, never in this sentence: a topic and a dollar amount in one
     # sentence is the §12 violation however carefully the sentence is hedged.
     if data["categories"]:
-        opening = (f"This data records Census functional categories, not programmes, so "
-                   f"there is no figure for {data['topic']} in it. The closest categories "
-                   f"are {' and '.join(data['categories'])}. {data['fit_meaning']}")
+        # §5 still puts the scope limit first, but first is not the same as
+        # long. This used to be three sentences of Census-category throat
+        # clearing, identical in every brief in the build with the nouns
+        # swapped, and a reader who had seen two of them skipped the top of the
+        # third. One sentence, sized to how loose the fit actually is: a good
+        # fit needs six words and a weak one is the most important thing on the
+        # page.
+        opener = BR.FIT_OPENER.get(data["fit"], BR.FIT_OPENER["none"])
+        opening = (f"This data has no line called {data['topic']}: it records Census "
+                   f"categories, not programmes. The nearest are "
+                   f"{' and '.join(data['categories'])}, {opener}.")
         # §14. A word that names more than one subject was resolved to one of
         # them, and the reader has to be able to see that a choice was made and
         # which way it went. "fire" is structural and wildland; they sit on
@@ -1152,18 +1173,19 @@ def answer_brief(pid6, topic):
                         "this data files elsewhere; ask again by that name for those "
                         "categories.")
     else:
-        opening = (f"No category in this data corresponds to {data['topic']}, so nothing "
-                   "here measures it. What follows is the stack of governments serving "
-                   "this place, which is what the data can tell you.")
+        opening = (f"Nothing in this data corresponds to {data['topic']}, so no figure "
+                   "below is a measure of it. What the data does hold is the stack of "
+                   "governments serving this place, and that is what follows.")
     stack = data["stack"]
-    opening += (f" {fmt.count(len(stack))} governments are established to serve "
-                f"{data['place']}, and {fmt.count(data['reporting'])} of them report "
-                "spending in those categories.")
-    if data["elsewhere"]:
-        opening += (f" A further {fmt.count(len(data['elsewhere']))} special districts "
-                    "filed under this county report in them and cannot be tied to this "
-                    "place or ruled out of it.")
     blocks.append({"kind": "answer", "text": opening})
+
+    # Then the part that is about this place rather than about the data.
+    blocks.append({"kind": "answer", "text": narrative["finding"]})
+    # And the one thing that is not true of the next place. Absent where nothing
+    # here is unusual, which is the right outcome: §3 forbids padding an answer
+    # to seem thorough, and a paragraph of "nothing notable" is exactly that.
+    if narrative["texture"]:
+        blocks.append({"kind": "answer", "text": narrative["texture"]})
 
     # The funnel opens here: the state, before the place, before the bodies,
     # before the money. A reader scoping a subject in a place cannot use a
@@ -1241,7 +1263,14 @@ def answer_brief(pid6, topic):
             "of its own budget": fmt.percent(share) if share else "not stated",
             "year": str(years[-1]) if years else "not stated"})
     if reporting:
-        blocks.append({"kind": "table", "rows": reporting})
+        blocks.append({
+            "kind": "table",
+            # The share column is the one that ranks these, and a reader scanning
+            # the dollars will rank them by which government is biggest instead.
+            "caption": "Read the share column, not the dollars: it is the closest "
+                       "this data comes to saying which of these is organised "
+                       "around the subject.",
+            "rows": reporting})
 
     # "Established by" is gone from both of these. It said "the place itself",
     # "from the register" or "the place falls inside its boundary", which is the
@@ -1253,9 +1282,10 @@ def answer_brief(pid6, topic):
     if silent:
         blocks.append({
             "kind": "table",
-            "caption": "Reporting nothing in these categories usually means "
-                       "another government holds the responsibility here, not "
-                       "that nobody does.",
+            "caption": "These are the calls that tell you who does hold it. "
+                       "Reporting nothing in these categories usually means "
+                       "another government has the responsibility here, not that "
+                       "nobody does.",
             "rows": [{"reports nothing here": row["name"],
                       "type": row["gov_type_name"]}
                      for row in silent]})
@@ -1263,10 +1293,10 @@ def answer_brief(pid6, topic):
     if data["elsewhere"]:
         blocks.append({
             "kind": "table",
-            "caption": "These are filed under the county and have no boundary in "
-                       "this data, so they cannot be tied to this place or ruled "
-                       "out of it. The money sits where it is filed, which is not "
-                       "necessarily where the service goes.",
+            "caption": "Money in scope that cannot be attributed. These are filed "
+                       "under the county and have no boundary in this data, so they "
+                       "cannot be tied to this place or ruled out of it — filing "
+                       "follows assessed value, not the ground served.",
             "rows": [{"also reports in these categories": row["name"],
                       "in": row["service_area"],
                       "spending": fmt.money(row["total"])}
@@ -1294,7 +1324,16 @@ def answer_brief(pid6, topic):
                  "this place"}.get(data["conditions_basis"], data["conditions_basis"])
         blocks.append({
             "kind": "table",
-            "caption": f"Measured over {where}."
+            # §4, said plainly rather than as a rule number. A reader who has
+            # just read four tables of budgets will read this one as the outcome
+            # of them unless the caption says otherwise, and the tables are one
+            # scroll apart. Nothing about a survey of a population is a
+            # government's record, and the two do not explain each other in
+            # either direction.
+            "caption": f"What people here are living with, measured over {where} by "
+                       "survey. None of this is any government's record and nothing "
+                       "above explains it — the two are patterns in the same "
+                       "geography, and that is all."
                        + (" " + fmt.mark_legend(["wide_margin"])[0] if marked else ""),
             "rows": rows})
 
@@ -1302,8 +1341,11 @@ def answer_brief(pid6, topic):
     # the last table is the list of documents to go and get. Named for the
     # analysis it unblocks rather than for a meeting: this is the step between
     # a scoping pass and real work, and the reader is at a desk.
-    blocks.append({"kind": "table", "rows": [
-        {"what to ask for next": q} for q in data["questions"]]})
+    blocks.append({
+        "kind": "table",
+        "caption": "Every gap above closes in a document somebody else holds. "
+                   "These are the four worth asking for first.",
+        "rows": [{"what to ask for next": q} for q in data["questions"]]})
 
     # The opening sentence already says there is no figure for the subject and
     # that the categories are the nearest thing, so repeating it under a heading
@@ -1469,6 +1511,37 @@ def _all_rules(results):
     return rules
 
 
+def _tree_rows(result):
+    """The service-area and function hierarchy, flattened for one table.
+
+    Depth rides on the row rather than in a column: an indent column would be a
+    column of nothing, and the renderer indents on `_depth`.
+
+    The share is of the parent, never of the entity, because that is the number
+    the hierarchy makes true. Police protection at 20% means 20% of what this
+    government puts into public safety; the same function against the whole
+    budget is a different figure and belongs in a different table.
+    """
+    rows = []
+    for area in (result.get("data") or {}).get("areas", []):
+        rows.append({
+            "category": area["name"],
+            "total": fmt.money(area["total"]),
+            "share of the level above": (fmt.percent(area["share_of_entity"])
+                                         if area["share_of_entity"] is not None else ""),
+            "capital": ""})
+        for function in area["functions"]:
+            rows.append({
+                "_depth": 1,
+                "category": function["name"],
+                "total": fmt.money(function["total"]),
+                "share of the level above": (fmt.percent(function["share_of_parent"])
+                                             if function["share_of_parent"] is not None
+                                             else ""),
+                "capital": fmt.percent(function["capital_share"])})
+    return rows
+
+
 def _gap(points):
     """A gap in percentage points. Below ten, the decimal is the difference
     between two rows; above it, the decimal is noise."""
@@ -1521,41 +1594,92 @@ def answer_preset(preset_id, pid6=None, county=None):
     elif preset_id == "scale":
         add(explore.compare_to_peer_group(STORE, pid6, "expenditure_per_capita"),
             "peer_range")
+        # The split goes second because it is what qualifies the first answer.
+        # A government well above its peers on spending per head and a third of
+        # the way through a treatment plant is not an expensive government, and
+        # the peer strip on its own cannot tell those apart.
+        split = T.capital_split(STORE, pid6)
+        results.append(split)
+        if split["data"]:
+            share, peer = split["data"]["capital_share"], split["data"]["peer_median"]
+            line = (f"{fmt.percent(share)} of what {_named(entity)} spent went into "
+                    "capital rather than running costs")
+            if peer is not None:
+                # §8 forbids a ratio against a degenerate median; capital_split
+                # returns None for the peer where the pool is degenerate, and
+                # the sentence simply does not make the comparison.
+                line += (f", against {fmt.percent(peer)} for the median "
+                         f"{split['data']['peer_group']}")
+            line += (". Capital is lumpy, so this is a position in a construction "
+                     "cycle rather than a standing preference.")
+            blocks.append({"kind": "text", "text": line})
+            chart = T.render_chart(STORE, pid6, "capital_split")
+            results.append(chart)
+            if chart["data"].get("svg"):
+                blocks.append({"kind": "chart", "svg": chart["data"]["svg"],
+                               "table": chart["data"].get("table")})
         # The peer strip says where this government sits in its distribution;
         # the map says where it sits in Oregon, on the same measure. A reader
         # arrives knowing which government is theirs and wanting both.
+        # Two map forms, and which one applies is a fact about the government
+        # rather than a preference. A county genuinely is the ground it covers
+        # and all 36 join exactly, so a county is shaded against the other 35.
+        # Everything else is a body with an office: a city was drawn against the
+        # other cities in its county, which compared land areas and left out
+        # every district spending money in the same place. Those become pins
+        # over the county outlines, with this one filled in.
         placed = T.entity_layer(STORE, pid6)
+        is_county = bool(placed) and placed["layer"] == "county"
         coverage = None
-        # A choropleth needs a layer of peers to shade. The recovered special
-        # district layer is 19 boundaries spanning fire, water, transit and
-        # community colleges — not a peer group, and shading them on one measure
-        # would invite a comparison none of them are in. They go to the locator.
-        if placed and placed["layer"] == "special_district":
-            placed = None
-        if placed:
-            scoped = (entity["host_county"] if placed["layer"] == "place" else None)
-            area_map = T.render_map(
-                STORE, placed["layer"], "spending_per_resident",
-                county=scoped, highlight_pid6=pid6)
+        if is_county:
+            area_map = T.render_map(STORE, "county", "spending_per_resident",
+                                    highlight_pid6=pid6)
             results.append(area_map)
             data = area_map["data"]
             polygons = data.get("polygons") or 0
             coverage = (data.get("covered", 0) / polygons) if polygons else None
-            # §15.1: a map is offered only where the picture is not mostly
-            # absence. Below the floor the list is the honest form.
-            if data.get("svg") and (coverage or 0) >= B.MAP_COVERAGE_FLOOR:
-                blocks.append({"kind": "text", "text": (
-                    f"The same measure across {'this county' if scoped else 'Oregon'}, "
-                    f"with {_named(entity)} outlined. "
-                    + ("Cities render as dots at state scale, so this is scoped to "
-                       f"{(scoped or '').title()} County."
-                       if scoped else
-                       "This is one government type only; the others spend here too."))})
-                blocks.append({"kind": "map", "svg": data["svg"], "coverage": coverage})
-        # A choropleth needs a layer of peers to shade. A government without one
-        # still has a place, and "cannot be put on a map" answered the reader's
-        # actual question — where is this — with nothing.
-        if not placed or not (coverage or 0) >= B.MAP_COVERAGE_FLOOR:
+            drawn = bool(data.get("svg")) and (coverage or 0) >= B.MAP_COVERAGE_FLOOR
+            caption = ("The same measure across all 36 counties, with "
+                       f"{_named(entity)} outlined. Counties are one government "
+                       "type; cities and districts spend inside these lines too.")
+        else:
+            # Some entities carry a blank host_county rather than a null, so the
+            # split has nothing to take a first word from. A pin map with no
+            # county scope is the whole state, which is the right fallback.
+            filed = ((entity["host_county"] or "").split() if entity else [])
+            county_name = filed[0] if filed else None
+            area_map = T.render_point_map(STORE, metric="total_spending",
+                                          county=county_name or None,
+                                          highlight_pid6=pid6)
+            results.append(area_map)
+            data = area_map["data"]
+            coverage = data.get("coverage")
+            # Drawn is not enough. The map can clear its coverage gate on the
+            # strength of the county's other governments while this one has an
+            # address in an unincorporated community with no polygon, and a
+            # highlight that is not there reads as a government spending
+            # nothing. Where the subject is missing, the locator is the honest
+            # form and the fallback below picks it up.
+            drawn = bool(data.get("drawn")) and data.get("highlight_placed") is not False
+            caption = (f"Every government filed in {(county_name or '').title()} County "
+                       f"that reports spending, with {_named(entity)} filled in. "
+                       "Total expenditure rather than a per-head figure: most of "
+                       "these are districts with no population of their own to "
+                       "divide by, and dividing would drop the majority of the "
+                       "pins. A pin is an office, not a service area.")
+        if drawn:
+            # On the map block, not as a text block. §15.1 places one answer, so
+            # `answer_preset` joins every text block into a single paragraph —
+            # which put "with Estacada filled in" four hundred words above the
+            # thing Estacada is filled in on. A caption belongs beside its
+            # picture, which is the arrangement the brief and the tables already
+            # use.
+            blocks.append({"kind": "map", "svg": data["svg"], "caption": caption,
+                           "coverage": coverage})
+        # A government without a peer layer still has a place, and "cannot be put
+        # on a map" answered the reader's actual question — where is this — with
+        # nothing.
+        if not drawn:
             located = T.render_locator_map(STORE, pid6)
             results.append(located)
             if located["data"].get("svg"):
@@ -1569,6 +1693,21 @@ def answer_preset(preset_id, pid6=None, county=None):
                     "data, so it cannot be placed at all.")})
     elif preset_id == "spending":
         add(T.get_spending_breakdown(STORE, pid6), "spending_composition")
+        # The same money, one level deeper. The composition chart says which
+        # areas are large; this says what is inside them, which is the level a
+        # reader actually acts on: "public safety" is a heading and "police
+        # protection" is a line somebody owns.
+        tree = explore.expenditure_tree(STORE, pid6)
+        results.append(tree)
+        rows = _tree_rows(tree)
+        if rows:
+            thin = [a["name"] for a in tree["data"]["areas"] if not a["functions"]]
+            blocks.append({
+                "kind": "table", "rows": rows,
+                "caption": ("Each row is a share of the row above it. "
+                            + (f"{fmt.count(len(thin))} of these areas have no function "
+                               "detail filed, so they appear with nothing under them."
+                               if thin else ""))})
     elif preset_id == "unusual_areas":
         result = explore.drill(STORE, pid6)
         results.append(result)
@@ -1905,15 +2044,21 @@ def answer_preset(preset_id, pid6=None, county=None):
                      "type": e["gov_type_name"],
                      "filed under": (e["filed_county"] or "").title()}
                     for e in data["also_serving_filed_elsewhere"]]})
-            county_map = T.render_map(STORE, "place", "spending_per_resident",
-                                      county=(data["county"] or "").split()[0])
+            # Pins, not shaded cities. This block has just said how many of the
+            # county's governments carry a boundary, and it is a small minority
+            # everywhere: a choropleth here shades the handful of cities and
+            # drops every district, which is the ecosystem the paragraph above
+            # exists to make visible. Total expenditure rather than spending per
+            # resident, because a district has no residents to divide by and
+            # per-resident silently narrows the map back to the cities again.
+            county_map = T.render_point_map(
+                STORE, metric="total_spending",
+                county=(data["county"] or "").split()[0])
             results.append(county_map)
             map_data = county_map["data"]
             if map_data.get("svg"):
-                polygons = map_data.get("polygons") or 0
-                blocks.append({
-                    "kind": "map", "svg": map_data["svg"],
-                    "coverage": (map_data.get("covered", 0) / polygons) if polygons else None})
+                blocks.append({"kind": "map", "svg": map_data["svg"],
+                               "coverage": map_data.get("coverage")})
     elif preset_id == "limits":
         result = T.get_entity_profile(STORE, pid6) if pid6 else T.envelope("scope")
         results.append(result)
@@ -2058,7 +2203,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if parsed.path == "/api/measures":
             import atlas as A
             return self._json({"measures": A.measures(),
-                               "layers": ["county", "place", "school_district", "government"]})
+                               "layers": A.layers()})
 
         if parsed.path == "/api/topics":
             # One definition, sent at runtime, for the same reason the preset

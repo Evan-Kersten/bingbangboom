@@ -120,6 +120,30 @@ def main():
     check("and an entity with no boundary of its own is told so, on the map",
           "no boundary in this data" in answer, answer[:120])
 
+    # The peer strip says a government is above its peers on spending per head.
+    # It cannot say whether that is an expensive government or one halfway
+    # through a treatment plant, and those are different meetings.
+    estacada = store.row("SELECT pid6 FROM entities WHERE legal_name='CITY OF ESTACADA'")
+    scale = S.answer_preset("scale", estacada["pid6"])
+    scale_text = " ".join(b.get("text", "") for b in scale["blocks"])
+    check("the scale answer says what kind of money the total is",
+          "went into capital rather than running costs" in scale_text, scale_text[:200])
+    check("and calls it a construction cycle rather than a preference",
+          "construction cycle rather than a standing preference" in scale_text)
+    check("the split is drawn, not only stated",
+          any(b["kind"] == "chart" and "against construction" in b.get("svg", "")
+              for b in scale["blocks"]))
+    check("and the whole answer still conforms to §15", scale["violations"] == [],
+          str(scale["violations"]))
+    # §15.1 places one answer block, so every text block in a preset joins one
+    # paragraph. A map caption sent that way ended up four hundred words above
+    # the picture it described, so it rides on the map block instead.
+    scale_map = next(b for b in scale["blocks"] if b["kind"] == "map")
+    check("the map carries its own caption rather than joining the paragraph",
+          "filled in" in (scale_map.get("caption") or ""), str(scale_map.get("caption")))
+    check("and the caption is not also in the answer paragraph",
+          "filled in" not in scale_text, scale_text[-160:])
+
     print("\na reader who cannot name a government can still find one")
     # Search over 1,529 names only finds what somebody already knew existed,
     # which excludes the districts that actually do the work.
@@ -288,6 +312,18 @@ def main():
                           for b in S.answer_preset("scale", r["pid6"])["blocks"])]
     check("a sample across all four types is placed, every one",
           not without, str([r["gov_type_name"] for r in without][:4]))
+
+    # A pin map can clear its coverage gate on the strength of a county's other
+    # governments while the one the reader asked about has an address in an
+    # unincorporated community with no polygon. A highlight that is not in the
+    # picture reads as a government spending nothing, so that case falls back to
+    # the locator rather than drawing its neighbours and calling it placed.
+    import tools as _T
+    absent = _T.render_point_map(store, metric="total_spending",
+                                 county="Baker", highlight_pid6=new_bridge)
+    check("a point map says whether the highlighted government is in it",
+          absent["data"].get("drawn") and absent["data"]["highlight_placed"] is False,
+          str(absent["data"].get("highlight_placed")))
 
     district = " ".join(b.get("text", "") for b in
                         S.answer_preset("scale", new_bridge)["blocks"])
@@ -505,17 +541,42 @@ def main():
     check("a brief is composed as an issue answer", brief["question_type"] == "issue_or_topic")
     check("and its blocks come back in §15.2 order", brief["violations"] == [],
           str(brief["violations"]))
-    answer = next(b["text"] for b in brief["blocks"] if b["kind"] == "answer")
-    # §5 precedence: scope limits first. The sentence has to say the data does
-    # not record the subject before it names a single government, because a
-    # reader who sees the bodies first has already started attributing.
-    check("the first sentence says the data does not record the subject",
-          answer.index("Census functional categories") < answer.index("governments"),
-          answer[:120])
-    check("and no dollar figure appears in it at all",
+    answers = [b for b in brief["blocks"] if b["kind"] == "answer"]
+    opening = [b["text"] for b in answers]
+    answer = " ".join(opening)
+    # The page opens on a claim rather than on a disclaimer, and the claim is
+    # allowed to name a government because it asserts nothing measured. What §5
+    # is actually protecting is that no reader carries away a number without its
+    # scope, so the test is on the numbers: the gap sentence has to land before
+    # the first one, anywhere in the answer.
+    check("the answer opens on a claim, marked as the lead",
+          answers[0].get("lead") is True and answers[0] is answers[0], opening[0])
+    # No money and no share. A count of governments is neither: it is the §9
+    # fact this brief exists to deliver, and forbidding it would leave the claim
+    # unable to say the one thing it is for.
+    check("and the lead carries no money and no share",
+          "$" not in opening[0] and "%" not in opening[0], opening[0])
+    check("the scope limit lands before the first figure in the answer",
+          answer.index("Census categories") < min(
+              [answer.index("%")] + ([answer.index("$")] if "$" in answer else [])),
+          answer[:200])
+    check("and no dollar figure appears in the answer at all",
           "$" not in answer, answer)
     check("the stack is named in the answer with a count",
           "established to serve" in answer)
+
+    # Every brief in the build used to open on the same three sentences with the
+    # nouns swapped, so the first thing that differed between two places was
+    # forty words down and readers learned to skip it. The claim is now the
+    # thing that differs, and it is the first line.
+    portland = S.answer_brief(portland_city, "wildfire")["blocks"]
+    other = [b["text"] for b in portland if b["kind"] == "answer"]
+    check("two places asking the same question get different first lines",
+          opening[0] != other[0], f"{opening[0]} / {other[0]}")
+    check("and the claim names a government or the place, not a category",
+          "Estacada" in opening[0] or "Clackamas" in opening[0], opening[0])
+    check("the finding under it carries the shares that rank the stack",
+          "%" in opening[2], opening[2][:90])
 
     # §15.3: an estimate whose margin swamps it is marked on the number rather
     # than in a column of verdicts beside it. Estacada is small enough that most
@@ -586,6 +647,14 @@ def main():
     check("the map declares its coverage so §15 can judge it",
           any(b["kind"] == "map" and b.get("coverage") is not None
               for b in result["blocks"]))
+    # The paragraph above this map counts how few of these governments carry a
+    # boundary. A choropleth here illustrated it by drawing only the bodies it
+    # excludes: six shaded cities standing for 44 governments. Pins reach 41.
+    svg = next(b["svg"] for b in result["blocks"] if b["kind"] == "map")
+    check("the ecosystem is drawn as pins, not as shaded cities",
+          "one pin per office" in svg, svg[:200])
+    check("and the pins say a pin is an office",
+          "not the ground it serves" in svg)
 
     print("\nreports render into the thread")
     result = S.answer_preset("report", baker)

@@ -5,7 +5,7 @@ files in the repository root.
 
 ```
 python3 etl/build.py      # ~20 seconds, writes build/
-python3 etl/verify.py     # 52 assertions, exits non-zero on failure
+python3 etl/verify.py     # 67 assertions, exits non-zero on failure
 ```
 
 No dependencies. Standard library only, so this runs anywhere Python 3 does.

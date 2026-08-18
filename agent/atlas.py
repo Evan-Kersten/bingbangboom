@@ -44,6 +44,12 @@ SELECTOR = {"service_area": "service_area", "function": "function"}
 # Layers a survey measure may be drawn on. There are no tract-level DP03 rows in
 # any of the three source files, so a finer grain is unavailable however fine the
 # boundaries in the repository are.
+# A survey measure describes a geography and a fiscal one describes a
+# government, and that is why these two lists differ rather than one being a
+# subset of the other. A poverty rate is a property of the place polygon: it was
+# measured over that ground and drawing it as a shape is correct. A government's
+# spending is a property of a body that has an office and, two thirds of the
+# time, no boundary at all, so shading ground for it was always the compromise.
 SURVEY_LAYERS = ("county", "place")
 
 # "government" is a point layer, not a boundary one. It exists because 1,029 of
@@ -58,7 +64,29 @@ SURVEY_LAYERS = ("county", "place")
 # a government; drawing a poverty rate on a government's office would attach a
 # population's conditions to a body that did not produce them, which is the §4
 # pairing the whole module refuses elsewhere.
-FISCAL_LAYERS = ("county", "place", "school_district", "government")
+# Counties, and then pins. Places and school districts were choropleth layers
+# and should not have been: 378 cities at state scale compare land areas rather
+# than the measure, which is why every statewide place map refused, and school
+# districts join by name at 156 of 223 so a third of them were simply missing.
+# Both are governments with an address, and a pin says where each one is without
+# claiming to say how far it reaches. Counties keep the shading because a county
+# genuinely is the ground it covers and all 36 join exactly.
+FISCAL_LAYERS = ("county", "government")
+
+
+# Every layer some measure can be drawn on, in the order they narrow. Derived
+# rather than listed for the same reason `measures` is derived: the interface is
+# sent this at runtime, and a hand-written copy of it in the page is how a layer
+# gets added to the registry and never becomes selectable. `place` is here on
+# the strength of the survey measures alone; a fiscal measure asked for it is
+# refused by `draw` and shown as "not on this layer" in the catalogue, which is
+# the account somebody deciding whether to build a city layer actually wants.
+LAYER_ORDER = ("county", "place", "school_district", "government")
+
+
+def layers():
+    live = set(FISCAL_LAYERS) | set(SURVEY_LAYERS)
+    return [name for name in LAYER_ORDER if name in live]
 
 
 def measures():

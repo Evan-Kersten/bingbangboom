@@ -257,6 +257,26 @@ def entity_report(store, pid6):
             table=chart["data"]["table"], caveats=scale["caveats"],
             blocked=scale["not_computable"]))
 
+    # Between how big and where it goes: what kind of money it is. A reader who
+    # has just been told this government spends more per head than its peers
+    # reads the next section completely differently depending on whether a third
+    # of the total is a building year, and the service-area shares underneath
+    # cannot tell them, because a plant under construction lands inside whichever
+    # area owns it and looks like ordinary operating weight.
+    split = T.capital_split(store, pid6)
+    if split["data"]:
+        chart = T.render_chart(store, pid6, "capital_split")
+        sections.append(_section(
+            "capital_split", "Running costs or construction",
+            "State the capital share and the peer median for this government type, then "
+            "say what that means: an active capital period, not a policy preference. "
+            "Where the two components fall short of the reported total, say so and say "
+            "the source does not classify the remainder. Do not describe the direction "
+            "of capital spending; there is one year of this split per government.",
+            90, data=split["data"], chart=chart["data"]["svg"],
+            table=chart["data"]["table"], caveats=split["caveats"],
+            blocked=split["not_computable"]))
+
     spending = T.get_spending_breakdown(store, pid6)
     if spending["data"].get("service_areas"):
         chart = T.render_chart(store, pid6, "spending_composition")
@@ -424,15 +444,20 @@ def place_report(store, county_name):
                    for e in data["also_serving_filed_elsewhere"]],
             caveats=[caveat("host_county_undercaptures")]))
 
-    county_map = T.render_map(store, "place", "spending_per_resident", county=name.split()[0])
+    # Pins rather than shaded cities. The section immediately above has just
+    # counted how few of these governments carry a boundary; a choropleth here
+    # would illustrate that paragraph by drawing only the bodies it excludes.
+    # Total expenditure, because a district has no residents to divide by.
+    county_map = T.render_point_map(store, metric="total_spending", county=name.split()[0])
     if county_map["data"].get("svg"):
         sections.append(_section(
-            "geography", "What can be mapped",
-            "Say how much of the ecosystem the map covers. Most special districts have "
-            "no boundary in this data, so a map of a place is always partial and a list "
-            "is the complete answer.",
+            "geography", "Where these governments are",
+            "A pin is the city on a government's mailing address, not the ground it "
+            "serves, and a district can be filed in one city and work in three "
+            "counties. Say that before reading anything spatial off this.",
             80, chart=county_map["data"]["svg"],
-            data={"mappable": data["mappable"], "total": data["total"]},
+            data={"placed": county_map["data"].get("placed"),
+                  "mappable": data["mappable"], "total": data["total"]},
             caveats=county_map["caveats"]))
 
     sections.append(_section(

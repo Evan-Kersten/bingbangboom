@@ -4,10 +4,10 @@ Forty-one typed tools over the store built by `etl/`, the §4 formatter, and the
 orchestrator that routes a question and runs the tool loop.
 
 ```
-python3 agent/test_tools.py         # 300 checks
+python3 agent/test_tools.py         # 328 checks
 python3 agent/test_orchestrator.py  # 44 checks, uses a scripted model
-python3 agent/test_viz.py           # 88 checks on the render layer
-python3 agent/test_reports.py       # 53 checks on report composition
+python3 agent/test_viz.py           # 99 checks on the render layer
+python3 agent/test_reports.py       # 54 checks on report composition
 python3 agent/test_blocks.py        # 45 checks on §15 block order and gating
 python3 agent/gallery.py            # every chart form on one page, to look at
 ```
@@ -142,6 +142,7 @@ Forms are bound to tool output shapes:
 | `spending_composition` | horizontal bars, one hue | Nominal categories, so a value ramp would double-encode length as colour |
 | `service_area_functions` | horizontal bars, median ticks | Level two of the drill-down; the tick is the median for that named function among peers reporting it, on the same operating-plus-capital basis as the bar |
 | `peer_range` | quartile band, entity marker | The interquartile band is what stops a reader treating the median as a target |
+| `capital_split` | one bar cut into named pieces, plus two tracks | A pie of two numbers is a worse bar chart and a bar chart of two numbers loses the ratio, which is what the reader came for |
 | `finances_over_time` | two lines, one axis | Same unit, so never a second y-scale |
 | `workforce_composition` | horizontal bars, one hue | Shares of listed functions only |
 | choropleth | sequential bins | Counties and places only; see below |
@@ -154,6 +155,21 @@ Four more put several governments on one axis, through `render_comparison`:
 | `per_capita_over_time` | lines, dashed peer baseline | Optionally rebased to 100, which shows growth and deliberately hides level |
 | `service_area_across_entities` | bars, absolute | A snapshot and never a line: service-area spending is one year per entity |
 | `entities_over_time` | lines, entity totals | The only measure that genuinely spans 2017 to 2023 |
+
+**The capital split has a third piece.** `tools.capital_split` returns operating,
+capital and whatever the source files under neither. The two components reach
+the reported total for 1,251 of 1,529 governments and fall short for the other
+278 — Oregon's own filing accounts for 79.8% of its total this way — and folding
+the shortfall into operating inflates the denominator every capital share is
+drawn against. It is drawn as a named segment with `split_does_not_reach_the_total`
+beside it, and the source does not say what it is, so neither does the label.
+
+The peer median is a second track under the bar rather than a tick inside it.
+The segments start at different x positions, so a mark dropped into them is read
+against whichever one it lands in; the two tracks share a zero and a scale, and
+that is the only comparison the form makes. `capital_split_trend` refuses the
+direction outright: there is one year of this split per government, and capital
+is the lumpiest series here.
 
 **Fiscal stability is not a chart form.** It is a composite whose two components
 move for opposite reasons, so a position on it tells a reader less than a
@@ -218,6 +234,21 @@ government's mailing address: 1,388 of 1,529 placed, no geocoder, no network.
 The measure of what it adds is fire protection. On boundaries it draws at one
 county in thirty-six, because the districts doing the work are exactly the ones
 with no polygon. As pins it draws at 300 governments.
+
+It is the only fiscal form for anything that is not a county now.
+`atlas.FISCAL_LAYERS` is `("county", "government")`: 378 city polygons at state
+scale compared land areas rather than the measure, and school districts joined
+by name at 156 of 223 so a third of them were missing from their own layer.
+`place` survives in `SURVEY_LAYERS` alone, because a poverty rate was measured
+over that ground. `atlas.layers()` is the one definition of what the picker
+offers, derived from the two lists rather than restated.
+
+`highlight_placed` rides on every result that was asked to mark a government.
+Drawn is not enough: a county-scoped map can clear its coverage gate on the
+strength of the county's other bodies while the one the reader asked about has
+an address in an unincorporated community with no polygon, and a highlight that
+is not in the picture reads as a government spending nothing. The `scale` preset
+falls back to the locator on that flag rather than on coverage.
 
 **A pin is an office, never a service area.** A rural fire district filed at a
 Eugene address covers ground outside Eugene entirely, and a district serving

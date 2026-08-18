@@ -45,10 +45,10 @@ python3 app/export_static.py --out site --clean   # ~60s, ~385 MB
 The full suite, all of which must pass before a push:
 
 ```
-python3 agent/test_tools.py        # 301    python3 app/test_server.py    # 184
+python3 agent/test_tools.py        # 328    python3 app/test_server.py    # 198
 python3 agent/test_orchestrator.py #  44    python3 app/test_parity.py    # 461
-python3 agent/test_viz.py          #  88    python3 app/test_tables.py    #  30
-python3 agent/test_reports.py      #  53    python3 etl/verify.py         #  67
+python3 agent/test_viz.py          #  99    python3 app/test_tables.py    #  30
+python3 agent/test_reports.py      #  54    python3 etl/verify.py         #  67
 python3 agent/test_blocks.py       #  45    python3 etl/test_project.py   #   6
                                             python3 evals/run.py          #  22
 ```
@@ -146,7 +146,42 @@ the front door and it exists to make the §12 sequence structural: the gap
 between the topic and the Census categories, then the proxy and how loosely it
 fits, then figures, in that order, because §5 puts scope limits before
 everything. `answer_brief` asserts the order in a test rather than trusting the
-prose, and no dollar figure appears in the opening sentence at all. The
+prose, and no dollar figure appears in the opening sentence at all.
+
+Above that sequence sits one line, and it is not part of it. `brief.narrative`
+returns a claim, a finding and a texture; the claim carries no money and no
+share, asserts nothing measured, and says *who* — which is the §9 material this
+data supports. It is rendered as `answer` with `lead: true` and set at display
+size. What §5 protects is that no reader carries away a number without its
+scope, and the gap sentence still lands before the first figure anywhere in the
+answer; what it cannot protect against is four thousand briefs opening on the
+same disclaimer, which taught readers to start halfway down. The tests pin both
+halves: no `$` and no `%` in the lead, and `Census categories` before the first
+`%` in the joined answer.
+
+The claim is ranked by how much the finding changes what somebody does next.
+The commonest shape by far, at about a third of briefs, is that more bodies
+report from outside the stack than on it — because 1,029 of Oregon's 1,529
+governments are districts filed under a county with no boundary — and that one
+names them: "6 fire districts file Public Safety spending near Estacada." Named
+by the Census category they file under and never by the topic, because "six fire
+districts do wildfire" is the §12 slide from category to subject and the
+headline sits *above* the sentence that draws the distinction. `_dominant`
+groups on the kind and the category together rather than taking a majority of
+each independently: Adrian's eight off-stack bodies are six irrigation districts
+filing Environment and one fire district filing Public Safety, and the
+independent majorities produced "eight irrigation districts file Public Safety
+spending", which seven of its eight subjects contradict.
+
+A 2× lead over the rest of a stack is not the same as a presence.
+`LEAD_SHARE_FLOOR` is a floor on the leader's own budget, because Deschutes
+County at 5.9% on housing clears the same ratio test as Multnomah at 47% on
+homelessness, and calling the first a government built around housing is false
+in a way a reader cannot check. `_texture` returns `None` where nothing about a
+place is unusual, and the brief is three sentences shorter: §3 forbids padding
+an answer to seem thorough. §13.3's delegation note fires on Health & Human
+Services and Public Safety only — attached to a county's broadband share it was
+a true sentence about the wrong number. The
 concordance in `rules.TOPIC_CONCORDANCE` is the one definition of the subject
 list and is sent to the page at runtime, like the preset list.
 
@@ -175,6 +210,46 @@ The three refusals are ranked and the order matters. Mostly-absence beats a thin
 extent beats needing a county, because the weakest reason reads as the most
 fixable, and fire protection reported as "scope it to a county" sends a reader
 to a map that will be just as empty for a reason nobody stated.
+
+**Only a county is shaded for a government.** `atlas.FISCAL_LAYERS` is
+`("county", "government")` and nothing else: a county genuinely is the ground it
+covers and all 36 join exactly, so it keeps the choropleth. Everything else is a
+body with an office. Shading 378 city polygons compared land areas — every
+statewide place map refused, correctly — and school districts joined by name at
+156 of 223, so a third of them were simply missing from their own layer. Both
+became pins. `place` survives in `SURVEY_LAYERS` alone, because a poverty rate
+was measured over that ground and the polygon is the right shape for it; a
+fiscal measure asked for it is refused by `atlas.draw` and shown as "not on this
+layer" in the catalogue, which is the account somebody deciding whether to build
+a city layer actually wants. `atlas.layers()` is the one definition of what the
+picker offers and is sent to the page at runtime.
+
+The consequence reaches the answers, not just the lab. The ecosystem preset and
+the county report drew a place choropleth directly under a paragraph counting
+how few of a county's governments carry a boundary — illustrating that sentence
+with a picture of the handful it excludes. Multnomah shaded six cities; the same
+county draws 41 of its 44 governments as pins. Total expenditure there rather
+than per resident, because a district has no residents and the per-head measure
+silently narrows the map back to the cities.
+
+`render_point_map` returns `highlight_placed`. Drawn is not enough when a caller
+asked to mark one government: the map can clear its coverage gate on the
+strength of a county's other bodies while this one has an address in an
+unincorporated community with no polygon, and a highlight that is not there
+reads as a government spending nothing. The `scale` preset falls back to the
+locator on `highlight_placed is False`.
+
+**The capital split is three pieces, not two.** `tools.capital_split` returns
+operating, capital and whatever the source files under neither. The first two
+reach the reported total for 1,251 of 1,529 governments and fall short for the
+other 278; Oregon's own filing accounts for 79.8% of its total this way. Folding
+the shortfall into operating is the convenient move and it inflates the
+denominator every capital share on the page is drawn against, so it is a named
+third segment with `split_does_not_reach_the_total` beside it. The source does
+not say what it is — debt service and transfers are the usual candidates and
+this data cannot separate them — so it is named and left unexplained. There is
+one year of this split per government and `capital_split_trend` refuses the
+direction outright.
 
 **The source's function share is not a share of anything.**
 `financial_functions.pct_of_entity_total` is negative for 85 rows and above 100%
@@ -355,7 +430,7 @@ never share an axis or a legend with a spending figure.
 public_foundry_system_prompt_v2.md   the specification
 etl/          build.py, verify.py, schema.sql, plus the shapefile and
               dissolve work. Reads the loose files in the repository root.
-agent/        rules.py (the caveat catalogue), tools.py (41 tools), explore.py,
+agent/        rules.py (the caveat catalogue), tools.py (42 tools), explore.py,
               atlas.py (every mappable measure, and whether it should be),
               brief.py (place + issue, the §12 front door),
               community.py (DP03, structurally unable to see a fiscal figure),

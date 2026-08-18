@@ -573,6 +573,15 @@ tr:last-child td { border-bottom: 0; }
    with the figure beside it and a reader scanning for the figure had to read
    the whole row. */
 td.lead { color: var(--pf-ink); font-weight: 550; }
+/* A row inside another. The indent is the whole signal, so it is generous
+   enough to read at a glance and the child is set quieter than the parent it
+   belongs to. */
+tr.child td.lead {
+  padding-left: calc(var(--depth, 1) * 18px);
+  font-weight: 400; color: var(--pf-ink-2);
+}
+tr.child td { color: var(--pf-muted); }
+tr.child td.num { color: var(--pf-ink-2); }
 th.lead { color: var(--pf-ink-2); }
 
 /* Quantities line up on their right edge so magnitudes can be compared down the
@@ -614,6 +623,19 @@ td.verdict .dot.muted { background: var(--pf-dim); }
 }
 .interp .nm { font-size: 13px; font-weight: 620; color: var(--pf-ink); }
 .interp .assume { color: var(--pf-warning); }
+
+/* The claim a brief opens on. It is the first thing read and it has to look
+   like it: four thousand briefs that opened on a paragraph about Census
+   categories taught readers to start halfway down the page. Set at display
+   size and given room, with the scope limit in ordinary body text directly
+   under it — which is the order that matters, because the limit still lands
+   before the first number anywhere in the answer. */
+p.lead {
+  font-size: 21px; line-height: 1.28; font-weight: 600;
+  color: var(--pf-ink); letter-spacing: -0.012em;
+  margin: 2px 0 2px; max-width: 46ch;
+  text-wrap: balance;
+}
 
 /* §15.1 figure: the answer as a quantity. Proportional figures at display size;
    tabular-nums would make the digits look loose. */
@@ -1067,10 +1089,13 @@ const FIT_OF = (topic) => (TOPIC_INDEX.fit || {})[topic] || 'none';
 /* What each layer is, said as the reader would say it. "government" is the odd
    one and needs the most saying: it is pins rather than shading, and a pin is an
    office rather than a service area. */
+/* Three layers, and only one of them shades ground for a government. A county
+   genuinely is the ground it covers and all 36 join exactly; a city polygon is
+   the right shape for a survey measure, which was observed over that ground,
+   and the wrong shape for a government's budget. Everything else is a pin. */
 const LAYER_LABELS = {
   county: 'over county boundaries',
-  place: 'over city boundaries',
-  school_district: 'over school district boundaries',
+  place: 'over city boundaries \u2014 survey measures only',
   government: 'as pins, one per government office',
 };
 /* Whether the subject in the sentence is still waiting on a place. */
@@ -2002,7 +2027,7 @@ const BLOCK = {
       ${b.assumption ? `<span class="assume">${esc(b.assumption)}</span>` : ''}
     </div>`,
 
-  answer: (b) => `<p>${esc(b.text)}</p>`,
+  answer: (b) => `<p${b.lead ? ' class="lead"' : ''}>${esc(b.text)}</p>`,
 
   figure: (b) => `<div class="figure">
       <div class="lbl">${esc(b.label)}${b.year ? ' · ' + esc(b.year) : ''}</div>

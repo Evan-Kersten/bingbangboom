@@ -318,6 +318,70 @@ def get_workforce(store, pid6):
         caveats=caveats, blocked=blocked, vintage={"workforce": profile["year"]})
 
 
+def capital_split(store, pid6):
+    """What the money is, before what it is for: running costs or construction.
+
+    §11's signal at the level of the whole budget. A government mid-construction
+    on a treatment plant and a government running the same services out of the
+    same total look identical on every service-area share and are two completely
+    different things to walk into a meeting about, and this is the one figure
+    that separates them.
+
+    Three pieces, not two. The source files an operating figure, a capital
+    figure and a total, and the first two reach the third for 1,251 of the 1,529
+    governments here and fall short for the other 278 — Oregon's own filing
+    accounts for 79.8%% of its total this way. What the remainder is, the source
+    does not say; debt service and transfers are the usual candidates and this
+    data cannot distinguish them. Folding it into operating is the convenient
+    move and it silently inflates the denominator every capital share on the
+    page is drawn against, so it is named and left unexplained.
+    """
+    row = store.row("SELECT * FROM operating_vs_capital WHERE pid6=?", pid6)
+    if not row or not row["total_expenditure"]:
+        return envelope("capital_split", entity=pid6, caveats=[{
+            "code": "no_capital_split", "rule": "§9",
+            "guidance": "This government files no operating and capital split. That is "
+                        "an absence of data, not a report of zero capital spending."}])
+    row = dict(row)
+    total = row["total_expenditure"]
+    operating = row["operating_expenditure"] or 0
+    capital = row["capital_expenditure"] or 0
+    # A rounding-scale remainder is noise, not a category. A tenth of a per cent
+    # of a $50bn filing is $50m, so the floor is relative and not absolute.
+    remainder = total - operating - capital
+    unclassified = remainder if remainder > total * 0.005 else 0
+
+    caveats = [caveat("capital_lumpy")]
+    if unclassified:
+        caveats.append({
+            "code": "split_does_not_reach_the_total", "rule": "§10",
+            "guidance": f"Operating and capital together are "
+                        f"{fmt.percent(100.0 * (operating + capital) / total)} of the "
+                        f"reported total, leaving {fmt.money(unclassified)} the source "
+                        "files under neither. It does not say what that is. Do not read "
+                        "it as operating, and do not compute a capital share against "
+                        "operating plus capital alone, which would overstate it."})
+    peer = row["peer_median"] if not row["peer_median_degenerate"] else None
+    if row["peer_median_degenerate"]:
+        caveats.append(caveat("peer_median_degenerate"))
+
+    return envelope(
+        "capital_split", entity=pid6,
+        data={"total": total, "operating": operating, "capital": capital,
+              "unclassified": unclassified,
+              "capital_share": 100.0 * capital / total,
+              "operating_share": 100.0 * operating / total,
+              "peer_median": peer, "peer_group": row["peer_group"],
+              "peer_count": row["peer_count_stated"],
+              "peer_low": row["peer_low"], "peer_high": row["peer_high"],
+              "year": row["year"]},
+        caveats=caveats,
+        # §8: one year of a lumpy series is a point. The direction of a capital
+        # share needs the panel of years the source does not file for it.
+        blocked=[not_computable("capital_split_trend")],
+        vintage={"operating_vs_capital": row["year"]})
+
+
 # ------------------------------------------------------------ comparison
 
 PEER_METRICS = {
@@ -1048,6 +1112,7 @@ TOOLS = {
     "get_spending_breakdown": get_spending_breakdown,
     "get_workforce": get_workforce,
     "compare_to_peers": compare_to_peers,
+    "capital_split": capital_split,
     "compare_entities": compare_entities,
     "find_salient": find_salient,
     "list_ecosystem": list_ecosystem,
@@ -1069,7 +1134,7 @@ import viz            # noqa: E402
 # does not contain and a chart cannot disagree with the prose beside it.
 CHART_FORMS = (
     "spending_composition", "service_area_functions", "peer_range",
-    "finances_over_time", "workforce_composition",
+    "capital_split", "finances_over_time", "workforce_composition",
 )
 
 # Which peer metric each entity type is most usefully placed against. Fiscal
@@ -1183,6 +1248,46 @@ def render_chart(store, pid6, form):
                       "value": f"{fmt.rate(stats['p25'])} to {fmt.rate(stats['p75'])}"},
                      {"measure": "full range",
                       "value": f"{fmt.rate(stats['low'])} to {fmt.rate(stats['high'])}"}]
+
+    elif form == "capital_split":
+        source = capital_split(store, pid6)
+        caveats, blocked = source["caveats"], source["not_computable"]
+        data = source["data"]
+        if not data:
+            svg = viz.refusal(f"{name}: running costs against construction",
+                              "This entity files no operating and capital split. That is "
+                              "an absence of data, not a report of zero capital.")
+        else:
+            parts = [{"label": "Operating", "value": data["operating"],
+                      "detail": "salaries, services, the cost of running what exists"},
+                     {"label": "Capital", "value": data["capital"],
+                      "detail": "building, buying and replacing what it runs on"}]
+            if data["unclassified"]:
+                parts.append({
+                    "label": "Filed under neither", "value": data["unclassified"],
+                    # Named and left unexplained. Debt service and transfers are
+                    # the usual candidates and this source does not distinguish
+                    # them, so calling it either would be an invention.
+                    "detail": "the source does not say what this is"})
+            note = ("Capital is lumpy. One year is a position in a bond cycle, not a "
+                    "policy: a government that finished a plant last year and one that "
+                    "starts next year both read as low here.")
+            svg = viz.split_bar(
+                f"{name}: running costs against construction",
+                f"Reported expenditure, {data['year']}",
+                parts,
+                headline=fmt.percent(data["capital_share"]),
+                headline_label="of everything it spent went into capital",
+                headline_share=data["capital_share"],
+                peer=data["peer_median"],
+                peer_label=(f"{data['peer_group']} median, "
+                            f"{fmt.count(data['peer_count'])} governments")
+                if data["peer_median"] is not None else None,
+                note=note)
+            table = [{"kind": p["label"], "amount": fmt.money(p["value"]),
+                      "share of total": fmt.percent(
+                          100.0 * p["value"] / data["total"])}
+                     for p in parts]
 
     elif form == "finances_over_time":
         rows = store.rows(
@@ -1671,6 +1776,14 @@ def render_point_map(store, metric="total_spending", gov_type=None, county=None,
         data={"drawn": True, "svg": drawing["svg"], "coverage": density,
               "placed": len(placed), "total": len(with_value), "label": label,
               "gov_type": gov_type, "county": county,
+              # Whether the government the reader asked about is itself in the
+              # picture. A map of its neighbours with it missing is worse than
+              # no map: the reader reads the highlight that is not there as an
+              # absence of spending rather than an absence of an address, so a
+              # caller asking to highlight one needs to know before it offers
+              # this instead of a locator.
+              "highlight_placed": (any(r["pid6"] == highlight_pid6 for r in placed)
+                                   if highlight_pid6 else None),
               "table": [{"government": r["name"], "type": r["gov_type_name"],
                          "office in": (r["address_city"] or "").title(),
                          label: formatter(r["value"])}
@@ -2168,7 +2281,7 @@ def _bind_explore():
                  "compare_service_area", "per_capita_by_service_area",
                  "per_capita_over_time", "who_spends_on", "staffing",
                  "revenue_mix", "debt_load", "compare_change", "trend_panel",
-                 "cost_per_head", "inside_service_area"):
+                 "cost_per_head", "inside_service_area", "expenditure_tree"):
         TOOLS[name] = getattr(explore, name)
 
 

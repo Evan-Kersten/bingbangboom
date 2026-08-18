@@ -266,6 +266,113 @@ def main():
     check("a function with no employment function crosswalked returns no per-head",
           no_bridge["data"].get("per_head") is None)
 
+    print("\nthe brief opens on a claim, and the claim is about this place")
+    import brief as BR
+    eugene = pid_for(store, "CITY OF EUGENE")
+    told = BR.narrative(T.TOOLS["place_topic_brief"](store, eugene, "homelessness")["data"])
+    # §12. The opening is where a reader is most likely to carry a number away,
+    # so the claim carries none at all: it is a statement about who, which is
+    # what this data supports, and the gap sentence lands under it before the
+    # first figure anywhere in the answer.
+    check("the claim carries neither money nor a share",
+          "$" not in told["headline"] and "%" not in told["headline"], told["headline"])
+    check("and it names the government that actually carries this",
+          "Lane County" in told["headline"], told["headline"])
+    check("the finding under it ranks by share of own budget, not by dollars",
+          "%" in told["finding"] and "$" not in told["finding"], told["finding"])
+
+    # A 2x lead is not the same as a presence. Deschutes at 5.9% on housing
+    # clears the same ratio test as Multnomah at 47% on homelessness, and
+    # calling the first a government built around housing is false in a way a
+    # reader cannot check.
+    bend = pid_for(store, "CITY OF BEND")
+    thin = BR.narrative(T.TOOLS["place_topic_brief"](store, bend, "housing")["data"])
+    check("a leader with a small share is not called organised around the subject",
+          "built around" in thin["headline"] and thin["headline"].startswith("Nobody"),
+          thin["headline"])
+
+    # The most useful thing a brief can say, and it used to be buried under
+    # whichever pair of on-stack governments happened to rank first.
+    estacada = pid_for(store, "CITY OF ESTACADA")
+    off = BR.narrative(T.TOOLS["place_topic_brief"](store, estacada, "wildfire")["data"])
+    check("more reporters off the stack than on it leads the brief",
+          "on Estacada's own list" in off["headline"], off["headline"])
+    # Oregon names these bodies after the work, and that word is the most useful
+    # thing the headline can carry: "eight fire districts" is a finding, and
+    # "the bodies doing most of this" fits every place in the state. Named by
+    # the Census category they file under, never by the topic — "eight fire
+    # districts do wildfire" is the §12 slide from category to subject, and the
+    # headline sits above the sentence that draws the distinction.
+    check("and it names what those bodies are",
+          "fire districts" in off["headline"], off["headline"])
+    check("against the category they file under, not the subject asked about",
+          "Public Safety" in off["headline"] and "wildfire" not in off["headline"],
+          off["headline"])
+    # A plurality is not enough. Three fire and three water districts headlined
+    # as fire districts is a sentence wrong about half its own subject.
+    def group(rows):
+        return BR._dominant([{"name": n, "service_area": a} for n, a in rows])
+    check("a mixed set of districts falls back to the general sentence",
+          group([("Alpha Fire District", "Public Safety"),
+                 ("Beta Water District", "Utilities")]) is None)
+    check("and a clear majority does not",
+          group([("Alpha Fire District", "Public Safety"),
+                 ("Beta Rural Fire Protection District", "Public Safety"),
+                 ("Gamma Water District", "Utilities")])
+          == (2, "fire districts", "Public Safety"))
+    # The kind and the category are one group, not two independent majorities.
+    # Adrian's off-stack set is six irrigation districts filing Environment and
+    # one fire district filing Public Safety; taking the commonest kind and the
+    # brief's first category separately produced "eight irrigation districts
+    # file Public Safety spending", which seven of its eight subjects contradict.
+    adrian = pid_for(store, "CITY OF ADRIAN")
+    mixed = BR.narrative(T.TOOLS["place_topic_brief"](store, adrian, "wildfire")["data"])
+    check("the category named is the one those bodies actually file",
+          "irrigation districts file Environment" in mixed["headline"],
+          mixed["headline"])
+
+    # §13.3 covers health, corrections and veterans' services and nothing else.
+    # Attached to a county's broadband share it was a true sentence about the
+    # wrong number.
+    astoria = pid_for(store, "CITY OF ASTORIA")
+    band = BR.narrative(T.TOOLS["place_topic_brief"](store, astoria, "broadband")["data"])
+    check("the state-mandate note does not fire on a category Oregon does not delegate",
+          not (band["texture"] or ""), str(band["texture"]))
+    check("and nothing is padded in to fill the gap",
+          band["texture"] is None)
+
+    print("\nthe capital split says what the money is, before what it is for")
+    split = T.capital_split(store, portland)["data"]
+    check("operating and capital are returned as money, not only as shares",
+          split["operating"] > 0 and split["capital"] > 0 and split["total"] > 0)
+    check("and the share is against the reported total",
+          abs(split["capital_share"] - 100.0 * split["capital"] / split["total"]) < 1e-9)
+    # The two components reach the reported total for 1,251 of 1,529 governments
+    # and fall short for the other 278. Folding the shortfall into operating is
+    # the convenient move and it inflates the denominator every capital share on
+    # the page is drawn against, so it is a named third piece.
+    multnomah = pid_for(store, "COUNTY OF MULTNOMAH")
+    gapped = T.capital_split(store, multnomah)
+    check("a filing whose parts fall short of its total says so",
+          gapped["data"]["unclassified"] > 0
+          and "split_does_not_reach_the_total" in codes(gapped), str(codes(gapped)))
+    check("and the shortfall is never folded into operating",
+          gapped["data"]["operating"] + gapped["data"]["capital"]
+          + gapped["data"]["unclassified"] == gapped["data"]["total"])
+    check("a filing that adds up carries no such caveat",
+          "split_does_not_reach_the_total" not in codes(T.capital_split(store, portland)))
+    # §8. Capital is the lumpiest series here: one plant finished moves the
+    # share by tens of points, and there is one year of it per entity anyway.
+    check("the direction of the capital share is refused outright",
+          "capital_split_trend" in blocked_codes(T.capital_split(store, portland)))
+    check("and the year rides on the result",
+          T.capital_split(store, portland)["vintage"]["operating_vs_capital"])
+    drawn = T.render_chart(store, multnomah, "capital_split")["data"]
+    check("the split draws with its third piece in the legend",
+          "Filed under neither" in drawn["svg"], drawn["svg"][:120])
+    check("and its table names all three",
+          len(drawn["table"]) == 3, str(drawn["table"]))
+
     print("\nthe atlas vets a layer before anybody commits to it (§4, §15)")
     import atlas as A
     catalogue = {m["id"] for m in A.measures()}
@@ -306,6 +413,22 @@ def main():
     off_layer = A.draw(store, "DP03_0128P", "school_district")
     check("a survey measure is refused on a layer it has no rows for",
           "layer_unavailable" in codes(off_layer))
+
+    # A government's budget is a property of a body, not of ground. Shading 378
+    # city polygons by it compared land areas, and a third of school districts
+    # never joined by name at all; both are governments with an address, so both
+    # became pins. `place` survives on the survey measures alone.
+    check("no fiscal measure is offered on a city or school district polygon",
+          all(set(m["layers"]) == {"county", "government"}
+              for m in A.measures() if m["kind"] == "fiscal"))
+    check("and a fiscal measure asked for one is refused, not drawn",
+          "layer_unavailable" in codes(A.draw(store, "total_spending", "place")))
+    # One definition of the layer list. The picker in the page is sent this at
+    # runtime; a hand-written copy there is how a layer stops being selectable.
+    check("the offered layers are derived from what the measures declare",
+          A.layers() == ["county", "place", "government"], str(A.layers()))
+    check("and every layer some measure names is offered",
+          {l for m in A.measures() for l in m["layers"]} == set(A.layers()))
 
     listing = A.catalogue(store, "county", service_area="Public Safety",
                           function="Fire Protection")
@@ -981,6 +1104,7 @@ def main():
         "render_function_map": {"function": "Police Protection"},
         "render_point_map": {"metric": "total_spending"},
         "inside_service_area": {"service_area": "Public Safety"},
+        "expenditure_tree": {"pid6": portland},
         "place_topic_brief": {"pid6": portland, "topic": "housing"},
         "cost_per_head": {"pid6": portland, "function_name": "Fire Protection"},
         "atlas_measures": {},
