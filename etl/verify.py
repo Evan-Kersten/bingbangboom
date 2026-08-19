@@ -304,6 +304,33 @@ def main():
     check("a pin is derived from the address and says so",
           one("SELECT COUNT(*) FROM entity_point WHERE basis <> 'address_city'") == 0)
 
+    # Every subject in the §12 concordance must name service areas that exist.
+    # "infrastructure" pointed at "Capital expenditure" — the capital side of the
+    # operating split, not a service area — so it joined to nothing: every
+    # government in every stack reported nothing on it, the county map refused
+    # for want of a category, and the brief read as a finding about Oregon
+    # rather than as a typo. Nothing failed. That is why it is asserted here.
+    print("\nevery subject lands on a category this data actually has")
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "agent"))
+    import rules as _rules
+    real = {r[0] for r in conn.execute(
+        "SELECT DISTINCT service_area FROM spending_by_service_area")}
+    unknown = {topic: [c for c in spec[0] if c not in real]
+               for topic, spec in _rules.TOPIC_CONCORDANCE.items()
+               if any(c not in real for c in spec[0])}
+    check("no subject names a category that is not a service area",
+          not unknown, str(unknown))
+    # A subject that resolves to categories nobody reports is the same failure
+    # one step later, so the reporting side is measured too.
+    empty = []
+    for topic, spec in _rules.TOPIC_CONCORDANCE.items():
+        marks = ",".join("?" * len(spec[0]))
+        n = one(f"SELECT COUNT(DISTINCT pid6) FROM spending_by_service_area "
+                f"WHERE service_area IN ({marks})", *spec[0])
+        if n < 50:
+            empty.append((topic, n))
+    check("and every subject has governments reporting in it", not empty, str(empty))
+
     print(f"\n{checks - len(failures)}/{checks} checks passed")
     if failures:
         print(f"\nFAILED: {len(failures)}")

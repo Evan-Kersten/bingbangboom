@@ -322,9 +322,21 @@ TOPIC_CONCORDANCE = {
         ["Environment & Natural Resources"], "weak",
         "Small and inconsistently used as a category."),
     "environment": (["Environment & Natural Resources"], "weak", "Inconsistently used."),
+    # Roads, water, sewer and the ground they sit on — the three service areas
+    # that hold the built environment. It pointed at "Capital expenditure" for a
+    # long time, which is not a service area at all but the capital side of the
+    # operating split, so nothing joined: every government in every stack
+    # reported nothing on infrastructure and the map refused for want of a
+    # category that was never in the table. The capital question is real and is
+    # answered by `capital_split`, which is a different tool and a different
+    # question: whether a government is building, rather than what it is
+    # building. `verify.py` now asserts every category here is a service area
+    # that exists, because this failed silently and looked like a finding.
     "infrastructure": (
-        ["Capital expenditure"], "good",
-        "Good for whether an entity is building, not for what it is building."),
+        ["Transportation", "Utilities", "Environment & Natural Resources"], "moderate",
+        "Roads, water and sewer are each most of one category, so the categories "
+        "together are broader than the subject. Whether a government is building "
+        "rather than maintaining is the capital share, which is a separate figure."),
     "technology": (
         ["General Government", "Financial Administration"], "weak",
         "Not separately reported anywhere in this data."),

@@ -59,8 +59,16 @@ BLOCK_ORDER = {
     # anything. The map earned its place in §15.2 for this question type
     # because the brief is where somebody arrives first and it had no picture
     # in it at all.
-    "issue_or_topic": ["interpretation", "answer", "map", "chart", "table",
-                       "notes", "next"],
+    # A tuple is one slot holding several kinds in the order the composer wrote
+    # them. Everywhere else in §15.2 a question has one chart and one table and
+    # grouping by kind is the same as authored order; a brief is a document with
+    # a funnel in it — the state, then the stack, then one government, then the
+    # categories inside it, then whether that money builds or runs — and each
+    # step is a picture with its table under it. Grouping by kind there
+    # collected four charts at the top and four tables beneath them, which is
+    # the same blocks and none of the argument.
+    "issue_or_topic": ["interpretation", "answer", "map",
+                       ("text", "chart", "table"), "notes", "next"],
     "investment_vs_conditions": ["interpretation", "answer", "table", "notes", "next"],
 }
 
@@ -189,6 +197,12 @@ def compose(question_type, blocks):
             by_kind.setdefault(block["kind"], []).append(block)
     ordered = []
     for kind in order:
+        if isinstance(kind, tuple):
+            held = {k for k in kind}
+            ordered += [b for b in blocks if b and b["kind"] in held]
+            for k in kind:
+                by_kind.pop(k, None)
+            continue
         ordered += by_kind.pop(kind, [])
     # Anything the vocabulary does not place keeps its relative position at the
     # end rather than being silently discarded.
@@ -205,13 +219,19 @@ def validate(question_type, blocks):
     kinds = [b["kind"] for b in blocks]
     order = BLOCK_ORDER.get(question_type, BLOCK_ORDER["factual_lookup"])
 
-    # §15.2: order is fixed, though any block may be absent.
-    positions = [order.index(k) for k in kinds if k in order]
+    # §15.2: order is fixed, though any block may be absent. A tuple in the
+    # order is one slot, so the kinds inside it share a position and may
+    # interleave freely — that is what makes a slot rather than two entries.
+    slot = {}
+    for index, kind in enumerate(order):
+        for name in (kind if isinstance(kind, tuple) else (kind,)):
+            slot[name] = index
+    positions = [slot[k] for k in kinds if k in slot]
     if positions != sorted(positions):
         problems.append(f"blocks out of §15.2 order for {question_type}: {kinds}")
 
     for kind in kinds:
-        if kind not in order:
+        if kind not in slot:
             problems.append(f"'{kind}' is not a block {question_type} may use")
 
     if "answer" not in kinds:
@@ -230,15 +250,30 @@ def validate(question_type, blocks):
         if block["kind"] == "table" and block.get("dropped"):
             problems.append("a ranking that silently drops entities; name them")
 
-    # §15.1: a chart that restates the sentence is noise, and past the row
-    # threshold the table is the primary form.
+    # §15.1: past the row threshold the table is the primary form and a chart of
+    # the same rows is the wrong lead.
+    #
+    # Scoped to one chart against one table, which is the case the rule is
+    # about: a single answer that drew its one table as its one chart. A brief
+    # is several pictures each with its own table under it, and the unscoped
+    # rule paired every chart with every table — the three-government stack
+    # chart was reported as the wrong lead for a nine-row table of districts
+    # filed in another county, which is a different subject entirely. A chart
+    # with too many marks of its own is still caught, by `points` below.
     tables = [b for b in blocks if b["kind"] == "table"]
     charts = [b for b in blocks if b["kind"] == "chart"]
-    for table in tables:
-        if len(table.get("rows") or []) > TABLE_OVER_CHART and charts:
+    if len(tables) == 1 and len(charts) == 1:
+        rows = len(tables[0].get("rows") or [])
+        if rows > TABLE_OVER_CHART:
             problems.append(
-                f"{len(table['rows'])} rows past the §15.1 threshold of "
+                f"{rows} rows past the §15.1 threshold of "
                 f"{TABLE_OVER_CHART} should lead with the table, not a chart")
+    for chart in charts:
+        marks = chart.get("points")
+        if marks is not None and marks > TABLE_OVER_CHART * 2:
+            problems.append(
+                f"a chart of {marks} marks is a table; §15.1 draws at most "
+                f"{TABLE_OVER_CHART * 2}")
 
     # §15.4: a figure carrying a mark must carry its legend line.
     for block in blocks:

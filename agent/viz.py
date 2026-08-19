@@ -901,3 +901,71 @@ def split_bar(title, subtitle, parts, headline=None, headline_label=None,
     return frame(width, y + 10, "".join(body),
                  f"{title}. {subtitle or ''} "
                  + ", ".join(f"{p['label']} {formatter(p['value'])}" for p in parts))
+
+
+# The colour a government's own bar wears in the stack chart. The place asked
+# about is the accent; everything else recedes, because the question is "who
+# holds this here" and the answer is a comparison against the place, not a
+# ranking of six governments against each other.
+def stack_shares(title, subtitle, rows, width=680, note=None, highlight=None):
+    """Who puts what share of their own budget into a subject.
+
+    The one picture the issue brief was missing, and the reason it read as a
+    list of tables: 46% against 2.2% is the finding, and two numbers in two
+    cells of a table are read as two facts rather than as the contrast they are.
+
+    Share of each government's own budget, never dollars. A stack ranked by
+    dollars is a stack ranked by which government is biggest — almost always the
+    county — and says nothing about who is organised around the subject. The
+    dollars ride in the table underneath, where they are a magnitude rather than
+    a ranking.
+
+    Governments reporting nothing are drawn, at zero, with their names. §9:
+    absence is the most common finding in a stack and dropping those rows would
+    make the chart agree with the reader's assumption instead of correcting it.
+    """
+    rows = [r for r in rows if r.get("share") is not None]
+    if not rows:
+        return None
+    top, offset = header(title, subtitle, width)
+    largest = max([r["share"] for r in rows] + [1.0])
+
+    body = [top]
+    y = offset + 6
+    slot = 30
+    label_width = 176
+    plot_left = label_width + 10
+    plot_width = width - plot_left - 52
+    for row in rows:
+        length = row["share"] / largest * plot_width
+        accent = highlight is not None and row["label"] == highlight
+        body.append(text_el(label_width, y + 15, truncate(row["label"], 24),
+                            anchor="end", size=12,
+                            fill="ink" if accent else "ink-2",
+                            weight="600" if accent else "400"))
+        if row["share"] > 0:
+            body.append(f'{bar_path(plot_left, y + 4, max(length, 1.5), 18)} '
+                        f'fill="{token("s1" if accent else "dim")}">'
+                        f'<title>{esc(row["label"])}: {row["share"]:.1f}% of its own '
+                        f'budget</title></path>')
+            body.append(text_el(plot_left + length + 8, y + 17,
+                                fmt.percent(row["share"]), size=11.5,
+                                fill="ink" if accent else "ink-2", tabular=True))
+        else:
+            # A tick at the origin, not an empty row. Nothing drawn at all reads
+            # as a government the chart forgot rather than one that reports zero.
+            body.append(f'<rect x="{plot_left}" y="{y + 4}" width="2" height="18" '
+                        f'fill="{token("axis")}"/>')
+            body.append(text_el(plot_left + 10, y + 17, "reports nothing here",
+                                size=11, fill="muted"))
+        y += slot
+
+    if note:
+        y += 6
+        for line in wrap(note, 96):
+            body.append(text_el(0, y + 8, line, size=11, fill="muted"))
+            y += 14
+        y += 2
+    return frame(width, y + 8, "".join(body),
+                 f"{title}. {subtitle or ''} "
+                 + ", ".join(f"{r['label']} {r['share']:.1f}%" for r in rows))

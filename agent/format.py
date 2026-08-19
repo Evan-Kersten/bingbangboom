@@ -76,6 +76,21 @@ def plural(number, noun, many=None):
     return f"{count(number)} {word}"
 
 
+def series(items, conjunction="and"):
+    """A list as English. "A and B and C" is not a sentence anybody writes.
+
+    Used wherever a set of Census categories is read aloud in prose, which is
+    most sentences in an issue brief: three categories joined with a bare "and"
+    between each pair read as three separate assertions rather than one list.
+    """
+    items = [str(i) for i in items if i]
+    if not items:
+        return ""
+    if len(items) == 1:
+        return items[0]
+    return f"{', '.join(items[:-1])} {conjunction} {items[-1]}"
+
+
 def count(value):
     if value is None:
         return None
