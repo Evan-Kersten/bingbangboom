@@ -503,14 +503,14 @@ main { display: flex; flex-direction: column; overflow: hidden; }
 .opener-choice i {
   font-style: normal; font-size: 10.5px; color: var(--pf-muted);
 }
-/* How well the data stands in for the subject, on the chip. Colour carries the
-   same three steps the concordance uses and nothing finer, because the fourth
-   step would imply a precision the concordance does not have. Weak is muted
-   rather than red: a loose proxy is the honest answer for most issues here, not
-   a warning to steer around. */
-.fit { font-variant: small-caps; letter-spacing: .04em; }
-.fit.good { color: var(--pf-good); }
-.fit.moderate { color: var(--pf-ink-2); }
+/* What the data has behind the subject, on the chip. Not a grade: GOOD and WEAK
+   were stamped on all seventeen and read as a scorecard for the data rather than
+   a menu of subjects, and a rating is the one thing a reader cannot check. Only
+   the caveated levels say anything now, in words, and the rest are just the
+   subject. Muted rather than red, because a loose proxy is the honest answer for
+   most issues here and not a warning to steer around. */
+.fit { font-size: 11px; color: var(--pf-muted); font-style: normal; }
+.fit::before { content: '· '; }
 .opener-hint {
   margin: 12px 0 0; font-size: 12.5px; color: var(--pf-muted); line-height: 1.5;
 }
@@ -635,6 +635,13 @@ p.lead {
   color: var(--pf-ink); letter-spacing: -0.012em;
   margin: 2px 0 2px; max-width: 46ch;
   text-wrap: balance;
+}
+
+/* A step in the funnel, announcing the picture beneath it. Heavier than body
+   text and lighter than the lead, with room above, so a reader scrolling a long
+   brief can see where one step ends and the next begins. */
+p.section-lead {
+  margin: 22px 0 2px; color: var(--pf-ink); font-weight: 540;
 }
 
 /* §15.1 figure: the answer as a quantity. Proportional figures at display size;
@@ -821,11 +828,11 @@ p.lead {
     <div class="thread" id="thread">
       <div class="inner" id="inner">
         <div class="welcome">
-          <h2>What can you measure here?</h2>
-          <p>Name a subject and a place. You get the Census categories that stand in
-          for the subject and how loosely they fit, the governments with a claim on
-          it, what each of them reports, and where the data gives out &mdash; before
-          any figure rather than after it.</p>
+          <h2>No place in Oregon has just one government.</h2>
+          <p>A typical address sits inside about ten of them &mdash; a city, a county,
+          a school district, and a handful of districts most people have never heard
+          of. Say what you are working on and where. You will get the ones that hold
+          it, what each of them spends, and what this data cannot tell you.</p>
           <div class="opener">
             <div class="opener-line">I am working on
               <button class="opener-slot" id="opener-topic">a subject</button>
@@ -836,19 +843,20 @@ p.lead {
             <p class="opener-note" id="opener-note"></p>
           </div>
           <div class="capabilities">
-            <div class="capability"><b>Before you build a layer</b>
-              <span>Every subject carries how well the data stands in for it, and every
-              map is drawn only where enough of the extent reports the measure. A
-              refusal is the finding: fire protection draws at one county in thirty-six
-              because fire is district work, and that is worth knowing on day one.</span></div>
-            <div class="capability"><b>Three levels down</b>
-              <span>Service area to function and back out again, on one basis at every
-              level. Public safety, then police protection, then whether that function
-              is running costs or construction this year.</span></div>
-            <div class="capability"><b>Numbers you can hand to a client</b>
-              <span>Every figure states its own year, every survey estimate carries its
-              margin and a verdict on whether it will hold weight, and every chart
-              returns the table underneath it.</span></div>
+            <div class="capability"><b>You learn what is missing early</b>
+              <span>A map here only draws where enough governments actually report the
+              thing. Ask for fire spending across Oregon and you get one county in
+              thirty-six, because fire is district work and districts file differently.
+              That is worth finding out in week one, not in month three.</span></div>
+            <div class="capability"><b>The whole state, down to one line</b>
+              <span>Start with a subject across Oregon and narrow it: to a county, to a
+              single government, to the service it sits in, to the named job inside
+              that &mdash; police, fire, corrections &mdash; and to whether this year&rsquo;s
+              money is running the service or building it.</span></div>
+            <div class="capability"><b>Nothing you have to caveat later</b>
+              <span>Every number says which year it is from. Survey estimates carry
+              their margin, and say whether a gap you are looking at is real or inside
+              the noise. Every chart hands back the table underneath it.</span></div>
           </div>
           <p id="welcome-mode"></p>
         </div>
@@ -1021,9 +1029,9 @@ async function staticApi(path, body) {
       return await readJson(`data/${body.pid6}/brief-${encodeURIComponent(body.topic)}.json`);
     } catch (error) {
       return { blocks: [{ kind: 'answer', text:
-        'No brief was pre-rendered for that place and subject. Briefs are built '
-        + 'for cities with an established stack of governments; run the server for '
-        + 'any place in the data.' }], trace: [] };
+        'This build does not include that place and subject together. Ready-made '
+        + 'answers cover the cities that have governments on record for them; the '
+        + 'live version answers for anywhere in the data.' }], trace: [] };
     }
   }
 
@@ -1086,6 +1094,20 @@ let TOPICS = null, TOPIC_INDEX = {}, openerPlace = null, openerTopic = null;
    measured at all" is the first question in a prototyping session and a reader
    should not have to click a subject to find out that it is a loose proxy. */
 const FIT_OF = (topic) => (TOPIC_INDEX.fit || {})[topic] || 'none';
+/* GOOD and WEAK used to be stamped on every chip. A grade is an abstract
+   judgement a reader cannot check and cannot act on, and stamping one on all
+   seventeen made the list read like a scorecard for the data rather than a menu
+   of subjects. What a reader actually needs at this moment is whether the
+   subject has a budget line of its own, and that is a fact rather than a
+   rating. So the clean ones carry nothing — most chips are now just a word —
+   and only the two caveated levels say what they are, once, in the reader's
+   language. The full sentence still arrives with the answer, where there is
+   room to say what the category contains besides. */
+const FIT_CHIP = {
+  moderate: 'inside a wider category',
+  weak: 'rough stand-in',
+  none: 'no category',
+};
 /* What each layer is, said as the reader would say it. "government" is the odd
    one and needs the most saying: it is pins rather than shading, and a pin is an
    office rather than a service area. */
@@ -1131,10 +1153,10 @@ function paintOpener() {
   const note = $('opener-note');
   if (note) {
     note.textContent = openerPlace && openerTopic ? ''
-      : `${(BROWSE?.places || []).length || 240} Oregon cities have a stack of `
-        + `governments established for them, and any of Oregon's 1,529 governments `
-        + `can be searched by name. An address outside every city limit is served `
-        + `by its county and districts, which this data does not record per address.`;
+      : `Pick from ${(BROWSE?.places || []).length || 240} Oregon cities and towns, `
+        + `or search all 1,529 governments by name on the left. Outside a city limit `
+        + `it is the county and its districts that serve you, and this data does not `
+        + `go down to a single address.`;
   }
 }
 
@@ -1161,13 +1183,14 @@ function paintOpenerChoices(which) {
         <div class="opener-group">
           <h4>${esc(g.name)}</h4>
           <div class="opener-row">${g.topics.map((t) => `
-            <button class="opener-choice" data-topic="${esc(t)}">${esc(t)}<i
-              class="fit ${esc(FIT_OF(t))}">${esc(FIT_OF(t))}</i></button>`).join('')}
+            <button class="opener-choice" data-topic="${esc(t)}">${esc(t)}${
+              FIT_CHIP[FIT_OF(t)] ? `<i class="fit ${esc(FIT_OF(t))}">${
+                esc(FIT_CHIP[FIT_OF(t)])}</i>` : ''}</button>`).join('')}
           </div>
         </div>`).join('')}
-      ${hits && !hits.length ? `<p class="opener-hint">No Census category stands in
-        for that, even loosely, so nothing here would measure it. Clear the box to
-        see the subjects that do have one behind them.</p>` : ''}`;
+      ${hits && !hits.length ? `<p class="opener-hint">Nothing in this data comes
+        close enough to that to be worth showing you. Clear the box for the subjects
+        that do have a budget category behind them.</p>` : ''}`;
   } else {
     const needle = term.toLowerCase();
     const all = (BROWSE?.places || []);
@@ -1183,9 +1206,9 @@ function paintOpenerChoices(which) {
         <button class="opener-choice" data-place="${i}">${esc(p.name)}<i
           >${esc(p.county)}</i></button>`).join('')}
       </div>
-      ${hits.length ? '' : `<p class="opener-hint">No city by that name has a stack
-        established. Any of Oregon's 1,529 governments can still be found by name in
-        the box on the left.</p>`}`;
+      ${hits.length ? '' : `<p class="opener-hint">No city by that name here. You can
+        still find any of Oregon&rsquo;s 1,529 governments by name in the box on the
+        left.</p>`}`;
     box.querySelectorAll('[data-place]').forEach((node) => {
       node.onclick = () => { openerPlace = hits[Number(node.dataset.place)];
                              closeOpenerChoices(); };
@@ -1228,12 +1251,21 @@ async function openerPick(which) {
   paintOpenerChoices(which);
 }
 
+/* The pair already answered, so a redraw does not re-ask. Filling the second
+   slot is the request — the sentence says what the reader wants and a button
+   underneath repeating it back was a third click that carried no information
+   and no choice. Changing either half asks again, which is what changing it
+   means. */
+let openerAnswered = '';
+
 function openerReady() {
   const box = $('opener-choices');
   if (!openerPlace || !openerTopic) return;
-  box.innerHTML = `<button class="opener-go" id="opener-go">What can I measure about `
-    + `${esc(openerTopic)} in ${esc(openerPlace.name)}?</button>`;
-  $('opener-go').onclick = () => askBrief(openerPlace, openerTopic);
+  const pair = `${openerTopic}\u0000${openerPlace.pid6}`;
+  if (pair === openerAnswered) return;
+  openerAnswered = pair;
+  box.innerHTML = '';
+  askBrief(openerPlace, openerTopic);
 }
 
 function askBrief(place, topic) {
@@ -1372,7 +1404,8 @@ function drawResults(term) {
     <button class="preset" data-topic="${esc(t)}">
       ${entity ? `Working on ${esc(t)} in ${esc(entityName())}`
                : `Working on ${esc(t)}`}<span
-        style="color:var(--pf-muted);font-size:11px"> · ${esc(FIT_OF(t))} fit${
+        style="color:var(--pf-muted);font-size:11px"> · ${
+          esc(FIT_CHIP[FIT_OF(t)] || 'has its own category')}${
         entity ? '' : ' · then a place'}</span></button>`).join('');
 
   box.innerHTML = (subjects ? `<div class="rgroup">Subjects</div>${subjects}` : '')
@@ -1534,6 +1567,7 @@ function choose(match) {
   if (openerTopic && subjectUnspent) {
     const subject = openerTopic;
     subjectUnspent = false;
+    openerAnswered = `${subject}\u0000${openerPlace.pid6}`;
     setTimeout(() => askBrief(openerPlace, subject), 0);
   } else {
     openerReady();
@@ -2028,6 +2062,15 @@ const BLOCK = {
     </div>`,
 
   answer: (b) => `<p${b.lead ? ' class="lead"' : ''}>${esc(b.text)}</p>`,
+
+  /* A section lead inside a document, which is not the same thing as the one
+     §15.1 answer block. A preset joins its sentences into that single answer and
+     never emits one of these; a brief is a funnel — the stack, then the one
+     government that holds the subject, then the named jobs inside it — and each
+     step needs a line saying what the picture under it is for. Without a
+     renderer here these were composed, ordered, validated, and then silently
+     dropped on the way to the page. */
+  text: (b) => `<p class="section-lead">${esc(b.text)}</p>`,
 
   figure: (b) => `<div class="figure">
       <div class="lbl">${esc(b.label)}${b.year ? ' · ' + esc(b.year) : ''}</div>

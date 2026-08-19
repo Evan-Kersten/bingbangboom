@@ -1112,6 +1112,50 @@ def _map_blocks(result, intro):
             {"kind": "map", "svg": data["svg"], "coverage": coverage}]
 
 
+# What a government of one type usually puts into a set of categories. Cached
+# because a brief asks for it once per row and the build renders four thousand
+# of them.
+_TYPICAL = {}
+
+
+def _typical_share(gov_type, categories):
+    """The median share of its own budget a government of this type puts here.
+
+    The benchmark the brief was missing. Every comparable product in this space
+    answers "is that a lot?" by putting the same figure for a larger or a
+    typical geography beside it, and without one a share is a number a reader
+    has no way to size. 16% for Lane County is unremarkable against a median
+    county at 9% and remarkable against a median at 2%, and the brief said the
+    same thing either way.
+
+    The median is over governments of the type that report these categories at
+    all, never over all of them. §8: a pool where most members report nothing
+    has a median at zero, which is not a midpoint, and dividing by it would make
+    every reporting government look extraordinary.
+    """
+    key = (gov_type, tuple(sorted(categories)))
+    if key in _TYPICAL:
+        return _TYPICAL[key]
+    marks = ",".join("?" * len(categories))
+    rows = STORE.rows(
+        "SELECT s.pid6 AS pid6, SUM(s.percentage) AS share "
+        "FROM spending_by_service_area s JOIN entities e ON e.pid6 = s.pid6 "
+        f"WHERE e.gov_type_name = ? AND s.service_area IN ({marks}) "
+        "  AND s.percentage IS NOT NULL "
+        "GROUP BY s.pid6", gov_type, *categories)
+    values = sorted(r["share"] for r in rows if r["share"])
+    # Under ten reporting governments is not a distribution, it is a handful,
+    # and a median over five is a number that moves when one of them refiles.
+    if len(values) < 10:
+        _TYPICAL[key] = None
+        return None
+    middle = len(values) // 2
+    median = (values[middle] if len(values) % 2
+              else (values[middle - 1] + values[middle]) / 2)
+    _TYPICAL[key] = median
+    return median
+
+
 def answer_brief(pid6, topic):
     """One place, one issue: the answer somebody arrives with a job to do.
 
@@ -1160,7 +1204,7 @@ def answer_brief(pid6, topic):
         opener = BR.FIT_OPENER.get(data["fit"], BR.FIT_OPENER["none"])
         opening = (f"This data has no line called {data['topic']}: it records Census "
                    f"categories, not programmes. The nearest are "
-                   f"{' and '.join(data['categories'])}, {opener}.")
+                   f"{fmt.series(data['categories'])}, {opener}.")
         # §14. A word that names more than one subject was resolved to one of
         # them, and the reader has to be able to see that a choice was made and
         # which way it went. "fire" is structural and wildland; they sit on
@@ -1249,27 +1293,56 @@ def answer_brief(pid6, topic):
     # column would rank dollars per student against dollars per resident under
     # one heading. That is the silent basis change §10 forbids, and it looks
     # sound, which is what makes it worth refusing.
+    # The picture the brief spent a long time without, and the reason it read as
+    # a stack of tables: 64% against 16% is the finding, and two numbers in two
+    # cells are read as two facts rather than as the contrast between them.
+    # Governments reporting nothing are drawn at zero rather than dropped,
+    # because §9 makes absence the commonest finding in a stack and a chart of
+    # only the reporters agrees with the reader's assumption instead of
+    # correcting it.
+    shares = [{"label": row["name"],
+               "share": sum(r.get("percentage") or 0 for r in row["reports"])}
+              for row in stack]
+    if any(row["share"] for row in shares):
+        # The categories are named in the sentence above and in the table below,
+        # so the title says what the picture is for rather than repeating them:
+        # three Census category names is 62 characters and ran off the frame.
+        chart = viz.stack_shares(
+            f"Who spends on this in {data['place']}",
+            "Share of each government's own budget",
+            sorted(shares, key=lambda r: r["share"], reverse=True),
+            highlight=data["place"],
+            note="Share of that government's own budget, not of a total for the "
+                 "place. There is no total for the place: the same dollar appears "
+                 "twice wherever one of these pays another to do the work.")
+        if chart:
+            blocks.append({"kind": "chart", "svg": chart, "points": len(shares)})
+
     reporting = []
     for row in stack:
         if not row["reports"]:
             continue
         share = sum(r["percentage"] or 0 for r in row["reports"])
         years = sorted({r["year"] for r in row["reports"] if r.get("year")})
+        # What a government of this type usually puts here, so the share above
+        # has something to sit against. A number with no benchmark is the thing
+        # every comparable product supplies and this one did not: 16% for Lane
+        # County means nothing until you know the median county is at 9%.
+        typical = _typical_share(row["gov_type_name"], data["categories"])
         reporting.append({
             "government": row["name"],
             "type": row["gov_type_name"],
             "reports in these categories": "; ".join(
                 f"{r['service_area']} {fmt.money(r['total'])}" for r in row["reports"]),
             "of its own budget": fmt.percent(share) if share else "not stated",
+            "typical for this type": fmt.percent(typical) if typical else "no median",
             "year": str(years[-1]) if years else "not stated"})
     if reporting:
         blocks.append({
             "kind": "table",
-            # The share column is the one that ranks these, and a reader scanning
-            # the dollars will rank them by which government is biggest instead.
-            "caption": "Read the share column, not the dollars: it is the closest "
-                       "this data comes to saying which of these is organised "
-                       "around the subject.",
+            "caption": "The last two columns are the ones that decide things: what "
+                       "this government puts here, against what a government of its "
+                       "type usually does.",
             "rows": reporting})
 
     # "Established by" is gone from both of these. It said "the place itself",
@@ -1302,6 +1375,68 @@ def answer_brief(pid6, topic):
                       "spending": fmt.money(row["total"])}
                      for row in data["elsewhere"]]})
 
+    # The funnel's next two steps, and they are about one government rather than
+    # about the stack. A reader who has got this far knows who holds the subject;
+    # what they need now is what sits inside the category for that body, and
+    # whether this year's money is running the service or building it. Both
+    # questions already have tools — the same ones the government presets use —
+    # and the brief simply never asked them.
+    import explore
+    # Envelopes from the tools this section calls, so their caveats reach the
+    # record and the notes block alongside the brief's own.
+    extra = []
+    leader = max((row for row in stack if row["reports"]),
+                 key=lambda row: sum(r.get("percentage") or 0 for r in row["reports"]),
+                 default=None)
+    if leader:
+        biggest = max(leader["reports"], key=lambda r: r["total"])["service_area"]
+        inside = explore.drill(STORE, leader["pid6"], biggest)
+        extra.append(inside)
+        functions = inside["data"].get("functions") or []
+        if functions:
+            blocks.append({"kind": "text", "text": (
+                f"{leader['name']} files most of that under {biggest}. These are the "
+                f"named jobs inside it, which is the level somebody owns and the "
+                f"level a budget document will talk about.")})
+            blocks.append({
+                "kind": "table",
+                # The peer median rides on each row because it is the only thing
+                # that makes a function figure mean anything: $302M on electric
+                # power is unreadable until you know the median utility-operating
+                # government reports $7M, at which point it is the finding.
+                # §8 suppresses it where the pool is degenerate rather than
+                # printing a midpoint that is not one.
+                "caption": f"Shares are of {leader['name']}'s whole budget. The last "
+                           "column is what a government that reports the same job "
+                           "usually spends on it, which is what says whether a "
+                           "figure here is ordinary.",
+                "rows": [{f"inside {biggest}": f["label"],
+                          "amount": fmt.money(f["value"]),
+                          "of its whole budget": fmt.percent(f["share_of_entity"])
+                          if f.get("share_of_entity") is not None else "not stated",
+                          "typical where reported": (
+                              fmt.money(f["peer_median"])
+                              if f.get("peer_median") and not f.get("peer_degenerate")
+                              else "no usable median")}
+                         for f in functions[:8]]})
+
+        # Running costs or construction, for the body that holds the subject. A
+        # government halfway through a plant and a government running the same
+        # services out of the same budget look identical on every share above.
+        split = T.capital_split(STORE, leader["pid6"])
+        extra.append(split)
+        if split["data"]:
+            chart = T.render_chart(STORE, leader["pid6"], "capital_split")
+            extra.append(chart)
+            if chart["data"].get("svg"):
+                blocks.append({"kind": "text", "text": (
+                    f"Whether that is running the service or building it is a "
+                    f"question about {leader['name']}'s whole budget rather than "
+                    "about this subject, and it is the difference between a body "
+                    "with a programme and a body with a construction project.")})
+                blocks.append({"kind": "chart", "svg": chart["data"]["svg"],
+                               "table": chart["data"].get("table"), "points": 3})
+
     # Conditions get their own table and never share a row with a budget figure.
     if data["conditions"]:
         import community as C
@@ -1309,17 +1444,47 @@ def answer_brief(pid6, topic):
         # down a table that already printed the margin one cell to its left.
         # §15.3 says an uncertainty belongs on the number, so it is a mark now,
         # and the column it used to occupy is gone rather than replaced.
+        # The county beside the place. This is the benchmark the table was
+        # missing: 19% below the poverty level is a figure a reader has no way to
+        # size until the county next to it says 15%, and a reader given no
+        # benchmark supplies one from whatever they last read somewhere else.
+        # Only where the place has its own record — a district already stands in
+        # for its county, and a column comparing a county against itself is a
+        # column of zeroes.
+        county_geo = None
+        if data["conditions_basis"] == "own" and entity and entity.get("host_county_pid6"):
+            found = STORE.row(
+                "SELECT geo_id FROM geo_entity WHERE pid6=? AND layer='county'",
+                entity["host_county_pid6"])
+            county_geo = found["geo_id"] if found else None
+        county_column = f"{(entity['host_county'] or 'county').title()} County" \
+            if county_geo else None
         marked = False
         rows = []
         for i in data["conditions"]:
             wide = i["reliability"] in ("soft", "unstated")
             marked = marked or wide
-            rows.append({
+            row = {
                 "what residents report": i["name"],
                 "figure": fmt.mark(C.format_value(i["estimate"], i["unit"]),
                                    ["wide_margin"] if wide else []),
                 "give or take": (C.format_value(i["moe"], i["unit"])
-                                 if i["moe"] is not None else "not stated")})
+                                 if i["moe"] is not None else "not stated")}
+            if county_geo:
+                peer = C.against(STORE, i, county_geo, "county", C.VINTAGES[0])
+                row[county_column] = (C.format_value(peer["estimate"], i["unit"])
+                                      if peer else "not stated")
+                # §8. Where the two estimates are not separated by the Census
+                # significance test the difference is inside the noise, and
+                # printing it invites a reader to describe a gap the survey
+                # cannot see. Named as too close to call rather than as a small
+                # number, because a small number still reads as a direction.
+                row["difference"] = (
+                    "not stated" if not peer
+                    else "too close to call" if not peer["separated"]
+                    else C.format_value(abs(peer["difference"]), i["unit"])
+                         + (" higher" if peer["difference"] > 0 else " lower"))
+            rows.append(row)
         where = {"own": "this place", "host_county": "the county, standing in for "
                  "this place"}.get(data["conditions_basis"], data["conditions_basis"])
         blocks.append({
@@ -1334,6 +1499,9 @@ def answer_brief(pid6, topic):
                        "survey. None of this is any government's record and nothing "
                        "above explains it — the two are patterns in the same "
                        "geography, and that is all."
+                       + (" Two survey estimates within their margins of each other "
+                          "cannot be separated, and the last column says so rather "
+                          "than naming a gap." if county_geo else "")
                        + (" " + fmt.mark_legend(["wide_margin"])[0] if marked else ""),
             "rows": rows})
 
@@ -1351,11 +1519,11 @@ def answer_brief(pid6, topic):
     # that the categories are the nearest thing, so repeating it under a heading
     # called "what this cannot tell you" would spend the reader's attention on
     # something they read forty words ago.
-    blocks.append(B.notes([result], said=["issue_level_spending"]))
+    blocks.append(B.notes([result] + extra, said=["issue_level_spending"]))
     blocks.append(B.next_questions(STORE, pid6))
     ordered = B.compose("issue_or_topic", [b for b in blocks if b])
     return {"blocks": ordered, "question_type": "issue_or_topic",
-            "rules": result["caveats"],
+            "rules": _all_rules([result] + extra),
             "violations": B.validate("issue_or_topic", ordered),
             "trace": [result["tool"]]}
 

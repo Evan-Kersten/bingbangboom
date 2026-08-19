@@ -144,6 +144,63 @@ def main():
     check("and the caption is not also in the answer paragraph",
           "filled in" not in scale_text, scale_text[-160:])
 
+    # The funnel. A brief is a document, not a single answer, and the steps have
+    # to survive composition in the order they were written: the stack, then the
+    # bodies filed elsewhere, then one government, then the jobs inside it.
+    # Grouping by kind collected every chart at the top and every table beneath,
+    # which is the same blocks and none of the argument.
+    import brief as BR
+    infra = S.answer_brief(pid("CITY OF EUGENE"), "infrastructure")
+    kinds = [b["kind"] for b in infra["blocks"]]
+    check("the brief conforms to §15.2 with charts and tables interleaved",
+          infra["violations"] == [], str(infra["violations"]))
+    check("a picture of the stack comes before the table of it",
+          kinds.index("chart") < kinds.index("table"), str(kinds))
+    check("and the funnel runs table, table, lead-in, table",
+          "text" in kinds and kinds.index("text") > kinds.index("table"), str(kinds))
+    captions = [b.get("caption") or "" for b in infra["blocks"] if b["kind"] == "table"]
+    # The benchmark. Every comparable product answers "is that a lot?" by putting
+    # the same figure for a typical government beside it; without one a share is
+    # a number a reader has no way to size.
+    stack_table = next(b for b in infra["blocks"]
+                       if b["kind"] == "table" and "government" in (b["rows"][0] or {}))
+    check("each government's share sits beside what its type usually does",
+          "typical for this type" in stack_table["rows"][0], str(stack_table["rows"][0]))
+    check("and the drill names what a peer reporting the same job spends",
+          any("typical where reported" in (r or {}) for b in infra["blocks"]
+              if b["kind"] == "table" for r in b["rows"]), str(captions))
+
+    # "infrastructure" resolved to "Capital expenditure", which is the capital
+    # side of the operating split and not a service area, so it joined to
+    # nothing: every government reported nothing and the county map refused for
+    # want of a category. It read as a finding about Oregon rather than a typo.
+    import rules as _rules
+    real = {r["service_area"] for r in store.rows(
+        "SELECT DISTINCT service_area FROM spending_by_service_area")}
+    check("every subject names categories this data actually has",
+          all(c in real for spec in _rules.TOPIC_CONCORDANCE.values() for c in spec[0]))
+    check("and infrastructure reaches governments rather than nothing",
+          any(row["reports"] for row in
+              BR.place_topic_brief(store, pid("CITY OF EUGENE"),
+                                   "infrastructure")["data"]["stack"]))
+
+    # A rate is a number a reader cannot size without a benchmark, and a reader
+    # given none supplies whatever they last read somewhere else.
+    conditions = next(b for b in infra["blocks"] if b["kind"] == "table"
+                      and "what residents report" in (b["rows"][0] or {}))
+    check("the place's conditions sit beside the county's",
+          "Lane County" in conditions["rows"][0], str(conditions["rows"][0]))
+    # §8 and the ACS significance test. Two estimates within their margins are
+    # not separated, and printing a difference invites a reader to describe a
+    # gap the survey cannot see.
+    check("a difference inside the margins is refused, not printed",
+          any(r["difference"] == "too close to call" for r in conditions["rows"]),
+          str([r["difference"] for r in conditions["rows"]]))
+    check("and a separated one names its direction",
+          any(r["difference"].endswith(("higher", "lower")) for r in conditions["rows"]))
+    check("the caption says why a difference can be withheld",
+          "cannot be separated" in conditions["caption"], conditions["caption"][:120])
+
     print("\na reader who cannot name a government can still find one")
     # Search over 1,529 names only finds what somebody already knew existed,
     # which excludes the districts that actually do the work.

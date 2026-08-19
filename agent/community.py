@@ -132,6 +132,40 @@ def indicators(store, geo_id, geo_level, vintage):
     return out
 
 
+def against(store, indicator, geo_id, geo_level, vintage):
+    """One indicator for this place, set against the same one for a wider area.
+
+    The move every comparable product in this space makes and this one did not:
+    a poverty rate of 19% is a number a reader has no way to size until the
+    county beside it says 15%. Without it the conditions table was six figures
+    floating, and readers supply their own benchmark, which is whatever they
+    last read somewhere else.
+
+    The comparison is only ever stated where the survey supports it. Two ACS
+    estimates are separated when the difference exceeds the root sum of squares
+    of their margins — `math.hypot`, the Census significance test — and where it
+    does not, this says so rather than reporting a difference that is noise.
+    Adding the margins instead looks safer and is about 40% too strict.
+
+    ACS General Handbook 2020, ch. 7, "Testing statistical significance".
+    """
+    row = store.row(
+        "SELECT estimate, moe, geo_name FROM dp03 "
+        "WHERE geo_id=? AND geo_level=? AND vintage=? AND variable=?",
+        geo_id, geo_level, vintage, indicator["code"])
+    if not row or row["estimate"] is None or indicator["estimate"] is None:
+        return None
+    difference = indicator["estimate"] - row["estimate"]
+    span = math.hypot(indicator["moe"] or 0, row["moe"] or 0)
+    return {
+        "estimate": row["estimate"], "moe": row["moe"], "geo_name": row["geo_name"],
+        "difference": difference,
+        # Separated, not "higher" or "worse". Whether a gap is good news is a
+        # judgement about the place and §4 keeps this module out of it.
+        "separated": abs(difference) > span,
+    }
+
+
 def format_value(value, unit):
     if value is None:
         return None
@@ -140,7 +174,11 @@ def format_value(value, unit):
     if unit == "percent":
         return fmt.percent(value)
     if unit == "minutes":
-        return f"{value:.0f} min"
+        # A margin of 0.4 minutes rendered as "0 min", which says the estimate is
+        # exact — the opposite of what a margin is for. Whole minutes are right
+        # for a commute of 18 and wrong for anything below ten, which in this
+        # data is always a margin rather than an estimate.
+        return f"{value:.0f} min" if value >= 10 else f"{value:.1f} min"
     return fmt.count(value)
 
 

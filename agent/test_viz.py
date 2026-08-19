@@ -394,6 +394,28 @@ def main():
     check("and nothing at all returns nothing rather than an empty frame",
           viz.split_bar("t", None, [{"label": "a", "value": 0}]) is None)
 
+    print("\nwho holds a subject, as a picture rather than two table cells")
+    stack = viz.stack_shares(
+        "Who spends on this in Eugene", "Share of each government's own budget",
+        [{"label": "Eugene", "share": 63.9}, {"label": "Lane County", "share": 15.6},
+         {"label": "Bethel School Dist 52", "share": 0}], highlight="Eugene")
+    check("every government in the stack is drawn", stack.count("<title>") >= 2)
+    # §9: absence is the commonest finding in a stack, and a chart of only the
+    # reporters agrees with the reader's assumption instead of correcting it.
+    check("a government reporting nothing is drawn saying so, not dropped",
+          "reports nothing here" in stack and "Bethel" in stack)
+    check("the place asked about is the accent",
+          stack.count(viz.token("s1")) == 1, str(stack.count(viz.token("s1"))))
+    check("an all-zero stack draws nothing rather than an empty frame",
+          viz.stack_shares("t", None, [{"label": "a", "share": None}]) is None)
+
+    print("\na list of things reads as a sentence")
+    check("two items take a bare and", fmt.series(["a", "b"]) == "a and b")
+    check("three take commas and one and",
+          fmt.series(["a", "b", "c"]) == "a, b and c", fmt.series(["a", "b", "c"]))
+    check("one item is itself", fmt.series(["a"]) == "a")
+    check("and nothing is empty", fmt.series([]) == "")
+
     print(f"\n{checks - len(failures)}/{checks} checks passed")
     if failures:
         print(f"\nFAILED: {len(failures)}")
