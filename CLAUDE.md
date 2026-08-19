@@ -35,9 +35,9 @@ No dependencies. Standard library only, so there is nothing to install.
 
 ```
 python3 etl/build.py          # ~20s, writes build/ from the files in the root
-python3 etl/verify.py         # 67 assertions about the built store
+python3 etl/verify.py         # 69 assertions about the built store
 python3 app/server.py         # http://localhost:8000
-python3 app/export_static.py --out site --clean   # ~60s, ~385 MB
+python3 app/export_static.py --out site --clean   # ~160s, ~496 MB
 ```
 
 `build/` and `site/` are gitignored and reproducible; never commit either.
@@ -45,10 +45,10 @@ python3 app/export_static.py --out site --clean   # ~60s, ~385 MB
 The full suite, all of which must pass before a push:
 
 ```
-python3 agent/test_tools.py        # 328    python3 app/test_server.py    # 198
+python3 agent/test_tools.py        # 328    python3 app/test_server.py    # 209
 python3 agent/test_orchestrator.py #  44    python3 app/test_parity.py    # 461
-python3 agent/test_viz.py          #  99    python3 app/test_tables.py    #  30
-python3 agent/test_reports.py      #  54    python3 etl/verify.py         #  67
+python3 agent/test_viz.py          # 107    python3 app/test_tables.py    #  30
+python3 agent/test_reports.py      #  54    python3 etl/verify.py         #  69
 python3 agent/test_blocks.py       #  45    python3 etl/test_project.py   #   6
                                             python3 evals/run.py          #  22
 ```
@@ -140,6 +140,53 @@ document with its own stylesheet, and this is interface behaviour.
 **Absence is not zero.** §9. An entity reporting nothing in a category is
 usually evidence that another government holds that responsibility. A blank must
 never render as `$0`, and a reported zero must be said to be a reported zero.
+
+**A subject must land on a category that exists.** `infrastructure` pointed at
+`Capital expenditure` — the capital side of the operating split, not a service
+area — so it joined to nothing. Every government in every stack reported nothing
+on it, the county map refused for want of a category that was never in the
+table, and the brief read as a finding about Oregon rather than as a typo.
+Nothing failed. `etl/verify.py` now asserts every entry in `TOPIC_CONCORDANCE`
+names a real service area *and* that at least fifty governments report in it,
+because a subject that resolves to categories nobody files is the same failure
+one step later. The capital question is real and belongs to `capital_split`,
+which asks whether a government is building rather than what it is building.
+
+**A figure with no benchmark is a figure a reader sizes from somewhere else.**
+This is the thing every comparable product supplies and this one did not, and it
+is not decoration: 19% below the poverty level, 16% of a county budget, $302M on
+electric power are each unreadable alone and each decisive next to the right
+comparison. Three benchmarks now ride through the brief — `_typical_share` for a
+government against the median for its type, the peer median the drill already
+carried for a function against governments reporting the same job, and
+`community.against` for the place's ACS estimates against the county's.
+
+The last one carries the discipline the others do not need. Two ACS estimates
+are separated only when the difference exceeds the root sum of squares of their
+margins, and where it does not the difference is **not printed at all**: the
+column says "too close to call" rather than naming a gap the survey cannot see.
+A small number still reads as a direction, which is why the refusal is a phrase
+and not a rounded figure.
+
+**A slot in `BLOCK_ORDER` may hold several kinds.** §15.2 gives most question
+types one chart and one table, where grouping by kind and authored order are the
+same thing. A brief is a document with a funnel in it — the state, the stack,
+one government, the jobs inside it, whether that money builds or runs — and each
+step is a picture with its table under it. Grouping by kind collected four
+charts at the top and four tables beneath: the same blocks and none of the
+argument. A tuple in the order is one slot whose kinds interleave freely, and
+`validate` maps every kind in a tuple to that slot's position.
+
+The §15.1 rule about a table past the row threshold leading over a chart is
+scoped to one chart against one table for the same reason. Unscoped it paired
+every chart with every table, and reported a three-government stack chart as the
+wrong lead for a nine-row table of districts filed in another county.
+
+**A block kind with no renderer is composed, ordered, validated and dropped.**
+`text` had none. Presets never noticed because they join their sentences into
+the single §15.1 `answer` block before composing; the brief emits section leads
+and every one of them vanished on the way to the page. When adding a kind on the
+server, add it to `BLOCK` in `index.html` in the same change.
 
 **An issue question opens on the gap, never on a figure.** §12. `brief.py` is
 the front door and it exists to make the §12 sequence structural: the gap

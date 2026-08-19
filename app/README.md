@@ -111,6 +111,43 @@ Every table carries a caption that says what to look for rather than restating a
 rule: the share column ranks the stack and the dollar column ranks it by which
 government is biggest, and a reader scanning the dollars gets the wrong answer.
 
+**Under the claim, the brief is a funnel and the order is the argument.** Where
+the place sits in Oregon, then who holds the subject as a picture, then what
+each government reports against what its type usually does, then who reports
+nothing, then who is filed elsewhere, then one level into the government that
+holds it, then whether that body's money runs the service or builds it, then the
+people, then what to ask for. Composition used to group by kind, which is
+correct everywhere else in §15.2 and wrong here: it collected every chart at the
+top and every table beneath, the same blocks and none of the argument. A slot in
+`BLOCK_ORDER` may now be a tuple whose kinds keep authored order.
+
+`viz.stack_shares` is the picture that step three needed. 64% against 16% is the
+finding, and two numbers in two cells of a table are read as two facts rather
+than as the contrast between them. Share of each government's own budget, never
+dollars; governments reporting nothing are drawn at zero with their names,
+because §9 makes absence the commonest finding in a stack and a chart of only
+the reporters agrees with the reader's assumption instead of correcting it.
+
+**Nothing in the brief is a bare figure any more.** A share sits beside the
+median for that government type, a function beside what a government reporting
+the same job usually spends, and the place's ACS estimates beside the county's.
+The last is the only one that needs a refusal: two survey estimates within their
+margins are not separated, so the difference column says "too close to call"
+rather than naming a gap. A rounded small number would still read as a
+direction, which is why it is a phrase.
+
+**The subject chips carry a fact, not a grade.** `GOOD` and `WEAK` were stamped
+on all seventeen, which made a menu of subjects read as a scorecard for the data
+and offered a judgement a reader cannot check. Only the two caveated levels say
+anything now — "inside a wider category", "rough stand-in" — so most chips are
+just the subject, and the full sentence about what the category contains arrives
+with the answer where there is room for it.
+
+**Filling the second slot is the request.** "I am working on X in Y" used to
+draw a button underneath repeating the sentence back, which was a third click
+carrying no information and no choice. `openerReady` answers instead, keyed on
+the pair so a redraw does not re-ask and changing either half does.
+
 **The rail carries the map lab and nothing else by default.** It used to carry
 eight headings, every one of them another way to name a subject or a place,
 which made it a directory of doors into a room the reader was already standing
