@@ -156,6 +156,14 @@ Four more put several governments on one axis, through `render_comparison`:
 | `service_area_across_entities` | bars, absolute | A snapshot and never a line: service-area spending is one year per entity |
 | `entities_over_time` | lines, entity totals | The only measure that genuinely spans 2017 to 2023 |
 
+**A chart of who holds a subject is not a chart of who is biggest.**
+`viz.stack_shares` draws each government's share of its *own* budget. Ranked by
+dollars the answer is always the county, which says nothing about who is
+organised around the subject; the dollars ride in the table beneath, where they
+are a magnitude rather than a ranking. Rows at zero are drawn with their names
+and the words "reports nothing here", because dropping them would make the
+picture agree with what the reader already assumed.
+
 **The capital split has a third piece.** `tools.capital_split` returns operating,
 capital and whatever the source files under neither. The two components reach
 the reported total for 1,251 of 1,529 governments and fall short for the other
